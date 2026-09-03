@@ -9,8 +9,8 @@ guides below for the part you are changing.
 |---|---|
 | [Architecture](architecture.md) | Laptop and always-on-host topology, deployment flow, and module map |
 | [Dependencies](dependencies.md) | Runtime packages, speech engines, host prerequisites, and disk budget |
-| [Agent cookbook](agent-cookbook.md) | The narrative loop for building an app you can see: create, iterate, register, pin, capture |
-| [BUSY Bar visualizer](busybar-viz.md) | The agent's eyes: ad-hoc frame audits, offline renderer checks, evidence bundles, comparisons, and review sessions |
+| [Agent cookbook](agent-cookbook.md) | Step-by-step app workflow: create, render, iterate, register, pin, and capture |
+| [BUSY Bar visualizer](busybar-viz.md) | Ad-hoc frame audits, offline renderer checks, evidence bundles, comparisons, and review sessions |
 | [Scene checklist](scenes.md) | Physical-panel and weather-state checks for a new Skystrip scene |
 | [App conventions](../apps/README.md) | Shared device behavior and control bindings |
 | [Hello](../apps/hello.md) | Minimal device smoke test |

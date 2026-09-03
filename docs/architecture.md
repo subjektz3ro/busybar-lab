@@ -1,8 +1,8 @@
 # Architecture
 
-Two ways the bar gets driven: a host that runs it all day, and your laptop over
-USB while you're building. They run the *same* app code — that's the point of
-the split, and the reason nothing in `apps/` is allowed to hardcode a host.
+Apps run either on an always-on host or from a development computer over USB.
+Both paths use the same app code. Device addresses are supplied through
+configuration and are not hardcoded in `apps/`.
 
 ## What you need
 
@@ -46,11 +46,10 @@ flowchart TB
     class bar,net hw
 ```
 
-**How the bar is reached is your choice.** Over USB it answers at `10.0.4.20`
-with no authentication, which keeps it off your network entirely. Over the LAN
-you enable HTTP API access in the bar's local web UI and put its PIN in
-`BUSYBAR_TOKEN`. Both work — apps only ever see `connect()` — but they are not
-the same trust model, so pick deliberately rather than by accident.
+Over USB, the bar answers at `10.0.4.20` without authentication. Over the LAN,
+enable HTTP API access in the bar's local web UI and put its PIN in
+`BUSYBAR_TOKEN`. Both modes use `connect()`; their authentication requirements
+differ.
 
 barkeep is the only thing systemd knows about. It parents every app process, so
 restarting the unit restarts the apps. One foreground app owns the display at a
@@ -86,21 +85,19 @@ over `busybar.local`: when the bar is also on Wi-Fi, the hostname resolves to
 *both* addresses and requests hang at random. `connect()` already tries USB
 first.
 
-**Don't run an app by hand while barkeep is running the same one** — two
-writers fight over the display, and the loser only gets it back on its next
-redraw.
+Do not run an app manually while Barkeep is running the same app. The two
+processes produce competing display writes until one stops.
 
-You do not need a bar to work on this. The offline seam matches what each app
-actually owns: Hello and the template build native request data, DSN exercises
+You do not need a bar for offline development. Hello and the template build
+native request data, DSN exercises
 its live NASA feed without device I/O, and Skystrip renders its app-owned raster
 scene to PNG. The test suite uses neither a bar nor external services. There is
 no generic firmware-text PNG renderer, so not every app exposes `--preview`.
 
 ## Shipping a change
 
-**Origin is the source of truth.** The host pulls from your git remote; your
-laptop only tells it when to go and look. That way the host can be rebuilt from
-a clean clone without your laptop existing.
+The host deploys revisions from the configured Git remote. A clean clone can
+reproduce any deployed revision without files from the development machine.
 
 ```mermaid
 sequenceDiagram
@@ -128,10 +125,9 @@ sequenceDiagram
 host would not be able to fetch it. Origin remains the complete, reproducible
 source of every deployed revision.
 
-The host is a **deploy target, not a working copy**: it hard-resets to the
-commit, so anything edited there is discarded on purpose and a merge conflict
-on an unattended machine is impossible. Config is the exception — `.env` and
-`config/` are gitignored and per-machine.
+Deployment resets the host checkout to the requested commit, discarding local
+tracked-file edits and avoiding merge conflicts. Per-host `.env` and `config/`
+files are gitignored and remain in place.
 
 Full detail, including the read-only deploy key a private-repo host should use,
 is in [`deploy/README.md`](../deploy/README.md).
@@ -148,22 +144,21 @@ busybar_viz/     the offline visual debugger (`busybar-viz`) — renders, audits
 apps.toml        the app registry — an app not listed here cannot be run
 deploy/          ship.sh, install.sh, render_service.py, barkeep.service, README.md
 docs/            index, first-party guides, media, retained busylib docs, design records
-AGENTS.md        the canonical guide — read this first
+AGENTS.md        contributor and architecture guide
 .claude/skills/busybar-app/SKILL.md
-                 the device laws that fail SILENTLY — read before building
+                 device drawing and interaction constraints
 scripts/         new_app.py, refresh_docs.py, make_demo_gifs.py,
                  check_coverage.py, check_public_release.py
 tests/           hardware-free behavior and contract tests
 ```
 
-## The one rule that shapes everything
+## Display ownership and priority
 
 Priority is **not** z-order. A draw is accepted when its priority is `>=` the
 running app's, so an equal-priority draw from a different `application_name`
-simply takes the display — two apps never composite. That is why barkeep has a
-single foreground slot instead of a layering model, and why an app that wants
-to interrupt must own the strip for a bounded window and hand it back.
+replaces the current display. Two apps do not composite. Barkeep therefore has
+a single foreground slot. An interrupting app must own the strip for a bounded
+interval and then release it.
 
-Full detail, and the rest of the failure modes that pass code review and only
-show up on the physical panel, are in
+Additional device behavior and panel-specific failure modes are documented in
 [`.claude/skills/busybar-app/SKILL.md`](../.claude/skills/busybar-app/SKILL.md).

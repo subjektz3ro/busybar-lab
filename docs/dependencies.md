@@ -1,17 +1,13 @@
-# What this actually needs
+# Dependencies and system requirements
 
-Everything the apps and the control plane depend on, in one place, because it
-was previously spread across `pyproject.toml`, `deploy/install.sh` and nobody's
-memory. Disk figures are conservative budgets derived from a running host.
+This page lists host prerequisites, supported platforms, resource budgets,
+model files, and TTS selection. Requirements are defined by `pyproject.toml`
+and `deploy/install.sh`; disk figures are conservative measurements from a
+running host.
 
-`./deploy/install.sh` sets all of this up. This page is for when you need to
-know *what* it did, size a machine, put it in a container, or work out why
-speech is coming out in the wrong voice.
+## Host prerequisites
 
-## Before any of this: what must already be on the host
-
-`install.sh` cannot bootstrap itself out of nothing. These have to be there
-first, and a minimal server image may omit several of them:
+`install.sh` requires these tools. Minimal server images may omit some of them:
 
 | Tool | Needed for | Optional? |
 |---|---|---|
@@ -20,7 +16,7 @@ first, and a minimal server image may omit several of them:
 | `curl` | downloading the required, hash-pinned Kokoro model files on Linux | no on the supported Linux service path |
 | `bash` | `install.sh` and `ship.sh` are bash, not POSIX sh | no |
 | `openssl` command | generating Barkeep's persistent self-signed TLS pair | yes — only for `BARKEEP_TLS=1` |
-| `sudo` | emergency `espeak-ng`; `systemctl` for the service | only for those optional operations |
+| `sudo` | installing runtime-fallback `espeak-ng`; `systemctl` for the service | only for those optional operations |
 | systemd | supervising across reboots | yes — you can run it in a terminal |
 | ssh server | `ship.sh` deploys over ssh | yes — a normal install can stop Barkeep, then update on-host with `git pull --ff-only` followed by `./deploy/install.sh` |
 
@@ -32,13 +28,12 @@ Run `./deploy/install.sh` as the unprivileged account that will own the checkout
 and run barkeep, never as root; it invokes `sudo` itself for the individual
 operations above.
 
-`git` is the one that surprises people, because it reads like a build-machine
-concern. It is not: the deploy model has the host pull from origin, so a host
-without git installs once and can never be updated.
+Git remains required after cloning because the host deploys and updates by
+fetching revisions from origin. `install.sh` exits if Git is unavailable.
 
-**Package manager:** `install.sh` tries to install `espeak-ng` as emergency
-runtime resilience. It is not accepted as a substitute for Kokoro: a supported
-Linux production install must pass the neural synthesis check below.
+**Package manager:** `install.sh` tries to install `espeak-ng` as a runtime
+fallback. A supported Linux installation must still pass the Kokoro synthesis
+check below.
 
 ## Support and resource matrix
 
@@ -53,7 +48,7 @@ and Windows are unsupported.
 |---|---|---|
 | Python | 3.11–3.13; CI gates 3.11 and 3.13 | 3.11–3.13, not CI-gated |
 | Primary speech | required Kokoro package + verified model pair | `say` |
-| Runtime resilience | `espeak-ng` if a previously verified Kokoro install later fails | platform `say` command |
+| Runtime fallback | `espeak-ng` if Kokoro cannot be imported or its model bank is unavailable | None separately defined |
 | Voice/model files | **~340 MiB** | none |
 | Installed checkout | about **600–650 MiB** | not formally budgeted |
 | Runtime memory | use at least **2 GiB RAM**; synthesis can approach 1 GiB resident | not formally budgeted |
@@ -63,9 +58,9 @@ disk** for a Kokoro installation because `uv` may temporarily retain a few
 hundred MiB of downloaded wheels in addition to the 600–650 MiB checkout.
 Budget **2 GiB of RAM** because the neural worker can approach 1 GiB while
 synthesising. Hardware-free tests and visual previews do not need the model
-files, but narration is part of the production Skystrip and DSN experience. The
-production installer therefore rejects hosts outside the supported binary
-envelope and fails if Kokoro cannot complete a real synthesis.
+files. Skystrip and DSN narration on a supported Linux service host requires
+them. Installation fails if the host-compatibility or Kokoro synthesis checks
+fail.
 
 ## Python packages
 
@@ -84,9 +79,8 @@ The core packages are declared in `pyproject.toml` and installed by a plain
 
 On Linux, `kokoro-onnx` is part of the default locked dependency set and pulls
 `onnxruntime` plus `numpy`, which make up most of the neural Python environment.
-The project and installer deliberately fail outside Python 3.11–3.13 and the
-supported glibc 2.28+ `x86_64`/`aarch64` envelope instead of silently creating
-a speech-degraded production host.
+Supported installs are limited to Python 3.11–3.13 on glibc 2.28+
+`x86_64`/`aarch64`; installation exits nonzero on other platforms.
 
 Use `./deploy/install.sh` for the complete setup. A direct `uv sync --locked`
 installs the Python engine but does not fetch the separately hash-verified
@@ -94,15 +88,15 @@ model bank under `voices/`, nor does it perform the installer's real synthesis
 smoke. Routine deploys preserve the same required locked engine and recheck
 that it can synthesize before restarting Barkeep.
 
-`busybar_dev/tts.py` imports Kokoro and NumPy inside the synthesis path so app
-startup does not eagerly load a large neural runtime. Those local imports look
-like a style mistake and are not one.
+`busybar_dev/tts.py` imports Kokoro and NumPy only when synthesis starts, which
+avoids loading the neural runtime during general app startup.
 
 ## System packages
 
-**`espeak-ng`** — installed by `install.sh` via the host package manager on
-Linux. It is the last fallback in the TTS chain. If it cannot be installed,
-the panel still works and only speech is unavailable when Kokoro cannot run.
+**`espeak-ng`** — `install.sh` attempts to install it through the host package
+manager on Linux. The runtime selects it when Kokoro cannot be imported or its
+model bank is unavailable. If it cannot be installed, display output remains
+available.
 
 **`openssl`** — optional and not installed by `install.sh`. Barkeep invokes its
 command once when `BARKEEP_TLS=1` needs to generate `config/tls/`; supplying
@@ -133,34 +127,31 @@ supported checkout upgrading from an older speech setup can rerun
 `./deploy/install.sh`; its `.env` is preserved while the shared bank is fetched,
 verified, and exercised with real audio generation.
 
-## How a voice is actually chosen
+## TTS engine selection
 
-`busybar_dev/tts.py` walks a chain, and this is the usual source of "why does
-it sound wrong":
+`busybar_dev/tts.py` selects a speech engine in this order:
 
 1. **Kokoro**, when its required Linux package and complete shared model files
    are available. Supported `xx_yyy` voice names select that narrator (for example, Skystrip's
    `am_michael` or dsn's `af_nova`). A non-Kokoro value left in a host's
    gitignored configuration by an older release maps to `am_michael`.
-2. **Emergency runtime resilience.** `espeak-ng` on Linux if a previously
-   verified Kokoro install later becomes unusable; `say` on the macOS direct
-   development path. An explicit macOS voice name is preserved.
+2. **Runtime fallback.** `espeak-ng` on Linux if Kokoro cannot be imported or
+   its model bank is unavailable; `say` on the macOS direct development path.
+   An explicit macOS voice name is preserved.
 
-Runtime falls through so a post-install failure does not silence an already
-running bar. The production installer is intentionally stricter: missing
-models, an unavailable package, or failed audio generation abort setup before
-the service is installed or started.
+The installer requires Kokoro and its model bank even though the runtime can
+select `espeak-ng`. Missing models, an unavailable package, or failed audio
+generation abort setup before the service is installed or started.
 
-## Speech is the expensive thing at runtime, too
+## Runtime speech cost
 
 Kokoro runs at roughly **1× realtime on a Pi 5**: a 30-second line costs about
-30 seconds of CPU to synthesise. That is why dsn bakes lines ahead and caches
-them on the device rather than synthesising on a keypress, and why its cache is
-sized to hold a whole rotation. Its Linux worker can approach **1 GiB resident**;
-DSN uses a disposable process so that memory returns to the OS after a cold
-bake. See `apps/dsn.md`.
+30 seconds of CPU to synthesise. DSN pre-generates lines and caches enough on
+the device for a full rotation. Its Linux worker can approach **1 GiB
+resident**; DSN uses a disposable process so worker memory returns to the OS
+after generation. See `apps/dsn.md`.
 
-## Optional, not needed to run anything
+## Optional components
 
 - **Chrome or Chromium** — only for the barkeep clip in
   `scripts/make_demo_gifs.py`, which screenshots the live web UI. Every other
@@ -170,7 +161,7 @@ bake. See `apps/dsn.md`.
   have `--dry-run`, DSN has a no-device live-feed `--dry-run`, and Skystrip has
   an offline `--preview`; these are app-specific seams, not universal flags.
 
-## What is deliberately absent
+## External services
 
 No vendor cloud, message broker, or hosted database is required. The live-data
 apps poll outward and push to a bar on the local network. Barkeep is an inbound

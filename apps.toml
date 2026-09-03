@@ -72,7 +72,7 @@ default = ""
 blank_is_value = true
 
 [skystrip.config.SKYSTRIP_VOICE]
-description = "Kokoro TTS voice on supported Linux (af_*/am_*/bf_*/bm_*); espeak-ng is runtime resilience, while macOS can use a say voice"
+description = "Kokoro TTS voice on supported Linux (af_*/am_*/bf_*/bm_*); Linux uses espeak-ng when Kokoro or its model bank is unavailable, while macOS can use a say voice"
 default = "am_michael"
 
 [skystrip.config.SKYSTRIP_SCENES]
@@ -178,7 +178,7 @@ choices = ["dishes", "skies", "rows"]
 default = "dishes"
 
 [dsn.config.DSN_VOICE]
-description = "Kokoro narrator on supported Linux (af_*/am_*/bf_*/bm_*); espeak-ng is runtime resilience, while macOS can use a say voice"
+description = "Kokoro narrator on supported Linux (af_*/am_*/bf_*/bm_*); Linux uses espeak-ng when Kokoro or its model bank is unavailable, while macOS can use a say voice"
 default = "af_nova"
 
 [dsn.config.DSN_CACHE_DIR]

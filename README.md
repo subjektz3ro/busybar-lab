@@ -6,8 +6,9 @@ desk — plus a control plane to run them on an always-on host.
 This is an independent community project, not an official Flipper FZCO/BUSY
 product and not endorsed by the device vendor.
 
-Two of them are finished pieces of work rather than demos: **NASA's Deep Space
-Network, live**, and **an ambient rendering of the sky outside your window**.
+The two primary apps are **DSN**, which displays current NASA Deep Space
+Network activity, and **Skystrip**, which renders sky and weather conditions
+for a configured location.
 
 | | |
 |---|---|
@@ -31,8 +32,8 @@ preview, and test suite do not need a BUSY Bar.
 git clone https://github.com/subjektz3ro/busybar-lab.git
 cd busybar-lab
 uv sync --locked
-uv run apps/hello.py --dry-run # prove the stack offline, no bar needed
-uv run apps/hello.py           # with a bar: draw HELLO, save proof PNGs
+uv run apps/hello.py --dry-run # validate the stack offline, no bar needed
+uv run apps/hello.py           # with a bar: draw HELLO, save screenshots
 uv run apps/hello.py --clear   # take it back down
 ```
 
@@ -49,19 +50,17 @@ develop this project.
 | **macOS** | A source-development and direct-run path is provided, with `say` for speech. It is not CI-gated and has no systemd service installer. |
 | **Windows** | Not currently supported or tested. The deployment tooling requires Bash and the service path requires systemd; use a Linux host (or an unverified WSL setup) instead. |
 
-The complete supported stack uses CPython 3.11–3.13. Kokoro is the required
-production voice for Skystrip and DSN on Linux, not a reduced-experience extra.
-The installer refuses unsupported Linux hosts and does not call setup complete
-until the package imports, both hash-verified model files are present, and a
-real short synthesis succeeds. `espeak-ng` remains emergency runtime
-resilience if an installed neural engine later becomes unavailable.
+The supported stack uses CPython 3.11–3.13. On supported Linux service hosts,
+Skystrip and DSN use Kokoro for speech. The installer verifies the package,
+the SHA-256 hashes of the model and voice-bank files, and a short synthesis
+before installing or starting Barkeep. At runtime, Linux selects `espeak-ng`
+if Kokoro cannot be imported or its model bank is unavailable. Direct macOS
+development uses `say`.
 
-For the same live Skystrip/DSN setup used in production, clone the repository
-on the server and run [`./deploy/install.sh`](deploy/README.md). That one command
-syncs the locked environment, writes or preserves `.env`, downloads and checks
-the Kokoro models, proves speech with real audio, and optionally installs
-Barkeep as a service. Copying `.env.example` is useful for direct development,
-but it does not install or validate the production speech stack.
+For a Linux service installation, clone the repository on the host and run
+[`./deploy/install.sh`](deploy/README.md). It syncs the locked environment,
+creates or preserves `.env`, downloads and verifies the Kokoro files, runs the
+synthesis check, and can install Barkeep as a systemd service.
 
 ```bash
 git clone https://github.com/subjektz3ro/busybar-lab.git
@@ -73,9 +72,8 @@ Plugged in over USB the bar answers at `10.0.4.20` with no authentication. For
 local Wi-Fi/LAN access set `BUSYBAR_HOST` and `BUSYBAR_TOKEN`; this repository
 does not route device traffic through the vendor cloud.
 
-**You don't need a bar for most development.** Offline entry points are
-app-specific rather than pretending a device-native text draw and a raster
-scene have the same preview path:
+Most development tasks do not require a bar. Offline checks vary by app because
+native text draws and raster scenes use different rendering paths:
 
 | Command | BUSY Bar | External network | What it checks |
 |---|---:|---:|---|
@@ -89,15 +87,12 @@ uv run apps/skystrip.py --preview sky.png --at 03:30 --storm
 uv run pytest -q
 ```
 
-### The agent's eyes: busybar-viz
+### Visual validation with busybar-viz
 
-This repository is built to be developed by AI coding agents, and an agent
-cannot look at an LED panel. `busybar-viz` closes that gap: it audits exact
-front/back pixels against the panel's measured physics, simulates the
-physical LED gaps, replays timed button and wheel input, and publishes
-immutable evidence bundles an agent can read, diff, and cite — so a visual
-bug is caught by a named check with frame-specific measurements, not only by
-a person squinting at the bar.
+`busybar-viz` renders and audits front and back display output without a
+physical panel. It records exact pixels, checks configured display constraints,
+simulates LED spacing, replays timed button and wheel input, and produces
+immutable artifacts for automated and human review.
 
 ```bash
 uv run busybar-viz view scratch/candidate.png --json   # see any frames, zero setup
@@ -116,7 +111,7 @@ unacknowledged drift fails.
 `view` audits ad-hoc in-development frames — including an app's enlarged
 `--preview` output — with no registration, and `--region`/`--ink` bring the
 device-law legibility checks to them. Registered scenarios (`run`) add
-declared source provenance; production-renderer scenarios prove that app-owned
+declared source provenance; production-renderer scenarios record that app-owned
 code produced the pixels. Renderer workers block ordinary network/device
 access. Registration is one `[<app>.viz]` table in `apps.toml` (how
 `dsn/default` is declared);
@@ -131,11 +126,10 @@ Barkeep. The CLI wheel is tested in isolation, but app adapters intentionally
 load production source and assets from the active checkout, so run it from a
 clone rather than treating the wheel as a standalone app bundle.
 
-The everyday loop is self-serve — render, read the audit, fix, compare —
-with no session or person required. When a person joins the review, the UI's
-append-only session journal is shared by people, Codex, and Claude Code: an
-agent renders a candidate, makes its exact SHA current with
-`uv run busybar-viz session present`, then waits for design feedback in the
+The CLI can render, audit, and compare output without a review session. For
+collaborative review, the UI stores ordered feedback in an append-only session
+journal. An agent can render a candidate, make its exact SHA current with
+`uv run busybar-viz session present`, then wait for design feedback in the
 same turn with `uv run busybar-viz session events SESSION_ID --after REVISION
 --wait 55 --json`. See [the complete visualizer guide](docs/busybar-viz.md) for
 app adapters, semantic inputs, artifacts, comparisons, and the evidence levels
@@ -153,11 +147,10 @@ Each doc covers what the app shows, **what every button does**, its config keys
 and where its data comes from. [`apps/README.md`](apps/README.md) has the
 conventions they share.
 
-Some of what came out of building them: the spacecraft are drawn as
-themselves — 25 portraits, so Perseverance is a rover with wheels and Juno is
-three enormous blades that glint as it spins at its real 2 rpm. The globe's
-terminator is computed from the true subsolar point, so the Arctic keeps its
-midnight sun in July. The antenna icon leans at the pass's real elevation.
+DSN includes 24 mapped spacecraft portraits for 105 identifiers, plus a generic
+fallback. Perseverance is rendered as a rover, and Juno's portrait uses a
+moving specular highlight based on its 2 rpm spin. The globe terminator uses
+the calculated subsolar point, and antenna tilt uses pass elevation.
 
 ## barkeep — the control plane
 
@@ -176,21 +169,23 @@ public-service limits; selecting Skystrip is what starts those provider
 requests. Previously saved foreground choices still restore on restart.
 
 ```bash
-uv run -m barkeep      # then open http://localhost:8080
+uv run -m barkeep      # development/manual launch; open http://localhost:8080
 ```
+
+On a supported Linux service host, run `./deploy/install.sh` first so the
+Kokoro package and model files have been verified.
 
 One app owns the display at a time — [apps cannot
 overlay](apps/README.md#why-apps-dont-overlay), which is a property of the
 device, not a design choice.
 
-**barkeep is unauthenticated and loopback-only by default.** Anything that can
-reach it can read logs and the framebuffer, write declared app configuration,
-and control child processes, so LAN exposure is an operator choice rather than
-the installation default. Keep `BARKEEP_BIND=127.0.0.1` and use an SSH tunnel,
-or set an explicit LAN bind plus a strong `BARKEEP_TOKEN` and `BARKEEP_TLS=1`
-— HTTPS with a generated self-signed certificate, replaceable later from the
-UI itself. The token lives only in the host's gitignored `.env`; the web UI
-asks for it once per browser and keeps a cookie after that
+**Barkeep supports loopback and LAN operation.** A fresh installation binds to
+`127.0.0.1` for local use or access through an SSH tunnel. For direct LAN
+access, set `BARKEEP_BIND` to a LAN address (or `0.0.0.0`), configure a strong
+`BARKEEP_TOKEN`, and set `BARKEEP_TLS=1`. This enables HTTPS with a persistent
+self-signed certificate, which can later be replaced through the UI. The token
+lives only in the host's gitignored `.env`; the web UI asks for it once per
+browser and keeps a cookie after that
 ([how to log in](deploy/README.md#logging-in-from-another-machine)). The
 daemon warns when it is exposed without a token.
 [`SECURITY.md`](SECURITY.md) is the full statement.
@@ -200,19 +195,19 @@ daemon warns when it is exposed without a token.
 The supported service host is a 64-bit glibc 2.28+ Linux machine on `x86_64` or
 `aarch64` that stays on and can reach the bar — for example, a Pi 4/5 with
 64-bit Raspberry Pi OS and at least 2 GiB RAM, a NUC, a 64-bit laptop, or a VM.
-Containers are an advanced manual-run path rather than the documented systemd
-deployment. The host never needs to accept connections from the internet.
+The supported service deployment uses systemd. The host never needs to accept
+connections from the internet.
 
 What it needs before you start, none of which ships on a minimal image:
 
 | | Why |
 |---|---|
 | **`uv`** | Creates the exact locked environment and supplies a compatible Python 3.11–3.13 interpreter when needed |
-| **`git`** | Required by the installer, not just to clone: `ship.sh` deploys by fetching into the checkout *on the host*, so `install.sh` refuses a host without git rather than leaving one that can never update |
+| **`git`** | Required for installation and updates because `ship.sh` fetches into the host checkout; `install.sh` exits if Git is unavailable |
 | **`curl`** | Downloads the required, hash-pinned Kokoro model files on Linux |
 | **`bash`** | `install.sh` and `ship.sh` are bash, not POSIX sh |
 | **`openssl`** | Optional: generates the persistent self-signed certificate for `BARKEEP_TLS=1` |
-| **`sudo`** | For the emergency `espeak-ng` fallback, and for `systemctl` if you run it as a service |
+| **`sudo`** | For installing the `espeak-ng` fallback, and for `systemctl` if you run it as a service |
 | **systemd** | Only if you want it supervised across reboots |
 | **an ssh server** | Only if you deploy with `ship.sh` rather than pulling by hand |
 
@@ -280,14 +275,12 @@ uv run scripts/new_app.py yourapp     # template + apps.toml entry in one step
 uv run apps/yourapp.py --dry-run      # also law-checks the payload offline
 ```
 
-[`docs/agent-cookbook.md`](docs/agent-cookbook.md) walks the whole loop —
-create, see, iterate, register, pin, capture — written for the coding agents
-this repository is built around.
+[`docs/agent-cookbook.md`](docs/agent-cookbook.md) lists the app workflow:
+create, render, iterate, register, pin, and capture.
 
-Then read [**`.claude/skills/busybar-app/SKILL.md`**](.claude/skills/busybar-app/SKILL.md).
-It's easy to miss because `.claude/` is a dotfile directory, and it is the
-single most valuable file here: the device behaviours that fail *silently*,
-each one learned by shipping it wrong.
+Before changing display output, read
+[**`.claude/skills/busybar-app/SKILL.md`**](.claude/skills/busybar-app/SKILL.md).
+It documents device behavior and known failure modes.
 
 While a visual is moving, audit each iteration with `uv run busybar-viz view`
 — any PNG frames, zero setup, with the device-law legibility checks on the
@@ -319,14 +312,14 @@ child app does not reload `apps.toml`. See
 
 | | |
 |---|---|
-| [`AGENTS.md`](AGENTS.md) | The canonical guide: the device's behaviour, the architecture, the house rules. Read first |
+| [`AGENTS.md`](AGENTS.md) | Contributor requirements, device behavior, and architecture |
 | [`docs/README.md`](docs/README.md) | Index of first-party guides, app docs, external references, and historical design records |
-| [`docs/dependencies.md`](docs/dependencies.md) | Everything the host needs, measured — packages, model files, disk, and which TTS engine speaks when |
+| [`docs/dependencies.md`](docs/dependencies.md) | Host packages, model files, resource budgets, and TTS selection |
 | [Official BUSY developer docs](https://docs.busy.app/bar/dev) | Current device setup, API access, and HTTP API guidance from the vendor |
 | `docs/api/openapi.yaml` | Optional, gitignored OpenAPI snapshot fetched from a connected device for local inspection |
 | `docs/busylib/` | Redistributable official Python client docs, examples, licence, and its own `AGENTS.md` |
-| `.claude/skills/busybar-app/` | The device laws that fail silently |
-| `.claude/skills/busybar-viz/` | The agent's eyes: offline visual iteration, inspection, comparison, and evidence discipline |
+| `.claude/skills/busybar-app/` | Device drawing and interaction constraints |
+| `.claude/skills/busybar-viz/` | Visual rendering, audit, comparison, and evidence guidance |
 
 With a bar reachable, `uv run scripts/refresh_docs.py` can refresh the ignored
 local device specification. The public repository does not redistribute a
@@ -339,9 +332,9 @@ cut. Use a release tag when you need a fixed public version.
 
 ## Architecture
 
-Same app code on your laptop over USB and on the host in the corner — which is
-why nothing in `apps/` may hardcode an address. Diagrams, the directory map,
-and the one rule that shapes the whole design are in
+The same app code runs during USB development and on a service host. Apps
+receive device connection settings through configuration instead of hardcoded
+addresses. Diagrams and the directory map are in
 [`docs/architecture.md`](docs/architecture.md).
 
 ## Licence
