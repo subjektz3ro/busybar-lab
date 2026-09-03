@@ -1,14 +1,36 @@
 # BUSY Bar Lab
 
-Live apps for the [BUSY Bar](https://busy.app) — a 72×16 RGB LED strip on your
-desk — plus a control plane to run them on an always-on host.
+A source-first development environment for building, testing, and deploying
+custom apps for the [BUSY Bar](https://busy.app) — a 72×16 RGB LED strip on
+your desk. Use it yourself or with AI coding agents.
+
+The repository includes an app scaffold, repository-local device guidance,
+the official Python client reference, offline rendering and pixel audits,
+hardware-free tests, the Barkeep control plane, and Linux deployment tooling.
+The included guidance covers creating, rendering, validating, and registering
+an app, then deploying it through Barkeep on Linux.
 
 This is an independent community project, not an official Flipper FZCO/BUSY
 product and not endorsed by the device vendor.
 
-The two primary apps are **DSN**, which displays current NASA Deep Space
-Network activity, and **Skystrip**, which renders sky and weather conditions
-for a configured location.
+**Skystrip** and **DSN** are larger example apps. Run them as-is, modify them,
+or use their data, animation, interaction, and audio patterns as inspiration
+for a new app. **Hello** and the generated app template are smaller examples
+to start from.
+
+## Start a new app
+
+After completing the [Quickstart](#quickstart), the first command creates an
+app from the template and registers it with Barkeep:
+
+```bash
+uv run scripts/new_app.py yourapp
+uv run apps/yourapp.py --dry-run
+```
+
+Continue with the [full app-building workflow](#build-your-own-app).
+
+## Example app gallery
 
 | | |
 |---|---|
@@ -135,7 +157,7 @@ same turn with `uv run busybar-viz session events SESSION_ID --after REVISION
 app adapters, semantic inputs, artifacts, comparisons, and the evidence levels
 that distinguish a renderer result from an actual panel observation.
 
-## The apps
+## Included example apps
 
 | App | What it is | |
 |---|---|---|
@@ -239,8 +261,8 @@ On a remote server, reach the loopback-only control plane through SSH:
 ssh -N -L 8080:127.0.0.1:8080 your-user@server.example
 ```
 
-Then open `http://127.0.0.1:8080` on your own computer and select **Skystrip**
-or **DSN**.
+Then open `http://127.0.0.1:8080` on your own computer and select an included
+app or one you registered with Barkeep.
 
 To update an ordinary install from this public repository, run this in the
 server checkout:
@@ -268,7 +290,7 @@ git push origin main
 couldn't fetch it. Full detail, including the read-only deploy key a
 private-repo host should use, is in [`deploy/README.md`](deploy/README.md).
 
-## Building an app
+## Build your own app
 
 ```bash
 uv run scripts/new_app.py yourapp     # template + apps.toml entry in one step
@@ -277,6 +299,10 @@ uv run apps/yourapp.py --dry-run      # also law-checks the payload offline
 
 [`docs/agent-cookbook.md`](docs/agent-cookbook.md) lists the app workflow:
 create, render, iterate, register, pin, and capture.
+
+Repository-local `AGENTS.md` and skills direct a coding agent to the device
+rules, scaffold, visual validation, tests, and Barkeep registration. The same
+documented workflow can also be followed manually.
 
 Before changing display output, read
 [**`.claude/skills/busybar-app/SKILL.md`**](.claude/skills/busybar-app/SKILL.md).

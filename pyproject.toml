@@ -1,7 +1,7 @@
 [project]
 name = "busybar-lab"
 version = "0.3.0"
-description = "Live apps for the BUSY Bar LED device, and a control plane to run them"
+description = "Build, test, visualize, and deploy custom BUSY Bar apps yourself or with AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 # The copyleft requirement comes from a GPL-2.0-or-later firmware-tool port.

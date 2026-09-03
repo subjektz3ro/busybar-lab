@@ -1,8 +1,12 @@
 # BUSY Bar Lab
 
-Apps for the BUSY Bar (model BB.1), driven over its HTTP API, plus a control
-plane to run them. Read the first-party guides and retained busylib references
-locally; use the vendor's current developer documentation for the device API.
+This is a source-first environment for building, testing, and deploying custom
+apps for the BUSY Bar (model BB.1), directly or with AI coding agents. Skystrip
+and DSN are larger examples; Hello and the app template are smaller starting
+points. Barkeep is the control plane that runs registered apps.
+
+Read the first-party guides and retained busylib references locally; use the
+vendor's current developer documentation for the device API.
 
 If you are a coding agent, this file is the fast path. Read it, then read the
 `busybar-app` skill before writing anything that draws. Use the `busybar-viz`

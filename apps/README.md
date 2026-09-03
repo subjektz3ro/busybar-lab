@@ -1,12 +1,15 @@
-# The apps
+# Included apps and app conventions
 
 ![barkeep](../docs/media/barkeep.gif)
 
 _Representative capture; it predates the Skystrip provider-use line now shown
 below the display previews._
 
-Each app owns the BUSY Bar's 72×16 front strip and draws something live to it.
-One app is on screen at a time — see [Why apps don't overlay](#why-apps-dont-overlay).
+Skystrip and DSN are larger example apps that can be run, modified, or used as
+starting points for new apps. Hello and `_template.py` provide smaller
+examples. Each app owns the BUSY Bar's 72×16 front strip and draws something
+live to it. One app is on screen at a time — see
+[Why apps don't overlay](#why-apps-dont-overlay).
 
 | App | What it is | Docs |
 |---|---|---|

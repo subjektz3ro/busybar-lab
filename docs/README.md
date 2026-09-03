@@ -1,7 +1,7 @@
 # Documentation
 
-Start with the repository [README](../README.md) to run an app, then use the
-guides below for the part you are changing.
+Start with the repository [README](../README.md) to run an example app or
+build your own, then use the guides below for the part you are changing.
 
 ## First-party guides
 
