@@ -98,7 +98,10 @@ def main() -> None:
     registry = load_registry(REPO_ROOT / "apps.toml")
 
     def env_for(name: str) -> dict[str, str]:
-        env = child_env(read_env_file(app_env_path(CONFIG_DIR, name)), os.environ)
+        spec = registry[name]
+        env = child_env(
+            read_env_file(app_env_path(CONFIG_DIR, spec)), os.environ
+        )
         env["BARKEEP_MANAGED"] = "1"
         return env
 

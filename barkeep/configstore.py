@@ -11,7 +11,7 @@ from typing import Mapping
 
 from busybar_dev.config import parse_env_text as shared_parse_env_text
 
-from .registry import AppSpec
+from .registry import APP_NAME_RE, AppSpec
 
 
 def parse_env_text(text: str) -> dict[str, str]:
@@ -53,8 +53,16 @@ def write_env_file(path: Path, values: dict[str, str]) -> None:
             os.unlink(tmp)
 
 
-def app_env_path(config_dir: Path, app: str) -> Path:
-    return config_dir / f"{app}.env"
+def app_env_path(config_dir: Path, spec: AppSpec) -> Path:
+    """Return the override path for a trusted, canonical registry spec.
+
+    HTTP route text must never reach this filesystem boundary directly.  The
+    caller first resolves it through the registry and passes the resulting
+    ``AppSpec``; the repeated name check protects non-registry/test callers.
+    """
+    if not APP_NAME_RE.fullmatch(spec.name):
+        raise ValueError("app spec has an invalid name")
+    return config_dir / f"{spec.name}.env"
 
 
 def effective_config(

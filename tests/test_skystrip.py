@@ -336,12 +336,12 @@ async def test_live_nowcast_writes_snow_depth_to_the_live_weather(monkeypatch):
 
     def handler(request: httpx_mod.Request) -> httpx_mod.Response:
         url = str(request.url)
-        if "api.weather.gov" in url:
+        if request.url.host == "api.weather.gov":
             # A 404 from /points marks this observation/forecast pipeline as
             # outside NWS coverage for the iteration. CAP alert polling is a
             # separate task and is not running in this test.
             return httpx_mod.Response(404, json={"detail": "not found"})
-        if "api.open-meteo.com" in url:
+        if request.url.host == "api.open-meteo.com":
             if "current" in request.url.params:  # the nowcast call
                 return httpx_mod.Response(200, json={"current": {
                     "time": datetime.now().astimezone().isoformat(),
@@ -391,12 +391,15 @@ async def test_pinned_station_cannot_supply_history_outside_point_coverage(
     def handler(request: httpx_mod.Request) -> httpx_mod.Response:
         url = str(request.url)
         requests.append(url)
-        if "/points/" in url:
+        if request.url.path.startswith("/points/"):
             return httpx_mod.Response(404, json={"detail": "not found"})
-        if "api.weather.gov/stations/" in url:
+        if (
+            request.url.host == "api.weather.gov"
+            and request.url.path.startswith("/stations/")
+        ):
             raise AssertionError(
                 "a pinned station must not bypass failed point coverage")
-        if "api.open-meteo.com" in url:
+        if request.url.host == "api.open-meteo.com":
             if "current" in request.url.params:
                 return httpx_mod.Response(200, json={"current": {
                     "time": datetime.now(timezone.utc).isoformat(),
@@ -447,17 +450,20 @@ async def test_station_discovery_404_does_not_reclassify_a_covered_point(
 
     def handler(request: httpx_mod.Request) -> httpx_mod.Response:
         url = str(request.url)
-        if "/points/" in url:
+        if request.url.path.startswith("/points/"):
             return httpx_mod.Response(200, json={"properties": {
                 "forecast": "https://api.weather.gov/gridpoints/TST/1,1/forecast",
                 "observationStations": "https://api.weather.gov/gridpoints/"
                                        "TST/1,1/stations",
             }})
-        if url.endswith("/stations"):
+        if request.url.path.endswith("/stations"):
             return httpx_mod.Response(404, json={"detail": "no stations"})
-        if "api.weather.gov/gridpoints/" in url:
+        if (
+            request.url.host == "api.weather.gov"
+            and request.url.path.startswith("/gridpoints/")
+        ):
             return httpx_mod.Response(404, json={"detail": "unavailable"})
-        if "api.open-meteo.com" in url:
+        if request.url.host == "api.open-meteo.com":
             if "current" in request.url.params:
                 return httpx_mod.Response(200, json={"current": {
                     "time": datetime.now(timezone.utc).isoformat(),

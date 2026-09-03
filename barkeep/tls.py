@@ -11,6 +11,7 @@ configuration error, never a silent fall-back to plaintext.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import ssl
@@ -21,6 +22,7 @@ CERT_NAME = "barkeep-selfsigned.crt"
 KEY_NAME = "barkeep-selfsigned.key"
 OPERATOR_CERT_NAME = "barkeep-operator.crt"
 OPERATOR_KEY_NAME = "barkeep-operator.key"
+log = logging.getLogger(__name__)
 
 
 def resolve_tls(tls_dir: Path) -> tuple[Path, Path] | None:
@@ -209,9 +211,12 @@ def tls_status(tls_dir: Path) -> dict[str, object]:
     status: dict[str, object] = {"managed": not env_pinned, "cert": None}
     try:
         pair = resolve_tls(tls_dir)
-    except ValueError as exc:
+    except ValueError:
+        log.warning("invalid Barkeep TLS configuration", exc_info=True)
         status["source"] = "error"
-        status["detail"] = str(exc)
+        status["detail"] = (
+            "TLS configuration is invalid; inspect the Barkeep service logs"
+        )
         return status
     if pair is None:
         status["source"] = "off"

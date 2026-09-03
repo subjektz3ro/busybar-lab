@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import logging
 import os
 import re
 import sqlite3
@@ -49,6 +50,29 @@ _ARTIFACT_RE = re.compile(r"^[0-9a-f]{64}$")
 _EVENT_RE = re.compile(r"^evt_([0-9a-f]{32})$")
 _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_ARTIFACT_UNAVAILABLE = "artifact not found or failed verification"
+# Only these authored, input-independent validation messages may cross the
+# HTTP boundary.  Returning an arbitrary exception string would let a worker,
+# SQLite, or filesystem error disclose local paths and implementation detail.
+_PUBLIC_JOURNAL_MESSAGES = frozenset({
+    "approval note must be a string of at most 4000 characters",
+    _ARTIFACT_UNAVAILABLE,
+    "artifact_id must be a string",
+    "approved must be a boolean",
+    "event_id must be a string",
+    "event_id must be evt_ followed by 32 lowercase hex digits",
+    "expected_revision must be a positive integer",
+    "feedback message exceeds 4000 characters",
+    "feedback message must not be blank",
+    "invalid evidence_level",
+    "request contains unknown fields",
+    "request must be an object",
+    "session title must be one line of at most 160 characters",
+    "session title must not be blank",
+    "the session has no artifact to approve",
+    "this offline review endpoint can only assert gap-previewed",
+})
+log = logging.getLogger(__name__)
 
 
 class _BodyLimitMiddleware:
@@ -119,7 +143,20 @@ def _object(value: object, label: str = "body") -> Mapping[str, Any]:
 def _only(body: Mapping[str, Any], allowed: set[str]) -> None:
     unknown = set(body) - allowed
     if unknown:
-        raise JournalError(f"unknown fields: {', '.join(sorted(unknown))}")
+        raise JournalError("request contains unknown fields")
+
+
+def _public_journal_message(exc: JournalError) -> str:
+    """Return only an authored validation message, never exception detail."""
+    detail = str(exc)
+    for message in _PUBLIC_JOURNAL_MESSAGES:
+        if detail == message:
+            return message
+    log.warning(
+        "suppressed non-public visualizer request error",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    return "request is invalid"
 
 
 def _expected_revision(value: object) -> int:
@@ -243,8 +280,9 @@ def _verified_artifact(data_root: Path, artifact_id: str) -> VerifiedArtifact:
             full=True,
             expected_artifact_id=artifact_id,
         )
-    except (OSError, ValueError) as exc:
-        raise FileNotFoundError(f"artifact verification failed: {exc}") from exc
+    except (OSError, ValueError):
+        log.warning("artifact %s failed verification", artifact_id, exc_info=True)
+        raise FileNotFoundError(_ARTIFACT_UNAVAILABLE) from None
     if verified.path != directory.resolve():
         raise FileNotFoundError("artifact directory is not canonical")
     return verified
@@ -348,43 +386,60 @@ def create_app(
     async def revision_conflict(_request: Request, exc: RevisionConflict):
         return _error(
             409,
-            str(exc),
+            "session revision conflict",
             kind="revision_conflict",
             expected_revision=exc.expected,
             current_revision=exc.current,
         )
 
     @app.exception_handler(SessionNotFound)
-    async def session_missing(_request: Request, exc: SessionNotFound):
-        return _error(404, str(exc), kind="not_found")
+    async def session_missing(_request: Request, _exc: SessionNotFound):
+        return _error(404, "session not found", kind="not_found")
 
     @app.exception_handler(JobNotFound)
-    async def job_missing(_request: Request, exc: JobNotFound):
-        return _error(404, str(exc), kind="not_found")
+    async def job_missing(_request: Request, _exc: JobNotFound):
+        return _error(404, "render job not found", kind="not_found")
 
     @app.exception_handler(JobQueueFull)
-    async def queue_full(_request: Request, exc: JobQueueFull):
-        response = _error(429, str(exc), kind="queue_full")
+    async def queue_full(_request: Request, _exc: JobQueueFull):
+        response = _error(429, "render queue is full", kind="queue_full")
         response.headers["Retry-After"] = "1"
         return response
 
     @app.exception_handler(IdempotencyConflict)
-    async def idempotency_conflict(_request: Request, exc: IdempotencyConflict):
-        return _error(409, str(exc), kind="idempotency_conflict")
+    async def idempotency_conflict(
+        _request: Request, _exc: IdempotencyConflict
+    ):
+        return _error(
+            409,
+            "event id was reused with different content",
+            kind="idempotency_conflict",
+        )
 
     @app.exception_handler(JournalError)
     async def journal_error(_request: Request, exc: JournalError):
-        return _error(422, str(exc), kind="invalid_request")
+        return _error(422, _public_journal_message(exc), kind="invalid_request")
 
     @app.exception_handler(JobError)
     async def job_error(_request: Request, exc: JobError):
-        return _error(422, str(exc), kind="invalid_request")
+        log.warning(
+            "visualizer job request failed",
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        return _error(
+            422,
+            "render job could not be processed",
+            kind="invalid_request",
+        )
 
     @app.exception_handler(ValueError)
     @app.exception_handler(KeyError)
     async def value_error(_request: Request, exc: Exception):
-        message = exc.args[0] if isinstance(exc, KeyError) and exc.args else str(exc)
-        return _error(422, str(message), kind="invalid_request")
+        log.warning(
+            "visualizer request validation failed",
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        return _error(422, "request is invalid", kind="invalid_request")
 
     @app.get("/api/health")
     def health() -> dict[str, object]:
@@ -547,8 +602,8 @@ def create_app(
                 raise JournalError("artifact_id must be a string")
             try:
                 _artifact_directory(data_root, explicit)
-            except FileNotFoundError as exc:
-                raise JournalError(str(exc)) from exc
+            except FileNotFoundError:
+                raise JournalError(_ARTIFACT_UNAVAILABLE) from None
             return explicit, False
         current = journal.get_session(session_id).current_artifact_id
         if required and current is None:
@@ -556,8 +611,8 @@ def create_app(
         if current is not None:
             try:
                 _artifact_directory(data_root, current)
-            except FileNotFoundError as exc:
-                raise JournalError(str(exc)) from exc
+            except FileNotFoundError:
+                raise JournalError(_ARTIFACT_UNAVAILABLE) from None
         return None, current is not None
 
     @app.post("/api/sessions/{session_id}/feedback", status_code=201)
@@ -637,8 +692,8 @@ def create_app(
     def artifact_file(artifact_id: str, asset_path: str):
         try:
             path = _artifact_file(data_root, artifact_id, asset_path)
-        except FileNotFoundError as exc:
-            return _error(404, str(exc), kind="not_found")
+        except FileNotFoundError:
+            return _error(404, _ARTIFACT_UNAVAILABLE, kind="not_found")
         return FileResponse(
             path,
             headers={

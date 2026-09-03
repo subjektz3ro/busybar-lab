@@ -5,8 +5,10 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from busybar_viz import server as viz_server
 from busybar_viz.artifacts import ArtifactStore
 from busybar_viz.jobs import JobManager, WorkerResult
+from busybar_viz.journal import JournalError
 from busybar_viz.models import RenderRequest
 from busybar_viz.registry import render_registered
 from busybar_viz.server import _artifact_file, _parser, create_app
@@ -100,6 +102,7 @@ def test_api_journals_render_feedback_and_approval(tmp_path):
             assert approved.status_code == 201
             assert approved.json()["event"]["kind"] == "review.approved"
             assert approved.json()["event"]["body"]["evidence_level"] == "gap-previewed"
+            approved_session = approved.json()["session"]
 
             conflict = client.post(
                 f"/api/sessions/{session['id']}/feedback",
@@ -107,6 +110,8 @@ def test_api_journals_render_feedback_and_approval(tmp_path):
             )
             assert conflict.status_code == 409
             assert conflict.json()["kind"] == "revision_conflict"
+            assert conflict.json()["expected_revision"] == 1
+            assert conflict.json()["current_revision"] == approved_session["revision"]
 
             exported = client.get(
                 f"/api/sessions/{session['id']}/export.jsonl"
@@ -171,7 +176,7 @@ def test_artifact_serving_is_immutable_and_confined(tmp_path):
             (artifact_dir / "front.gif").write_bytes(b"tampered")
             rejected = client.get(f"/api/artifacts/{artifact_id}/front.gif")
             assert rejected.status_code == 404
-            assert "verification failed" in rejected.json()["error"]
+            assert rejected.json()["error"] == "artifact not found or failed verification"
 
             session = client.post(
                 "/api/sessions", json={"title": "Tamper review"},
@@ -185,7 +190,7 @@ def test_artifact_serving_is_immutable_and_confined(tmp_path):
                 },
             )
             assert review.status_code == 422
-            assert "verification failed" in review.json()["error"]
+            assert review.json()["error"] == "artifact not found or failed verification"
 
             session, _ = app.state.journal.present_artifact(
                 session["id"],
@@ -197,9 +202,81 @@ def test_artifact_serving_is_immutable_and_confined(tmp_path):
                 json={"expected_revision": session.revision, "approved": True},
             )
             assert implicit.status_code == 422
-            assert "verification failed" in implicit.json()["error"]
+            assert implicit.json()["error"] == "artifact not found or failed verification"
     finally:
         manager.shutdown()
+
+
+def test_artifact_verification_details_are_logged_not_returned(
+    tmp_path, monkeypatch, caplog,
+):
+    data_root = tmp_path / "viz"
+    app = create_app(tmp_path, data_root, allowed_hosts=("testserver",))
+    artifact_id = "a" * 64
+    sentinel = "SECRET_ASSET /private/reviewer/file Traceback: verifier frame"
+
+    def reject(*_args, **_kwargs):
+        raise ValueError(sentinel)
+
+    monkeypatch.setattr(viz_server, "verify_artifact", reject)
+
+    with TestClient(app) as client, caplog.at_level(
+        "WARNING", logger="busybar_viz.server"
+    ):
+        response = client.get(f"/api/artifacts/{artifact_id}/front.gif")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": "artifact not found or failed verification",
+        "kind": "not_found",
+    }
+    assert all(
+        part not in response.text
+        for part in ("SECRET_ASSET", "/private", "Traceback")
+    )
+    assert sentinel in caplog.text
+
+
+def test_unapproved_exception_details_cannot_cross_the_api_boundary(
+    tmp_path, monkeypatch, caplog,
+):
+    data_root = tmp_path / "viz"
+    app = create_app(tmp_path, data_root, allowed_hosts=("testserver",))
+    sentinel = "SECRET_DB /private/reviewer.sqlite Traceback: sqlite frame"
+
+    def reject(*_args, **_kwargs):
+        raise JournalError(sentinel)
+
+    monkeypatch.setattr(app.state.journal, "create_session", reject)
+
+    with TestClient(app) as client, caplog.at_level(
+        "WARNING", logger="busybar_viz.server"
+    ):
+        response = client.post("/api/sessions", json={"title": "draft"})
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": "request is invalid",
+        "kind": "invalid_request",
+    }
+    assert all(
+        part not in response.text
+        for part in ("SECRET_DB", "/private", "Traceback")
+    )
+    assert sentinel in caplog.text
+
+
+def test_authored_validation_messages_remain_actionable(tmp_path):
+    app = create_app(tmp_path, tmp_path / "viz", allowed_hosts=("testserver",))
+
+    with TestClient(app) as client:
+        blank = client.post("/api/sessions", json={"title": ""})
+        unknown = client.post(
+            "/api/sessions", json={"title": "draft", "unexpected": True}
+        )
+
+    assert blank.json()["error"] == "session title must not be blank"
+    assert unknown.json()["error"] == "request contains unknown fields"
 
 
 def test_render_request_event_id_recovers_a_lost_response(tmp_path):
