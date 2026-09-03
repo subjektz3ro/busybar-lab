@@ -173,13 +173,12 @@ Write every app as if it will be moved to another machine:
   environment (`BUSYBAR_HOST`, `BUSYBAR_TOKEN`), never hardcoded hosts.
 - No platform-specific calls in app logic. The one exception is
   `busybar_dev/tts.py`: supported Linux production installs require Kokoro and
-  its verified model bank, with `espeak-ng` retained only for runtime
-  resilience; direct macOS development uses `say`. Linux is the reference
-  platform — it is what the host runs — and the fallback branches are last
-  resorts, not alternate definitions of a successful install.
+  its verified model bank. Linux selects `espeak-ng` if Kokoro cannot be
+  imported or its model bank is unavailable; direct macOS development uses
+  `say`. The supported installer rejects a fallback-only Linux configuration.
 - Long-running apps must shut down cleanly on SIGINT/SIGTERM — they run under
   systemd — and clear their draws on exit. Note that `asyncio.run()` joins
-  default-executor threads at shutdown and will happily ignore SIGTERM until
+  default-executor threads at shutdown and can delay SIGTERM handling until
   systemd escalates to SIGKILL; use a daemon thread and `call_soon_threadsafe`.
 
 ## barkeep — the control plane
@@ -220,7 +219,8 @@ processes and configuration, not merely the display.
 
 Keep the default bind and reach the UI through an SSH tunnel where practical.
 To expose it on a controlled LAN, set `BARKEEP_BIND` explicitly and configure
-a strong `BARKEEP_TOKEN`; then every `/api/*` route requires the credential.
+a strong `BARKEEP_TOKEN`; operational `/api/*` routes then require the
+credential, while `/api/session` validates the token supplied for login.
 `BARKEEP_TLS=1` serves HTTPS with a generated self-signed certificate —
 encryption without identity, closing passive token capture — and
 `BARKEEP_TLS_CERT`/`BARKEEP_TLS_KEY` swap in an operator-trusted pair.
@@ -233,7 +233,8 @@ The daemon warns when it is exposed with no token. Do not port-forward it.
 `SECURITY.md` is the full statement, and is what an outside reader should be
 pointed at.
 
-Two things narrow that, and neither is authentication:
+Two additional controls reduce browser-originated requests but do not
+authenticate clients:
 
 - Mutating requests must carry `Content-Type: application/json`, which forces
   a CORS preflight this server never answers. That closes drive-by CSRF from
@@ -241,7 +242,7 @@ Two things narrow that, and neither is authentication:
 - The `Host` header must be an IP literal, `localhost`, this machine's own
   name, or something in `BARKEEP_ALLOWED_HOSTS`. Without that, a page that
   rebinds its own domain to this host becomes same-origin and the JSON rule
-  above passes honestly. Set `BARKEEP_ALLOWED_HOSTS` if you reach the UI
+  above is satisfied. Set `BARKEEP_ALLOWED_HOSTS` if you reach the UI
   through a reverse proxy or any name that is not the machine's own.
 
 Config keys reaching a child are restricted to those declared in `apps.toml`,
@@ -303,8 +304,8 @@ to `/api/*`.
 
 No personal addresses, operator coordinates, hostnames, or tokens in anything
 git tracks. Personal values live in `.env` (gitignored) and are documented in
-`.env.example`. Where a service genuinely wants a contact — the NWS User-Agent
-asks for one — it comes from configuration (`SKYSTRIP_CONTACT`) and defaults to
+`.env.example`. Where a service requires a contact — the NWS User-Agent asks
+for one — it comes from configuration (`SKYSTRIP_CONTACT`) and defaults to
 blank, never to somebody's address. A User-Agent string is not the place to
 leak an email, and it has happened here before.
 

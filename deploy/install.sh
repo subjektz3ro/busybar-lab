@@ -430,7 +430,7 @@ if [ ! -f .env ]; then
       # can later choose a LAN bind together with a strong BARKEEP_TOKEN.
       write_env_line BARKEEP_BIND "127.0.0.1"
       echo "# For LAN access set BARKEEP_BIND=0.0.0.0 plus BOTH of these:"
-      echo "#   BARKEEP_TOKEN=   generate: python3 -c 'import secrets; print(secrets.token_urlsafe(32))'"
+      echo "#   BARKEEP_TOKEN=   generate: uv run python -c 'import secrets; print(secrets.token_urlsafe(32))'"
       echo "#   BARKEEP_TLS=1    HTTPS with a generated certificate; see SECURITY.md"
       echo "# Every other key is documented in .env.example."
     } > "$BUSYBAR_ENV_TMP"

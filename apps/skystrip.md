@@ -1,12 +1,9 @@
 # skystrip — an ambient sky outside, on the bar
 
-A window, not a dashboard. The strip combines astronomical daylight with
-observed and modeled weather feeds for the configured location, then adds
-clearly decorative life and seasonal detail. It is intentionally glanceable;
-the source and certainty boundaries below matter as much as the pixels.
-
-No routine weather numbers unless you ask for them; an active alert card is
-the deliberate exception and includes its local expiry time.
+Skystrip renders an ambient scene using calculated daylight and weather data
+for the configured location. Decorative and seasonal elements are identified
+below. Routine values are available through the spoken report; active alert
+cards include local expiry time.
 
 > **Not a life-safety warning system.** Skystrip is a secondary ambient notice.
 > NWS alert support exists only where its point API covers the configured
@@ -22,19 +19,19 @@ different footprints:
 
 | Location / capability | What works | What does not carry the same claim |
 |---|---|---|
-| **Ordinary land locations worldwide** | Astral computes daylight from the configured coordinates. Open-Meteo supplies modeled current weather and the recent-past/future Time Machine; model choice and resolution vary by region. | This is model output, not a local station observation. `SKYSTRIP_TZ` must currently be set to the matching IANA timezone; coordinates do not infer it yet. |
+| **Ordinary land locations worldwide** | Astral computes daylight from the configured coordinates. Open-Meteo supplies modeled current weather and the recent-past/future Time Machine; model choice and resolution vary by region. | This is model output, not a local station observation. `SKYSTRIP_TZ` must match the location for accurate local time; blank or unset uses UTC. Coordinates do not infer it. |
 | **Inside `api.weather.gov` point coverage** | Everything above, plus the nearest NWS station observation, NWS period forecast, observed precipitation for past Time Machine slots, and point-filtered NWS CAP alerts. | Coverage is determined by whether NWS `/points` resolves the coordinate, not by a hand-maintained country list. It principally covers the United States and its territories; coastal/marine products vary by point and endpoint. |
-| **Outside NWS point coverage** | The live scene, current report, and future outlook continue from Open-Meteo. RainViewer remains optional where its network covers the point; an operator-authorized lightning source can be configured separately. | There is no NWS period forecast, station truth, CAP alert card, or Extreme-alert siren. Past Time Machine precipitation is deliberately omitted rather than presenting model history as an observation. Obscurations (haze, smoke, dust, sand, ash) never appear: Open-Meteo's `weather_code` omits WMO 04–09, so there is no source for them. |
+| **Outside NWS point coverage** | The live scene, current report, and future outlook continue from Open-Meteo. RainViewer remains optional where its network covers the point; an operator-authorized lightning source can be configured separately. | There is no NWS period forecast, station observation, CAP alert card, or Extreme-alert siren. Past Time Machine precipitation is omitted rather than labeled as an observation. Obscurations (haze, smoke, dust, sand, ash) are unavailable because they are rendered only from supported NWS observation terms. |
 | **Southern Hemisphere or tropical land** | Solar elevation, local clock (with the correct timezone), and weather remain coordinate-based. | Foliage, bare branches, autumn leaves, and summer fireflies currently follow a northern-temperate month calendar. Those scene details are decorative and are not locality-correct yet. |
 | **Open ocean, polar edges, and tiny/offshore islands** | Astronomical calculations may still work, and Open-Meteo may return a nearby model grid cell. | This is not a supported primary target today. Open-Meteo defaults to a land-selected grid cell, civil timezone choice can be ambiguous, Web-Mercator radar ends at about 85.05 degrees latitude, and radar/lightning coverage may be absent. |
 
 Radar and lightning are best-effort enrichments. A static RainViewer coverage
-mask plus fresh composite metadata may report a dry point, but cannot prove
+mask plus fresh composite metadata may report a dry point, but cannot establish
 that every contributing radar is itself current. An uncovered, stale, or
 unavailable composite is never treated as proof of clear weather. Live strike
 effects are off by default and have no repo-defined geographic footprint:
 their coverage is whatever the operator's configured, authorized source
-actually provides.
+provides.
 
 RainViewer currently reports more than 1,200 radars across more than 150
 countries, but its coverage is not continuous and has no availability
@@ -43,37 +40,30 @@ a blank radar tile to overrule the global model. These provider figures and
 boundaries were reviewed on 2026-08-10; use the linked provider coverage pages
 below for their current footprint.
 
-The currently verified product target is a northern-temperate land location
-inside NWS point coverage. Other land locations have a useful global model
-mode, with the exact reductions above made explicit rather than silently
-pretending that every source is local.
+The primary validated target is a northern-temperate land location inside NWS
+point coverage. Other ordinary land locations use the global model sources and
+omit the capabilities listed above.
 
-The six silhouettes are fixed artwork, not generated local geography. The
-skyline and lakefront deliberately contain Chicago-inspired landmarks, and
-the optional `chicago` report style is likewise place-specific. The `genz`
-style is a register rather than a place: the same facts in teenage slang.
-Three rules hold it together. Every number it speaks is identical to what
-`plain` would have said. A severe-weather alert drops the bit for the
-*whole* report — no slang, no sky flavour, and it ends on "stay safe out
-there" — because a Tornado Warning is something a person has to act on and
-"go touch grass" is the joke landing in the worst possible place. And the
-slang is built from whole words on purpose: the initialisms it is best
-known for are unpronounceable to a neural voice, and `speakable` does not
-expand them.
+The six silhouettes are fixed artwork rather than generated local geography;
+the skyline and lakefront contain Chicago-inspired landmarks. The `chicago`
+report style is place-specific. The `genz` style changes wording while
+preserving the facts and numeric values from `plain`. When a severe alert is
+active, the `genz` style uses its non-slang severe-report wording throughout.
+Full words are used because some initialisms are not pronounced correctly by
+the neural voice.
 
-All three styles announce a lunar eclipse, and share one facts function so
-that `genz`'s standing promise — every number it speaks is identical to what
-`plain` would have said — holds structurally rather than by review. The
+All three styles announce a lunar eclipse and share one facts function, so
+their numeric values remain identical. The
 percentage spoken is the fraction of the Moon's **face** covered, not the
 umbral magnitude the catalogues quote: magnitude is a fraction of the
-diameter, and tonight's 0.93 magnitude hides 96% of the visible disc. During
-an eclipse the phase line is replaced rather than joined, because the Moon is
-always full then and "the moon is full, and also in Earth's shadow" makes the
-first clause noise. A severe-weather alert still silences the whole bit.
+diameter. For example, a magnitude of 0.93 covers about 96% of the visible
+disc. During
+an eclipse the phase line is replaced rather than joined because the Moon is
+always full during a lunar eclipse, making the ordinary phase clause redundant.
+The `genz` severe-report branch also omits the eclipse and sky commentary.
 
-Its phrasing varies, but **deterministically** — the pools are seeded on
-the local date and hour. That is a device constraint, not a style choice:
-the report's text is hashed into the asset filename and the firmware
+Phrase selection is deterministic and seeded by local date and hour. The
+report's text is hashed into the asset filename and the firmware
 caches assets by path forever, so wording that rerolled per render would
 bake and upload a fresh `.snd` every minute. Display labels
 and narration are English-only, the clock is 12-hour, alert dates use
@@ -120,25 +110,17 @@ its own.
   decisions.
 - **The moon** is a locally calculated phase cue. Its on-strip position is
   artistic and does not assert that the Moon is above the horizon.
-- **Earth's shadow crosses it during a lunar eclipse**, computed locally from
-  Meeus rather than fetched: no weather API publishes eclipses, and a network
-  outage must not be able to make the strip draw a clean full moon on a night
-  the real one is copper. The umbra is a real circle about 2.7 Moon-radii
-  across, offset by the eclipse's own geometry, so the bite enters and leaves
-  on the correct limb instead of being a symmetric nibble. Inside it the disc
-  goes copper, not black — what reaches an eclipsed Moon is sunlight refracted
-  through the whole rim of Earth's atmosphere. Moonlight on the scene fades
-  with the fraction of the disc still in sunlight, so a deep eclipse darkens
-  the yard the way the real one does.
+- **Earth's shadow crosses it during a lunar eclipse.** Eclipse geometry is
+  computed locally from Meeus. The umbra is about 2.7 Moon-radii across and is
+  offset according to the calculated geometry. The disc becomes copper inside
+  the umbra, representing sunlight refracted through Earth's atmosphere.
+  Moonlight on the scene scales with the fraction of the disc still in direct
+  sunlight.
 
-  Two boundaries are deliberate. **Penumbral eclipses are not drawn**: they
-  dim the Moon a few percent and are famously hard to notice even when you
-  know one is underway, so painting a visible shadow would invent a spectacle.
-  And the whole layer is **gated on the Moon being above the horizon** at the
-  configured coordinates, because an eclipse is a whole-Earth event that half
-  the planet cannot see. This is lunar only; a solar eclipse changes the
-  daylight gradient, the sun icon and the ambient wash on every scene at once,
-  which is a larger problem than putting a shadow on a 7-pixel disc.
+  **Penumbral eclipses are not drawn** because their small brightness change is
+  below the intended panel representation. The layer is shown only while the
+  Moon is above the configured location's horizon. Solar eclipses are outside
+  this lunar layer.
 - **Stars** are decorative points that appear as the calculated sky darkens
   and are muted by cloud.
 - **Falling precipitation** is source-driven. Rain resolves from fresh,
@@ -151,35 +133,22 @@ its own.
   WMO code 45/48) puts fog on the ground even when the official visibility
   reading stays healthy, which is what patchy fog looks like from a runway
   sensor. Low visibility still deepens it beyond that floor, and humid
-  mornings still raise it on their own. The other obscurations — haze,
-  smoke, dust, sand, volcanic ash — are deliberately *not* drawn: the scene
-  has no treatment for them, and inventing one would be claiming an
-  observation it cannot support.
-- **Haze, smoke, dust, sand and volcanic ash fill the whole air column**,
-  and unlike fog they kill distance rather than pooling on the ground. Each
-  gets its own airlight tint — milky white, wildfire orange-brown, tan, and
-  a dead mineral grey — and its own density, because an ashfall is not a
-  haze. Dust and sand deliberately share the tan: their real colours sit
-  about 12% apart in red and the panel cannot resolve under ~30%, so
-  shipping two would claim a distinction the hardware cannot show.
+  mornings still raise it on their own. Haze, smoke, dust, sand, and volcanic
+  ash are rendered only when supported NWS observation terms report them; they
+  are not inferred from visibility or model fields.
+- **Haze, smoke, dust, sand and volcanic ash affect the full air column**
+  instead of pooling near the ground. Each has a separate airlight tint and
+  density. Dust and sand share one tan because their source colors differ by
+  about 12% in red, below the panel's measured ~30% contrast threshold.
 
-  The rendering is the standard atmospheric model,
-  `observed = object × transmission + airlight × (1 − transmission)`, and
-  using the real one is what keeps it legal here. The obvious version —
-  lerp every pixel toward a smoke colour — lights up a black night sky,
-  which is the filled-row haze failure this panel punishes. Airlight is
-  *scattered sunlight*, so scaling it by daylight makes one formula correct
-  at both ends of the day: at noon the air glows and distance dissolves
-  into it; at midnight there is nothing to scatter, so the medium only
-  subtracts and the sky goes darker with its stars and moon swallowed.
-  Nothing in it knows which scene it is drawing — distant things were
-  already drawn dim, so they land closest to the airlight and vanish first
-  while lit windows and lamps stay above it. That is aerial perspective
-  falling out of the physics instead of a per-scene table.
+  The rendering uses the atmospheric model
+  `observed = object × transmission + airlight × (1 − transmission)`.
+  Airlight scales with daylight, preventing artificial nighttime brightening.
+  The transform applies uniformly; dimmer pre-rendered elements converge on
+  the airlight colour while brighter emissive marks remain more distinct.
 
-  Two honest limits. At night the four look much alike, because without
-  sunlight there is genuinely nothing to tell them apart by — that is the
-  sky's behaviour, not a shortcut. And this layer is **NWS-only**:
+  At night the four obscuration types become visually similar as airlight
+  approaches zero. This layer is **NWS-only**:
   Open-Meteo's `weather_code` is the WMO subset that omits 04–09, so
   outside NWS point coverage an obscuration is never shown rather than
   being guessed at from a visibility number that fog would equally explain.
@@ -227,9 +196,8 @@ BUSY/CUSTOM selector or button status is never treated as a Skystrip press and
 cannot acknowledge an alert or touch shared audio; wheel gestures remain the
 app controls described above.
 
-Scrubbing is *reveal-on-stop* on purpose: the readout tracks the wheel with no
-lag so it feels responsive, but re-rendering the whole sky for every detent
-would make it stutter, so the sky waits for you to settle.
+Scrubbing is *reveal-on-stop*: the readout updates on every wheel detent, while
+the full scene is rendered after the input settles.
 
 A report that is already cached starts immediately on a double START. On a
 cache miss, the bar first shows the complete `PREPARING...` acknowledgement
@@ -265,8 +233,7 @@ wind takes leaves off the trees.*
 ![weather](../docs/media/skystrip-weather.gif)
 
 *One midday under clear, overcast, drizzle, downpour, thunderstorm, a severe
-warning, and snow. Rain falls in three intensity tiers taken from radar dBZ,
-so a drizzle and a downpour are genuinely different pictures.*
+warning, and snow. Rain uses three intensity tiers derived from radar dBZ.*
 
 ## Extreme-weather alerts
 
@@ -274,8 +241,8 @@ An active Actual NWS Warning or Emergency whose CAP severity is `Severe` or
 `Extreme` gets an alert card and red status-light pulse. Watches and
 advisories do not. The siren is narrower: CAP severity must be exactly
 `Extreme`. Ordinary thunder, a Severe Thunderstorm Watch, and a Warning whose
-CAP severity is `Severe` therefore remain silent. Acknowledgement belongs to
-that specific alert episode, so a later Extreme alert can arm again.
+CAP severity is `Severe` therefore do not sound the siren. Acknowledgement
+belongs to that specific alert episode, so a later Extreme alert can arm again.
 
 The alert name is bounded and presented without silently clipping arbitrary
 text. Acknowledging it retires the alert card, stops its audio, and restores
@@ -288,8 +255,8 @@ the episode.
 The Extreme-alert tone is generated locally as deterministic 44.1 kHz PCM,
 uploaded under a content-addressed filename, and reused from device storage;
 there is no untracked siren recording to provision. If generation, upload, or
-playback fails, the visual alert remains, but Skystrip does not pretend the
-audio succeeded. A partial or unplayable resident file moves to a new immutable
+playback fails, the visual alert remains and audio success is not reported. A
+partial or unplayable resident file moves to a new immutable
 repair path, and obsolete generations are retained through a full-tone grace
 period before removal so a prior process cannot lose audio mid-playback.
 
@@ -322,33 +289,28 @@ the rotation, so you can cycle between two you like instead of six you don't.
 | `SKYSTRIP_TZ` | `UTC` | IANA timezone matching the coordinates; currently explicit, not inferred |
 | `SKYSTRIP_LIGHTNING_WS` | *(off)* | `.env`-only authorized secure lightning WebSocket using the Blitz-compatible strike schema; blank disables live strike effects |
 | `SKYSTRIP_UNITS` | `f` | `f` = Fahrenheit/mph, `c` = Celsius/km/h |
-| `SKYSTRIP_CLOCK_INK` | `orange` | Clock/temp colour: `orange`, `pink`, or `red`. A closed, contrast-proven set — hue carries legibility at every hour. Orange matches the bar's own accents; red reads hardest but doubles as the severe-alert colour. |
+| `SKYSTRIP_CLOCK_INK` | `orange` | Clock/temp colour: `orange`, `pink`, or `red`; each option passes the configured contrast checks. Red is also used for severe alerts. |
 | `SKYSTRIP_STATION` | *(auto)* | Pin a four-character NWS station; blank discovers the nearest |
 | `SKYSTRIP_CONTACT` | *(blank)* | Email or URL for the NWS User-Agent. Blank stays anonymous. |
 | `SKYSTRIP_SCENES` | all six | Which scenes START cycles through |
 | `SKYSTRIP_CHRISTMAS` | `dec24-26` | Christmas decorations window: `off`, `dec25`, `dec24-26`, `dec20-jan1`, `dec1-26` |
-| `SKYSTRIP_VOICE` | `am_michael` | Kokoro report voice on supported Linux (`af_*`, `am_*`, `bf_*`, or `bm_*`). `espeak-ng` is emergency runtime resilience; direct macOS development may use a non-Kokoro `say` voice. |
+| `SKYSTRIP_VOICE` | `am_michael` | Kokoro report voice on supported Linux (`af_*`, `am_*`, `bf_*`, or `bm_*`). Linux uses `espeak-ng` when Kokoro cannot be imported or its model bank is unavailable; direct macOS development may use a non-Kokoro `say` voice. |
 | `SKYSTRIP_STYLE` | `plain` | Spoken report style: `plain`, `chicago`, or `genz` |
 
-**Coordinates are the one setting with no sensible default.** Left unset they
-fall back to 0,0 — a point in the Gulf of Guinea where nobody lives — and the
-app says so on startup rather than drawing a confident, detailed sky for the
-wrong hemisphere. Shipping a real city as the fallback would make an
-unconfigured install look like a working one.
+`SKYSTRIP_LAT` and `SKYSTRIP_LON` have no geographic default. When unset, the
+app uses 0,0 and reports that configuration is required; it does not label that
+output as a configured location.
 
-The timezone is currently a separate truth-bearing setting. It controls the
-local clock and date, seasonal/holiday boundaries, Time Machine row timestamps,
-alert expiry labels, and spoken-report timing. Coordinates drive solar
-geometry; a fixed UTC offset is not an adequate substitute for an IANA zone
-because it loses daylight-saving and rule changes. If the host and the depicted
-location differ, do not accept the installer's host-timezone suggestion.
+The timezone is a separate setting. It defaults to UTC and controls the local
+clock and date, seasonal/holiday boundaries, Time Machine row timestamps,
+alert expiry labels, and spoken-report timing. Set it to the IANA timezone that
+matches the depicted location. Coordinates drive solar geometry; a fixed UTC
+offset is not an adequate substitute because it loses daylight-saving and rule
+changes. If the host and the depicted location differ, do not accept the
+installer's host-timezone suggestion.
 
-Deriving that IANA name from coordinates would be the better default, but it
-is a polygon-boundary lookup, not `longitude / 15`, and the standard library
-does not provide it. Until the repo has a resolver whose data license, ARM/macOS
-install path, boundary behavior, and outage semantics are all verified,
-explicit `SKYSTRIP_TZ` is the supported contract and remains the authoritative
-override.
+Automatic IANA timezone inference requires polygon-boundary data that is not
+included in this repository. `SKYSTRIP_TZ` remains the authoritative override.
 
 When `SKYSTRIP_LIGHTNING_WS` is configured, its relay contract is exact:
 
@@ -407,12 +369,11 @@ Barkeep-managed Skystrip does not need the CLI flag: a fresh Barkeep starts in
 selector, and begins provider polling only after the operator selects
 **skystrip**. Existing saved foreground choices continue to restore on restart.
 
-`--preview` takes a pile of overrides so you can see weather that isn't
-happening: `--at 03:30`, `--cloud 0.5`, `--storm`, `--rain`, `--snow`,
+`--preview` accepts overrides for testing specific weather, time, and seasonal
+conditions: `--at 03:30`, `--cloud 0.5`, `--storm`, `--rain`, `--snow`,
 `--snowdepth 0.30`, `--temp`, `--wind`, `--winddir`, `--humidity`, `--vis`,
 `--fog`, `--obscuration haze|smoke|dust|ash`, `--month`, `--moonday`,
-`--scene`, `--christmas`/`--no-christmas`. Handy for
-checking a blizzard in August.
+`--scene`, `--christmas`/`--no-christmas`.
 
 `--christmas` / `--no-christmas` force the holiday treatment on or off
 regardless of the calendar — useful for checking the roofline lights in July.
@@ -429,9 +390,8 @@ uv run apps/skystrip.py --preview b.png --scene house --month 1 --snowdepth 0.12
 uv run apps/skystrip.py --preview c.png --scene house --month 1 --snowdepth 0.40
 ```
 
-Both flags are preview-only. On the device the depth comes from model data
-rather than the calendar, so the ground is source-driven without pretending
-to be a direct yard observation.
+Both flags are preview-only. On the device, snow depth comes from model data;
+it is not a direct yard observation.
 
 ## Where the data comes from
 
@@ -505,7 +465,7 @@ case, obtain the provider's terms first, then add a secret-safe client contract
 and tests before enabling the provider. The linked credits remain required for
 the public services and are shown beside Barkeep's live display preview.
 
-## Notes for whoever touches this next
+## Implementation notes
 
 - **Generated assets are versioned and swept.** The firmware caches files by
   path forever and may hold one open while playing it, so nothing is ever
@@ -537,11 +497,10 @@ the public services and are shown beside Barkeep's live display preview.
   bright at noon and dark at dawn, so a brightness metric silently
   measures the hour instead of the weather.
 
-## Open-source intent
+## Portability and licensing
 
-skystrip is meant to be carved out into its own project eventually, so keep it
-portable: every personal value lives in `.env` (documented in `.env.example`),
-never in code. `deploy/install.sh` is the onboarding path — keep it working.
+Keep Skystrip portable: personal values belong in `.env` (documented in
+`.env.example`), never in code. `deploy/install.sh` is the supported setup path.
 Note that `busybar_dev/anim.py` is ported from GPL-2.0-or-later firmware
 tooling, so the released project uses the same licence and its attribution
 header stays intact.

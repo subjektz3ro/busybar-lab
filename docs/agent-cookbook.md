@@ -1,16 +1,15 @@
-# The agent cookbook: build a bar app you can see
+# Agent workflow for developing a BUSY Bar app
 
-This repository is built to be developed by AI coding agents, and an agent
-cannot look at an LED panel. Every step below therefore produces something a
-model can read — JSON, exact pixels, named check failures — and nothing
-requires hardware until the very end. Commands run from a checkout root;
-visualizer commands shown with `--json` return machine-readable output.
+This workflow produces machine-readable JSON, exact pixel output, and named
+audit failures. Steps 1–5 do not require hardware. Run commands from the
+checkout root; visualizer commands shown with `--json` return machine-readable
+output.
 
-This is the narrative version. The contracts live in
+Normative requirements are in
 [`AGENTS.md`](../AGENTS.md) (house rules), [`busybar-viz.md`](busybar-viz.md)
 (the full visualizer contract), and the two skills under `.claude/skills/`
-(the device laws that fail silently, and the visual evidence discipline).
-Read those before shipping; read this to know what order things happen in.
+(device constraints and visual validation). This page lists the implementation
+sequence.
 
 ## 1. Create the app
 
@@ -23,7 +22,7 @@ One command creates `apps/pomodoro.py` from the template and registers
 `[pomodoro]` in `apps.toml`, with a commented `[pomodoro.viz]` block for
 later. The dry run builds the real draw request without a device and runs
 `busybar_dev.lawcheck` over it — a non-ASCII string from a feed fails here,
-at exit code 1, instead of violating the device's draw contract at 2am.
+at exit code 1 before a request reaches the device.
 
 ## 2. Design before you build
 
@@ -36,13 +35,11 @@ uv run busybar-viz view scratch/candidate.png \
   --region timer=1,0,26,8 --ink 'timer=#FFFFFF' --json
 ```
 
-`view` publishes an immutable evidence bundle: a contact sheet and an
-LED-gap simulation you (or a vision model) can actually read, plus the two
-device-law checks on the region you declared — contrast and minimum feature
-size using the thresholds in `busybar_viz/device_laws.py`, measured rather
-than eyeballed. An enlarged preview
-(an exact integer multiple of 72x16) is accepted and honestly downsampled.
-Iterate here; a failing check names the frame and relevant measurement.
+`view` publishes an immutable evidence bundle with a contact sheet, an LED-gap
+simulation, and the two device checks on the declared region: contrast and
+minimum feature size using thresholds from `busybar_viz/device_laws.py`. An
+enlarged preview that is an exact integer multiple of 72×16 is downsampled and
+marked `approximate`. A failing check names the frame and relevant measurement.
 
 An early PIL sketch is useful for exploration, but it must evolve into (or
 call) the production renderer below. Do not leave a separate visualizer-only
@@ -54,7 +51,7 @@ Diff any two candidates by their artifact SHAs:
 uv run busybar-viz compare BEFORE_SHA AFTER_SHA --json
 ```
 
-## 3. Build around a pure seam
+## 3. Expose a deterministic renderer
 
 Write the app so one zero-argument function returns exactly what the panel
 will show, fed by fixed fixture state — no clock, no network, no
@@ -65,12 +62,11 @@ def render_visual():
     return {"front": (frames, fps)}   # PIL RGB frames, native 72x16
 ```
 
-The live app path uses the same rendering code with live state. This seam is
-what makes the app *visible*: deterministic pixels are diffable, pinnable,
-and CI-checkable. (Native firmware elements like Text and Countdown have no
-raster seam; those apps skip to step 6 and lean on `capture`.)
+The live app path uses the same rendering code with live state. Deterministic
+pixels can be diffed, baselined, and checked in CI. Native firmware Text and
+Countdown elements have no raster renderer; use `capture` for those apps.
 
-## 4. Register it — data, not code
+## 4. Register the renderer
 
 Uncomment and fill the viz block `new_app.py` left in `apps.toml` (or paste
 the block `view --emit-declaration pomodoro` printed during step 2):
@@ -97,7 +93,7 @@ Promote to a hand-written adapter (`busybar-viz scaffold`) only when you
 need typed controls, timed wheel/button replay, fault injection, or
 full-ink text proofs.
 
-## 5. Pin the pixels
+## 5. Record the baseline
 
 ```bash
 uv run busybar-viz baseline update pomodoro/default
@@ -110,23 +106,23 @@ commit on, your visual has regression protection: change the rendering,
 inspect the fresh artifact `baseline check` publishes, then accept
 deliberately.
 
-## 6. Only now, hardware
+## 6. Test with hardware
 
 ```bash
 uv run apps/pomodoro.py            # draw for real (a 409 refusal is normal)
 uv run busybar-viz capture --json  # read-only framebuffer, published as evidence
 ```
 
-`capture` gives the device's composited truth as an immutable artifact you
-can `compare` against the renderer-verified one from step 4. Label claims
-honestly — the ladder is renderer-verified → gap-previewed →
-framebuffer-captured → hardware-observed, and only the last says anything
-about real contrast or animation feel. Leave the panel as you found it:
+`capture` reads the device's composited framebuffer into an immutable artifact
+for comparison with the renderer result from step 4. Use the evidence levels
+renderer-verified → gap-previewed → framebuffer-captured → hardware-observed.
+Only physical-panel inspection supports claims about contrast or animation
+feel. Clear the app draw after testing:
 `uv run apps/pomodoro.py --clear` if the app drew.
 
 ## 7. Working with a person
 
-When a human joins, presence is a session, not a screenshot thread:
+For collaborative review, create a session:
 
 ```bash
 uv run busybar-viz session create "Pomodoro design" --json

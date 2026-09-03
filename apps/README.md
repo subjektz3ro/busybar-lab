@@ -20,9 +20,9 @@ One app is on screen at a time — see [Why apps don't overlay](#why-apps-dont-o
 Any app runs standalone from the repo root:
 
 ```bash
-uv run apps/dsn.py --dry-run     # no device touched; prove the data path first
+uv run apps/dsn.py --dry-run     # validate the data path without a device
 uv run apps/dsn.py --once        # push a single frame and exit
-uv run apps/dsn.py               # the real thing; Ctrl+C clears the bar
+uv run apps/dsn.py               # run continuously; Ctrl+C clears the bar
 ```
 
 In production they run under [barkeep](../barkeep/), the host's control plane,
@@ -54,9 +54,8 @@ boundary relevant to the change.
 
 ## The controls
 
-The bar has exactly two inputs: a scroll wheel that also clicks, and the big
-START button. Here is every binding in one place, because they are *not* fully
-consistent between apps and pretending otherwise helps nobody:
+The bar has two inputs: a scroll wheel that also clicks, and the START button.
+Control bindings differ between Skystrip and DSN:
 
 | | **skystrip** | **dsn** |
 |---|---|---|
@@ -64,14 +63,13 @@ consistent between apps and pretending otherwise helps nobody:
 | **Wheel click** | Back to now | Lock onto this signal, and switch it to real time |
 | **START** | Next scene (double-press speaks the report) | Narrate this signal aloud |
 
-The click is the inconsistent one — it *cancels* in skystrip and *commits* in
-dsn. Both read naturally in their own app; if that ever grates in practice,
-dsn's lock is the one to move.
+Wheel click returns Skystrip to the current time. In DSN, it locks the selected
+signal and enters real-time mode.
 
-What does hold everywhere is the **reveal-on-stop** pattern: turning the wheel
-puts an instant read-out on the panel, and the expensive redraw happens only
-once the wheel rests. Never re-render a scene per detent — an `.anim` upload
-is ~80 kB and about a second, and the dial feels broken.
+Both apps use a **reveal-on-stop** pattern: turning the wheel puts an immediate
+read-out on the panel, and the full redraw occurs after the wheel rests. Do not
+re-render a scene per detent; an `.anim` upload is about 80 kB and takes about
+one second.
 
 Both inputs arrive on the device's status websocket. If an app seems
 unresponsive, that stream is the first thing to check. One felt click is
@@ -110,9 +108,8 @@ The practical consequences:
 `uv run scripts/new_app.py yourapp` copies the template and registers the new
 app in `apps.toml` without overwriting an existing file. Then read
 [`.claude/skills/busybar-app/SKILL.md`](../.claude/skills/busybar-app/SKILL.md).
-It collects the device behaviours that break apps *silently* — priority,
-which element fields are actually mutable, the asset path cache, the LED
-spacing — each one learned by shipping it wrong.
+It documents draw priority, mutable element fields, asset-path caching, LED
+spacing, and other known failure modes.
 
 Before touching a bar, run the generated app's offline contract:
 

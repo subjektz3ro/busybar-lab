@@ -31,14 +31,20 @@ Nothing listens.
 the app processes as children, serves a web UI, and writes the per-app config
 files that become those children's environment.
 
-That last sentence is the whole threat model. barkeep is a remote-control
-handle for processes on the host.
+Because Barkeep controls child processes and configuration, access to it should
+be treated as administrative access to Barkeep and its managed applications.
 
-## Default posture, stated plainly
+## Network configurations
 
-barkeep ships **unauthenticated and bound only to loopback**
-(`127.0.0.1:8080`). It is reachable from the host itself, but not from the LAN,
-unless an operator explicitly changes `BARKEEP_BIND`.
+Barkeep supports local access and direct LAN access:
+
+| Configuration | Bind | Authentication and transport |
+|---|---|---|
+| Fresh installation | `127.0.0.1:8080` | Local HTTP or an SSH tunnel; no Barkeep token is configured |
+| Direct LAN access | A LAN address or `0.0.0.0` | Recommended: `BARKEEP_TOKEN` authentication over HTTPS; `BARKEEP_TLS=1` creates a persistent self-signed certificate, or the operator can provide a certificate pair |
+
+The installer selects the local configuration. LAN access is enabled through
+the host's gitignored `.env` file.
 
 Anything that can reach the port can:
 
@@ -47,10 +53,9 @@ Anything that can reach the port can:
   (`/api/apps/*/logs`)
 - write any config key declared in `apps.toml`
 
-Loopback is the safe default because barkeep exposes substantially more than a
-display API: it reads logs and config, writes app configuration, and controls
-child processes. LAN exposure is therefore a deployment choice, not an
-installation default.
+Barkeep exposes more than a display API: it reads logs and configuration,
+writes app configuration, and controls child processes. Configure
+authentication and encrypted transport for direct LAN deployments.
 
 ## Exposing it to a network
 
@@ -62,7 +67,7 @@ To serve barkeep directly on a controlled LAN, set `BARKEEP_BIND` explicitly
 and configure a strong token. Generate one, for example, with:
 
 ```bash
-python -c 'import secrets; print(secrets.token_urlsafe(32))'
+uv run python -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
 Then paste that value into `.env`; dotenv files do not execute shell command
@@ -71,6 +76,7 @@ substitutions:
 ```dotenv
 BARKEEP_BIND=0.0.0.0
 BARKEEP_TOKEN=paste-generated-value-here
+BARKEEP_TLS=1
 ```
 
 Callers send `Authorization: Bearer <token>` or `X-Barkeep-Token: <token>`. The
@@ -83,15 +89,15 @@ Its directory and private key are reset to owner-only permissions and the pair
 is validated at each startup. An untrusted certificate still
 negotiates real encryption — passive capture of the token off the network is
 closed — but it proves no server identity, so browsers warn on first visit
-and an active man-in-the-middle is not excluded. That warning screen shows
-the certificate's SHA-256 fingerprint; compare it against what the host
-holds (`openssl x509 -noout -fingerprint -sha256 -in
+and an active man-in-the-middle is not excluded. Open the browser's certificate
+details and compare its SHA-256 fingerprint against what the host holds
+(`openssl x509 -noout -fingerprint -sha256 -in
 config/tls/barkeep-selfsigned.crt`) before accepting. To serve a certificate
 clients actually trust, point `BARKEEP_TLS_CERT` and `BARKEEP_TLS_KEY` at
 your own pair (for example from a local CA such as mkcert), or paste a PEM
 pair into the web UI's HTTPS section (`PUT /api/tls`, protected like every
-API route). Barkeep accepts a pasted private key only over HTTPS or a
-loopback/SSH-tunnel connection: authentication alone does not encrypt a key
+operational API route). Barkeep accepts a pasted private key only over HTTPS or
+a loopback/SSH-tunnel connection: authentication alone does not encrypt a key
 sent over LAN HTTP. The pair is validated before either live file is replaced
 under `config/tls/`, with an owner-only key; a rejected upload changes nothing,
 and an env-pinned pair is reported rather than silently shadowed. The
@@ -110,19 +116,19 @@ The daemon logs a warning at startup when it is bound to a non-loopback
 interface with no token set. That configuration remains available for an
 operator who has deliberately accepted the risk, but it is never the default.
 
-## What is already hardened
+## Implemented controls
 
-These are enforced by tests, not by intention:
+These controls are covered by automated tests:
 
 - **Host header allowlist.** Requests must carry an IP literal, `localhost`,
   this machine's name, or something in `BARKEEP_ALLOWED_HOSTS`. Without it a
-  page that rebinds its own DNS to this host becomes same-origin and the
-  content-type rule below passes honestly.
+  page that rebinds its own DNS to this host becomes same-origin and can
+  satisfy the JSON content-type requirement below.
 - **JSON content-type required on mutations,** which forces a CORS preflight
   this server never answers, closing drive-by CSRF.
 - **Mutation bodies are capped at 256 KiB before JSON parsing,** including the
-  unauthenticated token-exchange route and requests with chunked or dishonest
-  length metadata.
+  unauthenticated token-exchange route and requests with chunked, missing, or
+  incorrect length metadata.
 - **Browser responses deny framing and MIME sniffing** with CSP,
   `X-Frame-Options`, and `X-Content-Type-Options` headers.
 - **Config keys are allowlisted** to what `apps.toml` declares, and values must

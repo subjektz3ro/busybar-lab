@@ -26,8 +26,8 @@
   installer now rejects unsupported hosts, verifies the model hashes, and
   completes a real synthesis before installing or starting Barkeep; routine
   deploys recheck that same engine before restart.
-- Keep `espeak-ng` only as emergency runtime resilience and `say` for direct
-  macOS development. Retained model files no longer force a broken neural
+- Use `espeak-ng` as the Linux runtime fallback and `say` for direct macOS
+  development. Retained model files no longer force a broken neural
   import, and a blank voice-directory setting again means the checkout's
   default `voices/` directory.
 

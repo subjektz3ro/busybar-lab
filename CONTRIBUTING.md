@@ -1,7 +1,7 @@
 # Contributing
 
-The most useful thing you can bring is **a new app**. The device laws are the
-hard part and they are already written down; the ideas are the scarce thing.
+Contributions may add apps, fix existing behavior, improve the development
+tools, or update documentation.
 
 ## Getting set up
 
@@ -32,11 +32,8 @@ uv run apps/yourapp.py --dry-run      # also law-checks the payload offline
 ```
 
 Then read [`.claude/skills/busybar-app/SKILL.md`](.claude/skills/busybar-app/SKILL.md).
-It is not style guidance — it is the list of device behaviours that break apps
-**silently**, each one learned by shipping it wrong: priority is not z-order,
-element geometry is immutable after the first draw, assets are cached by path
-forever, the LEDs are spaced nearly their own width apart so a filled shape
-reads as a haze. Skipping it costs a day.
+It documents draw priority, immutable element geometry, asset caching, LED
+spacing, and other device behavior that may fail without an obvious error.
 
 `new_app.py` registers the app in [`apps.toml`](apps.toml) for you, which is
 what makes it appear in barkeep's UI with a generated config editor. If
@@ -132,19 +129,18 @@ through config, never a hardcoded default — see `SKYSTRIP_CONTACT`.
 which resolves `BUSYBAR_HOST` / `BUSYBAR_TOKEN`. This is what lets the same app
 run against a bar on your desk over USB and one on a server across the network.
 
-**Long-running apps must die cleanly.** They run under systemd. Handle SIGINT
-and SIGTERM, and clear your draws on the way out. Note that `asyncio.run()`
-joins default-executor threads at shutdown, which will happily ignore your
-SIGTERM until systemd loses patience and sends SIGKILL — use a daemon thread
-and `call_soon_threadsafe`.
+**Long-running apps must shut down cleanly.** They run under systemd. Handle
+SIGINT and SIGTERM, and clear draws before exit. `asyncio.run()` joins
+default-executor threads during shutdown, which can delay SIGTERM handling
+until systemd sends SIGKILL; use a daemon thread and `call_soon_threadsafe`.
 
 **Portability.** The supported service target is 64-bit glibc 2.28+ Linux on
 `x86_64` or `aarch64`; CI runs Ubuntu 24.04 x86_64 with Python 3.11 and 3.13,
 and production uses systemd. macOS has a non-CI-gated development/direct-run
 path and no service installer. Other Linux combinations and Windows are
 unsupported. `busybar_dev/tts.py` is the one place a platform-specific call is
-allowed: Kokoro is required on supported Linux, with `espeak-ng` retained only
-for runtime resilience; direct macOS development uses `say`. Keep app logic
+allowed: Kokoro is required on supported Linux, with `espeak-ng` available as
+a runtime fallback; direct macOS development uses `say`. Keep app logic
 platform-neutral, and look up executables on `PATH` rather than hardcoding a
 bundle path for one OS.
 
@@ -158,7 +154,6 @@ and record newly vendored material in [`NOTICE.md`](NOTICE.md) with its licence.
 
 ## Pull requests
 
-Small and self-describing beats large and explained. Say what you changed and
-what you observed — especially if you checked it on real hardware, because the
-panel disagrees with the preview more often than you would think. Screenshots
-are welcome; `busybar_dev/screen.py` grabs both displays.
+Keep pull requests focused. Describe the change, list the checks run, and state
+whether the result was rendered, framebuffer-captured, or observed on physical
+hardware. `busybar_dev/screen.py` captures both displays for screenshots.

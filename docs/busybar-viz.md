@@ -1,14 +1,11 @@
 # busybar-viz
 
-`busybar-viz` exists so that coding agents can see what they draw. An agent
-developing a BUSY Bar app cannot look at the physical panel; this tool gives it
-exact, machine-readable eyes — deterministic renders, per-pixel audits against
-the device's measured physics, LED-gap simulation, and immutable diffable
-evidence — so visual work is created, debugged, and verified by the same agent
-that wrote the code. People use the same commands and the same review UI; the
-design constraint is that the agent is the first-class user.
+`busybar-viz` renders and audits BUSY Bar display output for automated and human
+review. It produces deterministic renders, per-pixel checks against measured
+device constraints, LED-gap simulations, and immutable comparison artifacts.
+The CLI and review UI expose the same artifacts.
 
-The everyday loop needs no session, server, or person:
+The basic offline workflow is:
 
 1. **Draw** — write or edit rendering code.
 2. **Look** — `view` the frames it produced (zero setup), or `run` its
@@ -21,17 +18,17 @@ The everyday loop needs no session, server, or person:
    new pixels in `viz-baselines.toml`, committed in the same change. CI fails
    unacknowledged drift.
 
-There are three entry tiers, a ramp from sight to proof:
+The tool supports three input modes:
 
-1. **`view`** audits any in-development PNG frames — zero ceremony, honestly
-   labelled as unregistered input. Use it on every iteration.
+1. **`view`** audits unregistered in-development PNG frames and records their
+   source as unregistered input.
 2. **A `[<app>.viz]` declaration in `apps.toml`** registers the app's default
    scenario as data: one pure zero-argument renderer seam plus declared
    regions, no adapter module. The pixels provably come from production code;
    CI runs `doctor` for required audits and `baseline check` for pixel drift.
-3. **A hand-written adapter** adds what a declaration cannot carry: typed
-   controls, semantic input replay, fault injection, and independent
-   ink-reference proofs. Scaffolded, never required just to be seen.
+3. **A hand-written adapter** adds typed controls, semantic input replay, fault
+   injection, and independent ink-reference checks. Use an adapter when those
+   features are required.
 
 The hand-written adapters currently cover the app-neutral conformance fixture
 and Skystrip; DSN registers `dsn/default` through its `apps.toml`
@@ -132,9 +129,8 @@ uv run busybar-viz schema session-event --json
 
 ## View in-development frames
 
-`view` is the zero-setup entry: point it at PNG frames your code just wrote —
-no adapter, no registry edit, no session. It is the command to reach for on
-every iteration while a visual is still moving.
+Use `view` to audit PNG frames without adding an adapter, registry entry, or
+review session.
 
 ```bash
 uv run busybar-viz view scratch/candidate.png --json
@@ -146,7 +142,7 @@ uv run busybar-viz view scratch/preview.png \
 - Native-size PNGs (72x16 front, 160x80 back) preserve their decoded RGB pixel
   values exactly. An exact integer enlargement — such as an app's `--preview`
   output — is detected (or declared with `--scale N`), nearest-neighbour
-  downsampled, and honestly labelled `approximate`.
+  downsampled, and marked `approximate`.
 - A directory is read as frames sorted by name; multiple paths keep argument
   order. `--fps` defaults to 5 for animations and 1 for a single frame.
 - `--region NAME=X0,Y0,X1,Y1` (half-open rect) runs the device-law
@@ -201,8 +197,8 @@ uv run busybar-viz run conformance/dual-display-input-replay --json
 
 ## Declare a default scenario in apps.toml
 
-The registration an app actually needs on day one is one table in
-`apps.toml`, next to the entry that registers it with barkeep:
+A table in `apps.toml`, next to the Barkeep app entry, registers the default
+visualizer scenario:
 
 ```toml
 [myapp.viz]
@@ -375,9 +371,8 @@ engine can verify:
 - density and luminance summary metrics;
 - full independent text ink in final composed frames.
 
-An error-severity check must pass for the artifact to pass. Audit success is
-only evidence for the checks actually declared; it is not a general claim that
-the design looks good.
+An artifact passes only when every error-severity check passes. Audit results
+cover the declared checks; they do not evaluate overall design quality.
 
 Containment alone cannot prove a complete label. To prove text fit, the app
 adapter must independently render the full, unclipped ink, preserve its
@@ -431,11 +426,10 @@ then makes the acceptance explicit in the same diff.
 
 ## Capture the device framebuffer
 
-`capture` is the evidence ladder's third rung made mechanical: it reads the
-front and/or back framebuffer once over the device API and publishes the
-result as a normal immutable artifact — contact sheets, gap views, a
-`compare`-able SHA — with `framebuffer_observed` track provenance and an
-automatic `framebuffer-captured` evidence level.
+`capture` reads the front and/or back framebuffer once over the device API and
+publishes an immutable artifact with contact sheets, gap views, a comparable
+SHA, `framebuffer_observed` track provenance, and an automatic
+`framebuffer-captured` evidence level.
 
 ```bash
 uv run busybar-viz capture --json
@@ -469,8 +463,8 @@ artifact store.
 
 ## Housekeeping
 
-Content-addressed stores only grow. `gc` reclaims iteration debris while
-treating cited history as immortal:
+Content-addressed stores grow over time. `gc` removes eligible artifacts while
+retaining journal references, recent artifacts, and usable comparisons:
 
 ```bash
 uv run busybar-viz gc --json             # dry run: prints the plan only
@@ -506,7 +500,7 @@ decisions are journaled immediately when their buttons are submitted.
 This process is not Barkeep and never connects to a bar. Its API has no
 authentication, so it refuses a non-loopback bind unless `--allow-remote` is
 also supplied. Every mode validates Host and same-origin mutations, requires
-JSON, bounds streamed request bodies even without a truthful Content-Length,
+JSON, bounds streamed request bodies even without an accurate Content-Length,
 and hash-checks served artifact files. Remote mode accepts IP-literal Host
 headers because they cannot be DNS-rebound. Every DNS name must be declared
 exactly with a repeatable `--allowed-host` option:
@@ -619,7 +613,7 @@ of the portable contract, and their absence does not split the workflow.
 
 ## Evidence language
 
-Use the strongest level actually established:
+Use the highest evidence level supported by the completed checks:
 
 | Level | What it proves |
 |---|---|
@@ -632,7 +626,7 @@ Track provenance such as `source_exact`, `emulated_conformant`, or
 `logical_only` is separate from the reviewed evidence ladder. For example, the
 conformance fixture has deterministic `emulated_conformant` pixels but is not a
 production renderer, and a top-LED signal records logical intent rather than a
-visible LED observation. `view` artifacts keep the same honesty: native-size
+visible LED observation. For `view` artifacts, native-size
 input stays `source_exact` (the decoded RGB pixel values are preserved
 exactly, while the source file hash is recorded separately), downsampled
 preview input is `approximate`, and both record in their notes that the frames
@@ -671,6 +665,5 @@ CLI exit status is stable:
 `busybar-viz` does not emulate device element merging, priority/refusal,
 native fonts, Countdown/Text behavior, firmware compositor details, LED gamma,
 optical bloom, viewing angle, or network/upload jitter. It does not replace a
-framebuffer capture or a final physical-panel check. Use it to make exact
-offline reasoning cheap, reproducible, and shareable—then label the remaining
-device evidence honestly.
+framebuffer capture or a final physical-panel check. Record framebuffer and
+physical-panel checks separately.

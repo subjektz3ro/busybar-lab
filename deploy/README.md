@@ -1,33 +1,30 @@
 # Running this on a server
 
-Nothing here is Raspberry Pi specific. The supported service target is 64-bit
-glibc 2.28+ Linux on `x86_64` or `aarch64`, using CPython 3.11–3.13; a Pi 4/5
+The supported service target is 64-bit glibc 2.28+ Linux on `x86_64` or
+`aarch64`, using CPython 3.11–3.13. A Pi 4/5
 with 64-bit Raspberry Pi OS and at least 2 GiB RAM, NUC, 64-bit laptop, or VM
-can all fit. Containers are an advanced manual-run path. CI exercises Ubuntu
-24.04 x86_64. macOS has
+can all fit. CI exercises Ubuntu 24.04 x86_64. macOS has
 a non-CI-gated direct-run/development path but no systemd installer. Other
 Linux combinations are unsupported, and Windows is not supported by these
 Bash deployment scripts.
 
-- **A host** that stays on. A Pi is a good fit because it's silent and cheap;
-  a NUC, an old laptop, or a VM works equally well. Containers are possible
-  as an advanced manual-run setup, but are not the systemd path below. On it:
-  **`uv`**, **`git`**, **`curl`**, and **`bash`**, plus
-  **`sudo`** if you want the emergency speech package or systemd service. A
-  minimal server image may omit several of them, and `install.sh` stops with a
-  clear message rather than discovering that partway through.
+- **A host** that stays on. Supported examples include a Pi 4/5 with 64-bit
+  Raspberry Pi OS, a NUC, a 64-bit laptop, or a VM. The host requires **`uv`**,
+  **`git`**, **`curl`**, and **`bash`**, plus **`sudo`** if you want to install
+  the runtime speech fallback or the systemd service. A
+  minimal server image may omit several of them. `install.sh` checks these
+  commands before installation.
 
-  `uv` selects or downloads a compatible Python 3.11–3.13 interpreter. Kokoro
-  is required for the supported Linux experience and CI verifies its
-  import on Python 3.11 and 3.13. `curl` downloads the verified model bank.
-  The installer stops before installing a service unless Kokoro imports and
-  completes a real synthesis; `espeak-ng` is emergency runtime resilience,
-  not a substitute for a successful production setup.
+  `uv` selects or downloads a compatible Python 3.11–3.13 interpreter. The
+  Linux dependency set includes Kokoro, and CI verifies its import on Python
+  3.11 and 3.13. `curl` downloads the model and voice-bank files. The installer
+  requires a successful Kokoro synthesis before installing a service. At
+  runtime, Linux selects `espeak-ng` if Kokoro cannot be imported or its model
+  bank is unavailable.
 
-  `git` is the one people are surprised by, because it looks like a
-  build-machine concern. It isn't: `ship.sh` deploys by fetching into the
-  checkout **on the host**, which is why `install.sh` refuses to run without
-  git rather than producing an install that can never update.
+  **Git remains required after cloning** because `ship.sh` updates the host
+  checkout by fetching from the configured remote. `install.sh` exits if Git
+  is unavailable.
 
   Add **systemd** if you want it supervised across reboots, and an **ssh
   server** if you want to deploy with `ship.sh` instead of pulling by hand.
@@ -88,12 +85,12 @@ Those values are rendered into both the service environment and its filesystem
 allow-list. Supply them again on later installer reruns so the same roots stay
 selected.
 
-The installer downloads both Kokoro files to temporary paths, verifies their
-pinned SHA-256 digests, imports the installed engine, and synthesizes a short
-line before it installs or starts Barkeep. Any failure aborts the setup
-instead of silently downgrading the experience. Routine `ship.sh` updates use
-the same locked dependency set; rerun `./deploy/install.sh` if the model bank is
-removed or the host platform changes.
+The installer downloads the Kokoro model and voice-bank files to temporary
+paths, verifies their pinned SHA-256 digests, imports the installed engine, and
+synthesizes a short line before it installs or starts Barkeep. Any failed check
+aborts setup. Routine `ship.sh` updates use the same locked dependency set;
+rerun `./deploy/install.sh` if the model bank is removed or the host platform
+changes.
 
 The optional `SKYSTRIP_LIGHTNING_WS` is `.env`-only because a relay URL may
 contain credentials and Barkeep's config API does not yet redact declared
@@ -119,6 +116,18 @@ the foreground selector, then select **skystrip** if they cover your use;
 selection starts its public weather polling. A saved foreground choice still
 restores on later starts. Do not run a second copy of an app by hand against
 the same bar.
+
+## Run it manually
+
+If you skip the service prompt, the installer still completes the dependency,
+model, and Kokoro synthesis checks. Start Barkeep from the checkout:
+
+```bash
+uv run -m barkeep
+```
+
+Open the configured Barkeep address and press Ctrl+C to stop it. Do not run a
+manual copy while the systemd service is active.
 
 ## Run it as a service
 
@@ -194,15 +203,24 @@ gitignored runtime directories yet.
 
 ### Who can reach the control plane
 
-barkeep has **no authentication by default**, so it binds only to loopback —
-see `SECURITY.md`. Set a strong `BARKEEP_TOKEN` before deliberately changing
-`BARKEEP_BIND` to a LAN address, and pair it with `BARKEEP_TLS=1` so the
-token is not readable off the wire. Restart the daemon after changing TLS
-settings, then open `https://HOST:8080`; this port serves either HTTP or HTTPS,
-not both and with no redirect. To move from the self-signed certificate to
+Barkeep supports loopback access through an SSH tunnel and direct LAN access.
+The installer selects loopback. For direct LAN access, set `BARKEEP_BIND` to a
+LAN address (or `0.0.0.0`), configure a strong `BARKEEP_TOKEN`, and set
+`BARKEEP_TLS=1` so the token is encrypted in transit. Restart the daemon after
+changing TLS settings, then open `https://HOST:8080`; this port serves either
+HTTP or HTTPS, not both and with no redirect. See `SECURITY.md`. To move from
+the self-signed certificate to
 one your devices trust, open the UI over that HTTPS connection (or through a
 loopback SSH tunnel), paste the PEM pair into its HTTPS section, and restart —
 no `.env` edit needed. Barkeep refuses private-key uploads over LAN HTTP.
+Apply shared `.env` changes with the same stop/start commands allowed by the
+narrow sudo rule:
+
+```bash
+sudo systemctl stop "barkeep@$USER"
+sudo systemctl start "barkeep@$USER"
+```
+
 It refuses
 `Host` headers that are not an IP literal, `localhost`, this machine's name,
 or listed in `BARKEEP_ALLOWED_HOSTS`. If you front it with a reverse proxy or
@@ -218,9 +236,9 @@ Read it over ssh when you need it:
 ssh <host> 'grep ^BARKEEP_TOKEN ~/busybar-lab/.env'
 ```
 
-Then open `https://<host>:8080`. With the generated self-signed certificate
-the browser warns on first visit; before accepting, compare the fingerprint
-it shows against the one the host actually serves:
+Then open `https://<host>:8080`. With the generated self-signed certificate,
+the browser warns on first visit. Open its certificate details and compare the
+SHA-256 fingerprint with the certificate on the host:
 
 ```bash
 ssh <host> 'openssl x509 -noout -fingerprint -sha256 \
@@ -237,8 +255,8 @@ every browser out.
 
 This section is for maintainers or people running a fork. Ordinary users should
 follow [Updating a normal installation](#updating-a-normal-installation)
-instead. **Origin is the source of truth:** the host pulls from your git
-remote, while your laptop only tells it when to go and look.
+instead. The host fetches revisions from the configured Git remote; the local
+command starts that host-side update.
 
 ```bash
 git push origin main
@@ -261,8 +279,7 @@ is impossible. Before mutating live files, it verifies that the installed unit
 was rendered from the target commit's template. It then stops Barkeep, resets
 the checkout, runs the locked sync, verifies that the required Kokoro package,
 models, and real synthesis still work, starts the unit, and confirms it came
-back up. A failed sync or speech check leaves the service stopped instead of
-starting a degraded or half-deployed release.
+back up. A failed sync or speech check leaves the service stopped.
 The service unit itself is not installed by `ship.sh`, because that would make
 the deploy account root-equivalent. Its embedded template digest detects drift
 and tells the operator to rerun `install.sh`, which

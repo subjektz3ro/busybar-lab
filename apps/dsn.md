@@ -1,14 +1,9 @@
 # dsn — the Deep Space Network, live
 
-Right now, somewhere, a 34-metre dish in Australia is pointed at a spacecraft
-near Mars and pulling data out of the noise. This app puts that on the strip.
-
-Every displayable active dish-to-tracked-target contact this app accepts from DSN
-Now is available at three complementary scales. **Network** shows what
-Goldstone, Madrid and Canberra are doing globally. **Instrument** shows one
-selected antenna and contact in detail. **Distance** keeps the original
-Earth-to-spacecraft journey and its wall-clock light-time watch. Nothing
-replaces that original view.
+`dsn` displays active dish-to-target associations reported by NASA DSN Now at
+three scales. **Network** summarizes activity at Goldstone, Madrid, and
+Canberra. **Instrument** shows one selected antenna and contact. **Distance**
+shows the represented Earth-to-spacecraft journey and its light-time watch.
 
 ## Dish Roster — the default live network
 
@@ -145,7 +140,7 @@ Red/orange/yellow-green/pale heads are received S/X/K/Ka carriers, violet is
 mixed/unknown receive band and blue is uplink-only. The selected association
 is white and keeps up to four earlier pixel-visible aim cells as a green
 observed-history tail. Missing or inconsistent aim is counted explicitly as
-`?N`; contacts sharing one quantized cell keep one truthful point and a
+`?N`; contacts sharing one quantized cell keep one displayed point and a
 nonspatial bracket/count instead of being jittered apart. In this dense
 rollback layout, ten or more site associations use an explicit overflow token
 such as `G>`; missing/collision ledgers use `+` after nine. Neither silently
@@ -197,14 +192,13 @@ Hold the wheel to move to Instrument, then Distance, then back to Network.
 *One antenna, one contact. The RF lanes move because the numbers behind them
 do — received power, band, rate, and what Earth is transmitting back.*
 
-This is the view that cannot be made honestly from an offline spacecraft list.
-It shows where the selected dish says it is pointing and what radio links the
-feed says are active now.
+Instrument requires the live feed because it uses current dish pointing and
+radio-link state. An offline spacecraft list does not provide those fields.
 
 - **The 15×15 polar scope on the left is the antenna's real azimuth and
   elevation.** North is at the top, east is to the right, the horizon is the
-  ring and zenith is the centre. The bright point is the latest position from
-  NASA. The short tail keeps up to seven pixel-visible samples including that
+  ring and zenith is the centre. The bright point is the latest accepted
+  pointing sample from NASA. The short tail keeps up to seven pixel-visible samples including that
   latest point; it is sampled pointing history, not a predicted track or a
   spacecraft orbit.
 - **The upper blue lane is the uplink.** It moves from the dish toward the
@@ -217,7 +211,7 @@ feed says are active now.
   published rate adds warm, band-coloured marks moving from the spacecraft
   toward the dish; S, X, K and Ka retain their own colours, and denser marks
   mean a higher rate bucket. A zero or unknown rate keeps the active slate
-  tether and its honest metric but invents no moving carrier mark. All marks
+  tether and its published metric but adds no moving carrier mark. All marks
   move at one symbolic speed: this view is a radio activity instrument, not
   the light-time model. If more than three records are active, the first two
   remain literal and the third lane explicitly reports the overflow record
@@ -235,9 +229,8 @@ feed says are active now.
   transmit power above the ceiling says
   `>999KW` or `>999W`, and a defensive record-count overflow says `>99RX` or
   `>99SIG`. None is silently clamped to an exact-looking value.
-  Complete metric tokens that
-  cannot honestly share the 54-pixel rail take consecutive pages rather than
-  being clipped or changed into a different band or unit.
+  Complete metric tokens that cannot share the 54-pixel rail use consecutive
+  pages; they are not clipped or changed into a different band or unit.
 - **The top row identifies the selected dish and spacecraft.** NASA's friendly
   name when that craft has a config entry, otherwise the complete live short
   code, with unsupported custom-font characters shown explicitly as `?`, wraps
@@ -283,10 +276,9 @@ during preparation wins. If either pointing value is missing, the label cannot
 fit completely, a glyph is unsupported, or encode/upload fails, the app uses
 the same complete native scrolling text card without fabricated motion.
 
-Feed-stale and feed-live transitions remain text cards. So do TX/RX/duplex
-changes and MSPA/DDOR-only changes: the finite art cannot infer which RF lane
-changed or pretend those modes have arraying geometry. Array/unarray art is
-used only when the actual array flag changes. Generic contact and split/merge
+Feed-stale and feed-live transitions remain text cards. So do TX/RX/duplex and
+MSPA/DDOR-only changes; array/unarray art is used only when the actual array
+flag changes. Generic contact and split/merge
 art is neutral topology—it never invents a radio direction or band colour.
 Raw rate, power and pointing changes do not create pop-ups; their persistent
 visuals change only when a value reaches a different label, bucket or LED.
@@ -304,7 +296,7 @@ When the source timestamp is advancing but contains no active links, the bar
 says `NO LINK DATA`. Before the first usable source timestamp it says
 `DSN OFFLINE`; delayed and stale empty feeds say `FEED DELAY` and `FEED STALE`.
 An empty snapshot is not called quiet or idle because the public source cannot
-distinguish a genuinely quiet network from every operational/pipeline case.
+distinguish no scheduled activity from an operational or pipeline issue.
 
 ## The distance journey
 
@@ -328,26 +320,21 @@ Each label sits at the end it describes: the antenna beside the globe it
 stands on, the spacecraft beside the spacecraft. A dim rule divides each row —
 without it `43` and `VOYAGER 2` read as `43VOYAGER 2`.
 
-- **The globe** is Earth, turning once per loop **eastward** — the way it
-  actually turns — centred on the complex that is listening. Five surfaces:
-  ocean, shallower coastal water, vegetation, desert and polar ice, so it
-  reads as Earth rather than a green-and-blue ball.
+- **The globe** is Earth, turning once per loop **eastward** and centred on the
+  selected ground complex. Five colours distinguish ocean, coastal water,
+  vegetation, desert, and polar ice.
 
-  The shadow is the real terminator, computed from the true subsolar point,
-  and it turns **with** the planet because night belongs to the geography.
-  Since that point has a **latitude** as well as a longitude, the terminator
-  **tilts with the season**: the Arctic keeps its midnight sun through July
-  and goes dark in January, the way it does. The longitude includes the
-  equation of time, which is worth about four degrees — under half a pixel,
-  and in there because a real declination paired with a mean-time hour angle
-  is a hybrid nobody can reason about.
-- **Two dim lines** are the link itself — a pass is a conversation, so
-  Earth's half runs on the upper row and the spacecraft's on the lower. A
-  direction with nothing on it still shows its line: open, and silent.
+  The shadow is the calculated terminator, computed from the subsolar point,
+  and it turns **with** the planet. Since that point has a **latitude** as well
+  as a longitude, the terminator **tilts with the season**. The longitude
+  includes the equation-of-time correction, which can shift the result by
+  about four degrees, or less than half a display pixel.
+- **Two dim lines** represent the link. Earth's half runs on the upper row and
+  the spacecraft's on the lower. A direction with no active signal still shows
+  its base line.
 - **Blue going out, amber coming home.** Earth transmits at tens of
   **kilowatts** and what returns is **attowatts** — a ratio near 10²¹, so the
-  uplink is drawn heavy and bright and the downlink thin. The contrast is the
-  story.
+  uplink is drawn heavy and bright and the downlink thin.
 - **The bright pulses** running along it are the signal. They travel **right
   to left** on every active downlink and **left to right** on every active
   uplink. A duplex contact therefore has both directions moving at once.
@@ -357,41 +344,33 @@ without it `43` and `VOYAGER 2` read as `43VOYAGER 2`.
   downlink from Mars, a bare flicker for Voyager's 160 bits per second. The
   *spacing* between them carries the distance. Both halves of the link are
   therefore on screen at once.
-- **The spacecraft is drawn as itself.** Twenty-five portraits at 11×6,
-  covering 105 of the craft the network tracks, each built around the one
-  feature that makes the real machine recognisable — because at this size a
-  single true feature reads and a faithful outline does not. Juno's three
-  nine-metre blades. Lucy's circular arrays, the only round ones in the fleet.
+- **Spacecraft portraits.** Twenty-four mapped 11×6 portraits cover 105 target
+  identifiers, with a generic portrait for unmapped targets. Each emphasizes a
+  recognizable structural feature: Juno's three nine-metre blades. Lucy's
+  circular arrays, the only round ones in the fleet.
   Parker leading with its shield. Webb's mirror over the stepped sunshade.
   Voyager's dish with the magnetometer boom trailing behind it. Perseverance
-  and Curiosity as **rovers** — wheels on the ground and a camera mast, which
-  looks nothing like anything in orbit. An Artemis upper stage as a plain
-  cylinder, because it isn't a spacecraft and shouldn't pretend to be.
+  and Curiosity as rovers with wheels and a camera mast. An Artemis upper stage
+  uses a plain cylinder.
 
-  Craft that genuinely look alike share a portrait on purpose: Voyager 1 and 2
-  *are* identical, as are STEREO A and B, GRAIL A and B, and the MarCO pair.
-  Sharing where the truth is shared is accuracy; inventing differences nobody
-  can see on the panel is not. Anything unmapped gets a plain box-and-wings
-  satellite, which is what most of the fleet honestly looks like.
+  Hardware variants with the same appearance share a portrait, including
+  Voyager 1 and 2, STEREO A and B, GRAIL A and B, and the MarCO pair. Unmapped
+  targets use a generic box-and-wings satellite.
 
-  They're outlines, not filled shapes — a dense shape loses its silhouette on
-  a panel this sparse, the same rule the font learned from `M` and `W`.
-- **A few of them move.** Eleven pixels can carry exactly one kind of motion,
-  a specular highlight walking the structure, and it's spent only where it's
-  true: Juno is spin-stabilised at 2 rpm, ACE, Wind, IMAP and Ulysses are
-  spinning drums, and a spent upper stage tumbles. Craft that hold a fixed
-  attitude — Webb, Parker, Lucy, Europa Clipper and the rovers — get no glint,
-  because inventing motion a craft doesn't have is the same error as inventing
-  a silhouette it doesn't have.
+  The portraits use outlines because filled shapes lose silhouette detail at
+  this resolution.
+- **Selected portraits move when the source craft has known rotation.** A
+  specular highlight moves across Juno (spin-stabilised at 2 rpm), the spinning
+  ACE, Wind, IMAP, and Ulysses drums, and a tumbling spent upper stage. Craft
+  with fixed attitudes, such as Webb, Parker, Lucy, Europa Clipper, and the
+  rovers, use static portraits.
 - **The name** is NASA's full config name when available, otherwise the
   complete live short code. If it is too long for the panel it scrolls.
-- **Top left** is the antenna. `25` is DSS-25 at Goldstone, and **the little
-  dish beside the number leans the way the real one does** — tipped toward the
-  horizon when a pass is beginning or nearly over, standing up when the
-  spacecraft is overhead. Three steps rather than a smooth sweep, because a
-  finer gradation would differ by one pixel and this panel's gamma erases
-  that. It's drawn in warm ink deliberately: in the digits' own blue the glyph
-  gets read as another character in the number.
+- **Top left** is the antenna. `25` is DSS-25 at Goldstone. The dish icon uses
+  three tilt steps derived from the reported elevation: toward the horizon at
+  low elevation and upright near zenith. A finer gradation would differ by one
+  pixel, below the panel's useful contrast. Warm ink separates the icon from
+  the blue dish number.
 - **Bottom left** is the one-way light time — how long that signal spent in
   transit. `16M` is sixteen minutes. `19.8H` is Voyager.
 - **Bottom right** is the single receive record's rate, in bits per second.
@@ -410,8 +389,7 @@ without it `43` and `VOYAGER 2` read as `43VOYAGER 2`.
   antenna, ground aperture, coding, atmosphere and mission choices matter too.
   In DSN service definitions K is near-Earth; Ka is the corresponding
   high-frequency deep-space service.
-  All remain distinct from the cold blue uplink, and unknown band is violet
-  rather than silently pretending to be X.
+  All remain distinct from the cold blue uplink; unknown band is violet.
 - **The antenna icon's size is the dish's size.** The 70 m antennas — DSS-14,
   43 and 63 — get a visibly bigger cup on the same mount. It isn't decorative:
   that aperture is central to the network's most demanding deep-space links.
@@ -427,7 +405,8 @@ It's spoken in the narration, where there's room for it.
 
 ## What's observed, derived and represented
 
-Worth being precise about, because it's easy to over-claim:
+The following table separates source fields, locally derived values, and their
+display representations:
 
 | Observed from NASA | Derived locally | Representation on the bar |
 |---|---|---|
@@ -465,9 +444,8 @@ in flight at once**, because that's physically what being far away means:
 | Mars Reconnaissance Orbiter | ~16 min | 1 | 22 px/s |
 | Voyager 2 | ~19.8 h | ~14, creeping | 0.37 px/s |
 
-Voyager's strip is *full* of signal. That's real: at 160 bits per second with a
-19.8-hour trip, there genuinely are hours of transmission strung out across the
-solar system at any instant.
+Voyager's strip is densely populated because its 160-bit-per-second stream has
+about 19.8 hours of represented transmission in flight at any instant.
 
 ## Controls
 
@@ -524,8 +502,8 @@ that instant; current RF, pointing and dish fields can continue to follow newer
 valid snapshots. Every bright head is a representation. NASA's `upSignal`
 says Earth is transmitting now, while `downSignal` says a carrier is arriving
 at Earth now—which means that received energy left the spacecraft one light
-time ago. Neither identifies a particular packet launched at the instant you
-click, so this view does not pretend otherwise.
+time ago. Neither identifies a particular packet launched at the instant of
+the click.
 
 - **Each head** is where light has reached along its represented traversal.
 - **The dashes behind it** are the distance already covered. They start at
@@ -551,15 +529,12 @@ time and needs twelve hours forty minutes more to span it."* When the traversal 
 warm-white blink, the watch ends, and the app returns to the view and live
 rotation you came from.
 
-Two earlier versions of this were wrong and are worth knowing about. The bar
-was first anchored to absolute time, so locking on dropped you into the middle
-of a crossing already in progress with nothing to explain why. Worse, the
-clock and head were using different time origins. The travelling head and
-countdown now share the lock instant and the same completion deadline.
+The travelling head and countdown use the lock instant as a shared time origin
+and use the same completion deadline derived from the frozen range estimate.
 
-Past two minutes of light time an 8-second animation loop cannot carry the
-truth, so the scene is re-pushed on a cadence matched to how fast the chain
-genuinely creeps, rather than faking motion.
+Past two minutes of light time, an 8-second animation loop cannot represent the
+motion smoothly. The scene is re-pushed at a cadence derived from the chain's
+calculated progress.
 
 ### The narration
 
@@ -570,9 +545,8 @@ Press START and a voice explains the source-reported contact:
 > relays data home for the rovers on the surface. Its signal takes 16 minutes
 > to reach us, and arrives at about 2 megabits per second."
 
-Which complex, which antenna and how big it is, what the tracked object is or
-was built to do, how long its signal took, how fast it's arriving — and then the
-number that makes the whole thing land:
+The report can include the complex, antenna and its diameter, tracked-object
+context, light time, data rate, distance, and receive/transmit power:
 
 > "It is 21 billion kilometres away, 140 times the Earth's distance from the
 > Sun. […] It reaches the dish at under one attowatt, while Earth transmits at
@@ -582,13 +556,13 @@ number that makes the whole thing land:
 Distance is given in kilometres and Earth-Sun distances, **not light-years**:
 everything the DSN talks to is inside the solar system, so light-years give
 0.0022 for Voyager 2 and 0.0000000 for Chandra — every craft would read "zero
-point zero zero zero". The light-year earns its place as the comparison at the
-end, and only for genuinely deep space, where it is the whole point.
+point zero zero zero". The report adds a light-year comparison only for
+sufficiently distant targets.
 
-The power figure is ten billionths of a billionth of a watt arriving from
-Jupiter, which a 34-metre dish pulls a clean data stream out of. Uplink-only passes say so
-rather than inventing a downlink, and three rare conditions get called out
-when they happen: several dishes **arrayed** to improve receive margin or
+Received power can be on the order of ten billionths of a billionth of a watt
+for a link from Jupiter. Uplink-only passes are identified without adding a
+downlink, and three uncommon conditions are reported when they occur: several
+dishes **arrayed** to improve receive margin or
 usable rate, one antenna holding several craft in its beam at once (**MSPA**),
 and a precision navigation fix using two complexes and usually a distant
 quasar as a reference (**DDOR**). Engineering/demo activity and multiple
@@ -655,7 +629,7 @@ button:
 | `DSN_ROTATE_S` | `20` | Seconds each automatic Instrument/Distance detail selection holds. The Network action target is not timer-rotated; it reconciles only when the exact target departs/hands off or the wheel selects another. Legacy `rows` may still page its visible contacts. A manual detail choice gets a two-minute dwell. |
 | `DSN_VIEW` | `network` | Startup view: `network`, `instrument`, or `distance`. A wheel hold cycles all three at runtime. |
 | `DSN_NETWORK_STYLE` | `dishes` | Network layout: `dishes` is the three-site Dish Roster plus wheel-rest selected-dish Focus; `skies` restores Three Skies and its Focus Lens; `rows` restores the older paged contact board. Restart the app after changing it. |
-| `DSN_VOICE` | `af_nova` | Kokoro narrator on supported Linux (`af_*`, `am_*`, `bf_*`, or `bm_*`). `espeak-ng` is emergency runtime resilience; direct macOS development may use a non-Kokoro `say` voice. |
+| `DSN_VOICE` | `af_nova` | Kokoro narrator on supported Linux (`af_*`, `am_*`, `bf_*`, or `bm_*`). Linux uses `espeak-ng` when Kokoro cannot be imported or its model bank is unavailable; direct macOS development may use a non-Kokoro `say` voice. |
 | `DSN_CACHE_DIR` | `cache/dsn/` | Optional descendant of the service-managed cache root for the versioned Horizons-range cache and transition history. To move that root to another volume, rerun `BUSYBAR_CACHE_DIR=/absolute/path ./deploy/install.sh`; the rendered unit then grants exactly that directory write access. |
 
 Changing the voice reclaims the previous narrator's cached lines from device
@@ -700,10 +674,10 @@ Nothing here is decoded telemetry. The DSN feed publishes *that* a carrier
 record exists and sometimes its current data rate, never what's being said — the content is
 mission-private and, for commanding, authenticated.
 
-## Notes for whoever touches this next
+## Implementation notes
 
-- **No locally invented contact.** Everything is gated on the live feed, while
-  the source-identity caveats above remain explicit.
+- **Contacts are created only from accepted live-feed records.** The
+  source-identity caveats above remain explicit.
   A fresh empty feed says `NO LINK DATA`; delayed, stale and pre-source states say
   so explicitly instead of animating the last-known carrier as current.
 - **Remote XML has one pure trust boundary.** [`dsn_source.py`](dsn_source.py)
@@ -748,16 +722,15 @@ mission-private and, for commanding, authenticated.
   count. They are signal records, not proof of separate transmitters, and
   their powers are never summed. The scalar narration/flare uses the strongest
   published record.
-- **Received power is negative**, so it must not go through `_f()` — that
-  treats every negative as the feed's no-data sentinel. Same trap that once
-  zeroed the timezone offsets. `NaN` and infinity are missing, not maximum
+- **Received power is negative**, so it must not go through `_f()`, which
+  treats every negative as the feed's no-data sentinel. `NaN` and infinity are missing, not maximum
   power. Missing pointing or band likewise stays visibly unknown rather than
   becoming a confident north-horizon X-band link.
 - **A `?` for light time means no distance yet**, not missing data. The NAIF id
   is read from the downlink, then the uplink, then the target — an uplink-only
   pass has no downlink to read it from, which is what used to leave Mars
   Reconnaissance Orbiter showing `?` permanently. Horizons does not carry
-  every source id: an explicit `No such record` keeps the honest `?`, backs off
+  every source id: an explicit `No such record` keeps the `?`, backs off
   for six hours, and lets narration omit distance rather than saying
   `PREPARING...` forever. Malformed or transient responses still retry quickly.
 - **Range follows direction.** An active received carrier uses `downlegRange`;
