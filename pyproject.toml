@@ -15,7 +15,7 @@ dependencies = [
     # to seed the telnet controller's host; a major release renaming it would
     # break skystrip's status-light cleanup silently, inside a bare except.
     # tests/test_device_contract.py asserts the attribute still exists.
-    "busylib>=1.3.0,<2",
+    "busylib>=1.3.0,<3",
     # First-party apps import both directly; do not rely on busylib keeping
     # them as transitive dependencies forever.
     "httpx>=0.27",
