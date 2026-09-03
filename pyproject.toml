@@ -14,15 +14,14 @@ dependencies = [
     # Upper bound because busybar_dev reaches into busylib's private `_usb`
     # to seed the telnet controller's host; a major release renaming it would
     # break skystrip's status-light cleanup silently, inside a bare except.
-    # tests/test_device_contract.py asserts the attribute still exists.
-    "busylib>=1.3.0,<2",
+    # tests/test_connect.py exercises that seam against the installed client.
+    "busylib>=2.0.2,<3",
     # First-party apps import both directly; do not rely on busylib keeping
     # them as transitive dependencies forever.
     "httpx>=0.27",
     "websockets>=13",
-    # Declared even though busylib already requires it. First-party modules
-    # import PIL directly, so relying on a transitive dependency means
-    # a busylib release could break every scene renderer here with no warning.
+    # Busylib 2 makes Pillow an optional media extra. First-party modules
+    # import PIL directly, so it is a required direct dependency here.
     "pillow>=12",
     # The DSN feed is XML from a remote host, and stdlib ElementTree expands
     # internal entities: a 370-byte document with six nested entities expands
@@ -157,7 +156,6 @@ default = 85.0
 "apps/skystrip.py" = 71.2
 "barkeep/keepalive.py" = 21.1
 "busybar_dev/__init__.py" = 98.0
-"busybar_dev/screen.py" = 59.3
 "busybar_dev/tts.py" = 56.1
 "busybar_dev/tts_worker.py" = 58.0
 "busybar_viz/__init__.py" = 69.4

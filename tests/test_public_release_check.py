@@ -464,6 +464,11 @@ def test_public_identity_values_are_explicit_global_exceptions(checker, tmp_path
     ),
     (
         "network.private-ip",
+        "docs/busylib/api/discovery.md",
+        b"Front desk 192.168." + b"1.20\n",
+    ),
+    (
+        "network.private-ip",
         "tests/test_server.py",
         b'assert host_name("fe80' + b'::1") == "fe80' + b'::1"\n',
     ),

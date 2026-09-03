@@ -31,10 +31,12 @@ a scraped mirror of the vendor documentation.
   HTTP API access enabled in the local web UI plus its PIN in `X-API-Token`.
   Internet: `https://api.busy.app/busybar` with a Bearer token from
   cloud.busy.app.
-- **Front display:** 72×16 RGB. **Back display:** 160×80 (on firmware 1.1.1
-  the framebuffer reads back as RGB888 in BGR byte order, same as the front;
-  older firmware returned 4-bit grayscale. Takes 160×80 PNGs for image
-  elements).
+- **Front display:** 72×16 RGB. **Back display:** 160×80. On firmware 1.1.1,
+  the device wire framebuffer is RGB888 in BGR byte order for both displays;
+  older firmware returned the back display as 4-bit grayscale. Busylib 2
+  normalizes every `screen()` result to canonical row-major RGB888, so callers
+  must not swap channels or unpack grayscale again. The back takes 160×80 PNGs
+  for image elements.
 - **Draw model:** draws carry `application_name` + `priority` (1–100, busylib
   default 50). Idle built-in apps sit at ~10. An **active BUSY/CUSTOM session
   refuses outside draws even at priority 95** — the device returns HTTP 409

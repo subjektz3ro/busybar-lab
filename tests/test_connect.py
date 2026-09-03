@@ -147,3 +147,31 @@ async def test_aconnect_reports_every_host(bars):
     refuse.update({busybar_dev.USB_HOST, busybar_dev.MDNS_HOST})
     with pytest.raises(ConnectionError):
         await busybar_dev.aconnect()
+
+
+def test_installed_sync_client_keeps_the_usb_host_seam():
+    """Pin the private seam connect() uses without opening any connection."""
+    from busylib import BusyBar
+    from busylib.client import UsbController
+
+    bar = BusyBar("http://127.0.0.1")
+    controller = UsbController("192.0.2.44")
+    try:
+        bar._usb = controller
+        assert bar.usb is controller
+    finally:
+        bar.close()
+
+
+async def test_installed_async_client_keeps_the_usb_host_seam():
+    """The async client exposes the same lazy controller contract."""
+    from busylib import AsyncBusyBar
+    from busylib.client import AsyncUsbController
+
+    bar = AsyncBusyBar("http://127.0.0.1")
+    controller = AsyncUsbController("192.0.2.45")
+    try:
+        bar._usb = controller
+        assert bar.usb is controller
+    finally:
+        await bar.aclose()

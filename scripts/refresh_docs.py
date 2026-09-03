@@ -30,7 +30,7 @@ DEVICE = "http://10.0.4.20"
 BUSYLIB_REPO = "https://github.com/busy-app/busylib-py"
 # Keep the redistributable snapshot reproducible and reviewable. Updating this
 # revision is a deliberate dependency change that must be reflected in NOTICE.
-BUSYLIB_REVISION = "9cf2798329282a1b728216090e0f5717c0018e20"
+BUSYLIB_REVISION = "23875e1c0201265365ab78ed9a1caa98d21de8ad"
 
 
 def fetch(url: str, timeout: int = 20) -> bytes:

@@ -5,6 +5,7 @@ import pytest
 from PIL import Image
 
 from barkeep.preview import BarOffline, Preview
+from busybar_dev.screen import save_screens
 
 
 class FakeBar:
@@ -16,8 +17,20 @@ class FakeBar:
     def screen(self, display: int) -> bytes:
         self.calls += 1
         if display == 0:
-            return bytes(72 * 16 * 3)          # RGB888 front
-        return bytes(160 * 80 // 2)            # L4-packed back
+            return bytes(72 * 16 * 3)          # canonical RGB888 front
+        return bytes(160 * 80 * 3)             # canonical RGB888 back
+
+
+COLOR_FRAMES = {
+    0: ((72, 16), (241, 37, 11)),
+    1: ((160, 80), (17, 83, 199)),
+}
+
+
+class ColorBar:
+    def screen(self, display: int) -> bytes:
+        size, pixel = COLOR_FRAMES[display]
+        return bytes(pixel) * (size[0] * size[1])
 
 
 def test_png_roundtrip_and_cache():
@@ -31,6 +44,28 @@ def test_png_roundtrip_and_cache():
 
     back = Image.open(io.BytesIO(p.png(1)))
     assert back.size == (160, 80)
+
+
+def test_preview_preserves_busylib_rgb_channels_on_both_displays():
+    """A red/blue swap is invisible when the fixture is all zeroes."""
+    preview = Preview(connect_fn=ColorBar, ttl=0.0)
+    for display, (size, pixel) in COLOR_FRAMES.items():
+        image = Image.open(io.BytesIO(preview.png(display)))
+        assert image.mode == "RGB"
+        assert image.size == size
+        assert image.getpixel((0, 0)) == pixel
+
+
+def test_save_screens_scales_both_canonical_rgb_frames(tmp_path):
+    front_path, back_path = save_screens(ColorBar(), tmp_path / "shots", scale=2)
+
+    assert (front_path.name, back_path.name) == ("front.png", "back.png")
+    front = Image.open(front_path)
+    back = Image.open(back_path)
+    assert front.size == (144, 32)
+    assert back.size == (320, 160)
+    assert front.getpixel((0, 0)) == COLOR_FRAMES[0][1]
+    assert back.getpixel((0, 0)) == COLOR_FRAMES[1][1]
 
 
 def test_cache_expires():
