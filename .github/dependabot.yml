@@ -8,6 +8,12 @@ updates:
       time: "09:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
+    # busylib 2 changes framebuffer reads from device BGR to RGB. Upgrade it
+    # deliberately alongside the screen conversion and colored-pixel tests.
+    ignore:
+      - dependency-name: "busylib"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
