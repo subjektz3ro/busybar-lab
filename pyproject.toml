@@ -1,0 +1,178 @@
+[project]
+name = "busybar-lab"
+version = "0.3.0"
+description = "Live apps for the BUSY Bar LED device, and a control plane to run them"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+# The copyleft requirement comes from a GPL-2.0-or-later firmware-tool port.
+# Keeping the same or-later grant permits the Apache-2.0 Astral dependency to
+# be combined under GPLv3. See NOTICE.md.
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE", "NOTICE.md"]
+dependencies = [
+    "astral>=3.2",
+    # Upper bound because busybar_dev reaches into busylib's private `_usb`
+    # to seed the telnet controller's host; a major release renaming it would
+    # break skystrip's status-light cleanup silently, inside a bare except.
+    # tests/test_device_contract.py asserts the attribute still exists.
+    "busylib>=1.3.0,<2",
+    # First-party apps import both directly; do not rely on busylib keeping
+    # them as transitive dependencies forever.
+    "httpx>=0.27",
+    "websockets>=13",
+    # Declared even though busylib already requires it. First-party modules
+    # import PIL directly, so relying on a transitive dependency means
+    # a busylib release could break every scene renderer here with no warning.
+    "pillow>=12",
+    # The DSN feed is XML from a remote host, and stdlib ElementTree expands
+    # internal entities: a 370-byte document with six nested entities expands
+    # to 5.2M characters, so FEED_XML_MAX_BYTES was not the bound it looked
+    # like. See NOTICE.md.
+    "defusedxml>=0.7",
+    # ZoneInfo otherwise depends on the host shipping /usr/share/zoneinfo;
+    # slim Linux/container installs still need Skystrip timezone validation.
+    "tzdata>=2025.2",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    # Required for every supported Linux production installation.
+    # The installer separately enforces the validated 64-bit glibc host
+    # envelope before syncing; keeping the marker Linux-wide means an
+    # unsupported raw Linux sync cannot silently omit neural speech.
+    "kokoro-onnx>=0.4 ; platform_system == 'Linux'",
+]
+
+[project.urls]
+Repository = "https://github.com/subjektz3ro/busybar-lab"
+Issues = "https://github.com/subjektz3ro/busybar-lab/issues"
+
+[project.scripts]
+busybar-viz = "busybar_viz.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.3",
+    "pytest-cov>=6",
+    "ruff>=0.14",
+    "mypy>=1.13",
+]
+
+# Static analysis exists here to catch the failures this device punishes
+# quietly: an unused local that was supposed to be a contrast check, a
+# closure that captured the wrong loop variable, a return type that lies.
+# The selection is deliberately narrow — every rule below has either caught
+# something real in this repo or guards a rule from the busybar-app skill.
+[tool.ruff]
+target-version = "py311"
+# Vendored third party. Not ours to edit; see docs/busylib/LICENSE.
+extend-exclude = ["docs/busylib", "scratch"]
+
+[tool.ruff.lint]
+select = ["E9", "F", "B", "ASYNC", "PLE", "S"]
+ignore = [
+    # assert: internal invariants in app code, and the whole test suite.
+    "S101",
+    # random: scene texture, star glint, meteor timing. Never cryptographic.
+    "S311",
+    # try/except/pass|continue: deliberate best-effort device cleanup. The
+    # skill requires reaping to be non-fatal, so these are load-bearing.
+    "S110", "S112",
+    # subprocess: fixed argv, no shell (say / espeak-ng / git rev-parse).
+    "S404", "S603", "S607",
+    # sha1: content-addressed asset cache keys, not a security boundary.
+    # The digest IS the cache contract — see the busybar-app skill, law 3.
+    "S324",
+    "B008",
+    # `timeout=` on an async def here is the device element timeout in whole
+    # seconds, not a cancel scope. ASYNC109 is written for
+    # trio and reads every one of them as a missing timeout context.
+    "ASYNC109",
+    # asyncio-only project; there is no trio/anyio Path to reach for, and the
+    # flagged calls are single local stat()s during startup.
+    "ASYNC240",
+    # `CheckStatus.PASS = "pass"` is an enum member. S105 sees the name.
+    "S105",
+    # B905 (zip without strict=) is excluded on purpose, not by oversight.
+    # There are 75 sites, nearly all in render paths. Blanket strict=True
+    # converts a benign length mismatch into an exception mid-draw, which on
+    # this device means a dark panel and a crash loop. Auditing them
+    # individually is worth doing as its own change; enabling the rule
+    # without that audit is not.
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures legitimately hold fake tokens, exec generated scaffolding,
+# and poll with sleep loops rather than plumbing an Event through a fake.
+# S107: test fixtures carry a literal token by design.
+"tests/*" = ["S102", "ASYNC110", "S314", "S104", "S105", "S107"]
+# Documentation refreshes use fixed upstream/device endpoints.
+"scripts/*" = ["S310"]
+
+# Type checking gates every first-party Python package plus each app entry
+# point. Keep the list explicit so a newly added app has to opt into the gate
+# deliberately instead of being covered accidentally by an import.
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+files = [
+    "busybar_dev",
+    "barkeep",
+    "busybar_viz",
+    "apps/dsn.py",
+    "apps/dsn_config.py",
+    "apps/dsn_source.py",
+    "apps/hello.py",
+    "apps/skystrip.py",
+    "apps/skystrip_config.py",
+    "apps/skystrip_lightning.py",
+    "apps/_template.py",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Supervisor tests spawn real processes; a wedged one used to park the whole
+# session. SIGALRM fails the offending test and lets the run continue —
+# timeout_method = "thread" would abort everything with no attribution.
+timeout = 60
+timeout_method = "signal"
+
+# Enforced by scripts/check_coverage.py, which explains why this is per-file
+# rather than one repo-wide number. The exceptions below are the debt register:
+# every entry is a file that cannot yet meet the default, recorded at what it
+# actually achieves. Adding to this list is a deliberate act; drifting below
+# your own floor fails the build.
+#
+# The explicit entries are the debt register. In particular, the app template
+# and smoke test are exercised because they are the first code a contributor
+# runs; their floors remain below the default until every branch is covered.
+[tool.coverage-floors]
+default = 85.0
+
+[tool.coverage-floors.exceptions]
+"apps/_template.py" = 80.0
+"apps/hello.py" = 80.0
+"apps/skystrip.py" = 71.2
+"barkeep/keepalive.py" = 21.1
+"busybar_dev/__init__.py" = 98.0
+"busybar_dev/screen.py" = 59.3
+"busybar_dev/tts.py" = 56.1
+"busybar_dev/tts_worker.py" = 58.0
+"busybar_viz/__init__.py" = 69.4
+"busybar_viz/__main__.py" = 0.0
+"busybar_viz/cli.py" = 77.3
+"busybar_viz/jobs.py" = 60.8
+"busybar_viz/server.py" = 76.1
+"busybar_viz/worker.py" = 60.2
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["busybar_dev", "barkeep", "busybar_viz"]

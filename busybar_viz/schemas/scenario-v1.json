@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "busybar.scenario/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "title", "description", "adapter", "controls", "inputs", "expected_displays"],
+  "properties": {
+    "schema": {"const": "busybar.scenario/v1"},
+    "id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "adapter": {"type": "string", "minLength": 1},
+    "controls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "kind", "default", "choices", "minimum", "maximum"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "default": {},
+          "choices": {"type": "array"},
+          "minimum": {"type": ["number", "null"]},
+          "maximum": {"type": ["number", "null"]}
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "kind", "values"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "values": {"type": "array"}
+        }
+      }
+    },
+    "expected_displays": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["front", "back"]}
+    }
+  }
+}

@@ -1,0 +1,163 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The suite is hardware-free on purpose. Every device call goes through
+# busybar_dev.connect(), and nothing under tests/ opens a socket — apps are
+# exercised through their pure renderers and their --dry-run paths. So CI
+# needs no bar, and a pull request from someone who has never owned one still
+# gets a real signal.
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest and newest Python releases supported by the complete
+        # application stack, including the required Linux Kokoro engine.
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+          version: "0.11.11"
+
+      - name: Sync dependencies
+        run: uv sync --locked --dev
+
+      - name: Smoke the required Kokoro engine
+        run: uv run python -c 'from kokoro_onnx import Kokoro; assert Kokoro'
+
+      - name: Run the suite
+        run: |
+          uv run pytest -q \
+            --cov=apps --cov=barkeep --cov=busybar_dev --cov=busybar_viz \
+            --cov-report=json:coverage.json --cov-report=term:skip-covered
+        env:
+          # Fail loudly rather than reaching for a bar that is not there.
+          BUSYBAR_HOST: "203.0.113.1"   # TEST-NET-3, guaranteed unroutable
+
+      # Per-file, not one repo-wide average. The average sat at 80% while the
+      # template every app is copied from sat at 0%.
+      - name: Coverage floors
+        run: uv run python scripts/check_coverage.py coverage.json
+
+      # Every registered visualizer scenario's pixels are pinned in
+      # viz-baselines.toml. A PR that changes what the panel shows must
+      # update the baseline in the same diff. Doctor separately enforces the
+      # scenarios' required audits; a matching pixel digest alone is not a
+      # general legibility claim.
+      - name: Visual scenario audits
+        run: uv run busybar-viz doctor --json
+
+      - name: Visual baselines
+        run: uv run busybar-viz baseline check --json
+
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          # mypy checks the public Python 3.11 contract. Pin the interpreter
+          # too: Ubuntu's newer default installs Linux-only NumPy stubs that
+          # intentionally use syntax newer than mypy's configured target.
+          python-version: "3.11"
+          version: "0.11.11"
+      - name: Sync dependencies
+        run: uv sync --locked --dev
+      - name: Byte-compile everything
+        run: uv run python -m compileall -q apps barkeep busybar_dev busybar_viz scripts
+      # The selection and every ignore is justified in pyproject.toml. It found
+      # a dish-size map the demo script built and never passed, and two locals
+      # computed and dropped in render paths.
+      - name: Lint
+        run: uv run ruff check --output-format github .
+      # Scoped explicitly in pyproject.toml to every first-party package and
+      # app entry point. New apps must opt into that gate deliberately.
+      - name: Type check
+        run: uv run mypy
+
+  # Keep the export boundary independent of lint/type failures. These checks
+  # must still report if a PR accidentally tracks owner data or breaks deploy.
+  release-safety:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.11"
+          version: "0.11.11"
+      - name: Public snapshot contains no private or generated material
+        run: uv run --no-project --python 3.11 scripts/check_public_release.py
+      - name: The deploy scripts must be valid shell
+        run: for f in deploy/*.sh; do bash -n "$f"; done
+
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.11"
+          version: "0.11.11"
+      # Export rather than reading uv.lock directly. The lock carries several
+      # resolution branches and environment markers; a hand-built package list
+      # drops those markers and can turn valid alternatives into conflicts.
+      # Export the complete default installation, including the Linux Kokoro
+      # engine used by Skystrip and DSN narration.
+      - name: Export the locked dependency set
+        run: uv export --locked --no-dev --no-emit-project --format requirements-txt -o requirements.txt
+      - name: Audit it
+        run: uvx --from pip-audit==2.9.0 pip-audit -r requirements.txt --progress-spinner off
+
+  clean-wheel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.11"
+          version: "0.11.11"
+
+      - name: Build and install the wheel in isolation
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/wheel"
+          uv venv "$RUNNER_TEMP/wheel-venv" --python 3.11
+          uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" \
+            "$RUNNER_TEMP"/wheel/*.whl
+
+      - name: Smoke the installed CLI against the active checkout
+        run: |
+          "$RUNNER_TEMP/wheel-venv/bin/busybar-viz" doctor --json
+          "$RUNNER_TEMP/wheel-venv/bin/busybar-viz" \
+            --data-dir "$RUNNER_TEMP/busybar-viz" \
+            run skystrip/lightning-near --json
+
+      - name: Smoke the installed module entry point from apps
+        working-directory: apps
+        run: |
+          "$RUNNER_TEMP/wheel-venv/bin/python" -c \
+            'import busybar_viz; assert "site-packages" in busybar_viz.__file__'
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m busybar_viz \
+            --data-dir "$RUNNER_TEMP/busybar-viz-module" \
+            run conformance/dual-display-input-replay --json

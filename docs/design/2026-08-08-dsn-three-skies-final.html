@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:,">
+  <title>Three Skies — superseded DSN design study</title>
+  <style>
+    :root {
+      --bg: #070a0e;
+      --panel: #101720;
+      --panel-2: #0c1219;
+      --edge: #253240;
+      --ink: #f2f5f8;
+      --muted: #94a3b5;
+      --cyan: #46dceb;
+      --amber: #f2b45f;
+      --red: #f15f55;
+      --radius: 14px;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 82% 2%, rgba(242,180,95,.10), transparent 27rem),
+        radial-gradient(circle at 10% 28%, rgba(70,220,235,.07), transparent 30rem),
+        var(--bg);
+      font: 15px/1.55 var(--sans);
+    }
+    a { color: var(--cyan); }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .wrap { width: min(calc(100% - 36px), 1180px); margin-inline: auto; }
+    header { padding: 66px 0 30px; }
+    .eyebrow, .kicker, .micro {
+      color: var(--cyan);
+      font: 750 11px/1.35 var(--mono);
+      letter-spacing: .075em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 920px;
+      margin-bottom: 18px;
+      font-size: clamp(48px, 8vw, 104px);
+      line-height: .91;
+      letter-spacing: -.065em;
+    }
+    h2 { margin-bottom: 8px; font-size: clamp(28px, 4vw, 46px); letter-spacing: -.04em; }
+    h3 { margin-bottom: 7px; font-size: 20px; letter-spacing: -.025em; }
+    .lede { max-width: 820px; color: #bdc8d5; font-size: clamp(17px, 2vw, 21px); }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+    .chip {
+      padding: 7px 11px;
+      border: 1px solid var(--edge);
+      border-radius: 999px;
+      color: #b8c3d1;
+      background: rgba(14,20,28,.8);
+      font: 700 11px/1 var(--mono);
+      text-decoration: none;
+    }
+    a.chip:hover, a.chip:focus-visible { border-color: rgba(70,220,235,.6); color: white; }
+    .superseded {
+      margin: 0 0 24px;
+      padding: 14px 16px;
+      border: 1px solid rgba(242,180,95,.55);
+      border-radius: 12px;
+      color: #d9e1ea;
+      background: rgba(242,180,95,.08);
+    }
+    .superseded strong { color: #ffd08b; }
+
+    .hero-stage {
+      margin: 14px 0 54px;
+      border: 1px solid rgba(70,220,235,.32);
+      border-radius: 18px;
+      background: linear-gradient(145deg, rgba(70,220,235,.055), transparent 36%), var(--panel);
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0,0,0,.28);
+    }
+    .scene-tabs {
+      display: flex;
+      gap: 7px;
+      padding: 15px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--edge);
+      background: rgba(0,0,0,.16);
+    }
+    .scene-tab, .control-button {
+      flex: 0 0 auto;
+      padding: 8px 11px;
+      border: 1px solid var(--edge);
+      border-radius: 8px;
+      color: #aab7c6;
+      background: #0a1017;
+      cursor: pointer;
+      font: 750 11px/1 var(--mono);
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    .scene-tab[aria-selected="true"] { border-color: var(--cyan); color: #071014; background: var(--cyan); }
+    .scene-tab:hover, .control-button:hover { border-color: #52677d; color: white; }
+    .stage-body { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(290px, .65fr); }
+    .stage-screen { min-width: 0; padding: 24px; border-right: 1px solid var(--edge); }
+    .bezel { padding: 10px; border-radius: 12px; background: #020304; box-shadow: inset 0 0 0 1px #27313b, inset 0 0 18px #000; }
+    canvas { display: block; width: 100%; height: auto; background: #020304; image-rendering: pixelated; }
+    .screen-meta { display: flex; justify-content: space-between; gap: 14px; margin-top: 10px; color: #8090a3; font: 700 10px/1.35 var(--mono); text-transform: uppercase; }
+    .site-captions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+    .site-caption { padding: 8px 9px; border: 1px solid #202b36; border-radius: 7px; color: #9eacbc; font: 700 10px/1.4 var(--mono); }
+    .site-caption strong { color: var(--ink); }
+    .site-captions[hidden] { display: none; }
+    .stage-copy { display: flex; flex-direction: column; min-width: 0; padding: 25px; }
+    .stage-copy h2 { margin: 7px 0 10px; font-size: clamp(27px, 3vw, 40px); }
+    .stage-copy > p { color: #c0cbd7; }
+    .facts { display: grid; gap: 10px; margin-top: auto; }
+    .fact { padding-top: 10px; border-top: 1px solid var(--edge); }
+    .fact strong { display: block; margin-bottom: 3px; color: #7f90a4; font: 750 10px/1.2 var(--mono); text-transform: uppercase; }
+    .fact span { color: #d8dfe7; }
+    .stage-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 14px 16px; border-top: 1px solid var(--edge); }
+    .toggle { display: inline-flex; align-items: center; gap: 7px; color: #aab7c6; font: 700 11px/1 var(--mono); }
+    .stage-clock { margin-left: auto; color: #7f90a4; font: 700 11px/1 var(--mono); }
+
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .section-note { max-width: 480px; margin: 0; color: var(--muted); text-align: right; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: 18px;
+      margin-bottom: 58px;
+    }
+    .flow-card { position: relative; overflow: hidden; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--panel); }
+    .flow-card::after { content: ""; position: absolute; top: 50%; right: -19px; width: 18px; height: 1px; background: var(--cyan); }
+    .flow-card:last-child::after { display: none; }
+    .flow-copy { padding: 18px 18px 15px; }
+    .flow-copy p { margin: 0; color: #afbdcc; }
+    .flow-screen { padding: 8px; margin: 0 10px 10px; border-radius: 9px; background: #020304; box-shadow: inset 0 0 0 1px #28323d; }
+    .flow-foot { display: flex; justify-content: space-between; gap: 10px; padding: 0 18px 17px; color: #77889b; font: 700 10px/1.3 var(--mono); text-transform: uppercase; }
+
+    .interaction {
+      display: grid;
+      grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+      gap: 18px;
+      margin-bottom: 58px;
+    }
+    .gesture-list, .event-card, .truth-card { border: 1px solid var(--edge); border-radius: var(--radius); background: var(--panel); }
+    .gesture-list { padding: 20px; }
+    .gesture { display: grid; grid-template-columns: 80px 1fr; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--edge); }
+    .gesture:last-child { border-bottom: 0; }
+    .gesture strong { color: var(--cyan); font: 750 11px/1.4 var(--mono); text-transform: uppercase; }
+    .gesture span { color: #c3ced9; }
+    .event-card { padding: 20px; }
+    .event-screen { margin-top: 15px; padding: 8px; border-radius: 9px; background: #020304; box-shadow: inset 0 0 0 1px #28323d; }
+    .event-card p { color: #b7c3d0; }
+    .truth-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 58px; }
+    .truth-card { padding: 20px; }
+    .truth-card p { margin-bottom: 0; color: #b6c2cf; }
+    .rail-set { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
+    .rail { padding: 8px; border-radius: 8px; background: #020304; }
+    .rail span { display: block; margin-top: 6px; color: #8594a6; font: 700 10px/1.2 var(--mono); text-align: center; text-transform: uppercase; }
+    .decision {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
+      gap: 18px;
+      margin-bottom: 72px;
+    }
+    .decision > div { padding: 24px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--panel); }
+    .decision .yes { border-color: rgba(70,220,235,.42); background: linear-gradient(145deg, rgba(70,220,235,.07), transparent 45%), var(--panel); }
+    .decision ul { margin: 12px 0 0; padding-left: 20px; color: #bdc9d5; }
+    .decision li + li { margin-top: 7px; }
+    footer { padding-bottom: 42px; color: #738296; font-size: 12px; text-align: center; }
+
+    @media (max-width: 900px) {
+      .stage-body, .interaction { grid-template-columns: 1fr; }
+      .stage-screen { border-right: 0; border-bottom: 1px solid var(--edge); }
+      .flow { grid-template-columns: 1fr; }
+      .flow-card::after { display: none; }
+      .truth-grid { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .section-note { margin-top: 8px; text-align: left; }
+    }
+    @media (max-width: 620px) {
+      .wrap { width: min(calc(100% - 20px), 1180px); }
+      header { padding-top: 38px; }
+      .stage-screen, .stage-copy { padding: 15px; }
+      .screen-meta { display: grid; }
+      .stage-clock { width: 100%; margin-left: 0; }
+      .decision { grid-template-columns: 1fr; }
+      .rail-set { grid-template-columns: 1fr; }
+      .site-captions { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <p class="eyebrow">BUSY Bar · superseded DSN design study · exact 72×16 previews</p>
+    <p class="superseded"><strong>Superseded August 8, 2026.</strong> Dish Roster is now the shipped Network default, with one selected physical dish opened in Focus. Three Skies remains available as the <code>DSN_NETWORK_STYLE=skies</code> rollback. <a href="2026-08-08-dsn-dish-board-focus-options.html">View the shipped Dish Roster + selected-dish Focus decision.</a></p>
+    <h1>Three Skies.<br>One contact.<br>One journey.</h1>
+    <p class="lede">This preserved study proposed keeping global dish pointing ambient, giving deliberate focus to one real dish/contact, then preserving the RF Instrument and light-time Distance experience. It is historical context, not the current default specification.</p>
+    <div class="chips">
+      <span class="chip">illustrative G1 · M0 · C4 accepted-snapshot fixture</span>
+      <span class="chip">selected: G26 · MMS 2</span>
+      <span class="chip">source-driven pointing</span>
+      <a class="chip" href="2026-08-08-dsn-local-sky-scope-options.html">ten scope explorations</a>
+      <a class="chip" href="2026-08-08-dsn-network-view-options.html">broader Network study</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero-stage" aria-label="Preserved interactive Three Skies walkthrough">
+      <div class="scene-tabs" role="tablist" aria-label="Walkthrough scenes">
+        <button class="scene-tab" role="tab" aria-selected="true" data-scene="network">1 · Network</button>
+        <button class="scene-tab" role="tab" aria-selected="false" data-scene="picker">2 · Wheel picker</button>
+        <button class="scene-tab" role="tab" aria-selected="false" data-scene="focus">3 · Focus Lens</button>
+        <button class="scene-tab" role="tab" aria-selected="false" data-scene="instrument">4 · Instrument</button>
+        <button class="scene-tab" role="tab" aria-selected="false" data-scene="distance">5 · Distance</button>
+        <button class="scene-tab" role="tab" aria-selected="false" data-scene="handoff">6 · Handoff Echo</button>
+      </div>
+      <div class="stage-body">
+        <div class="stage-screen">
+          <div class="bezel"><canvas id="stage" width="1296" height="288" role="img" aria-label="Animated exact 72 by 16 pixel visualization of the selected DSN product scene"></canvas></div>
+          <div class="screen-meta"><span id="stage-meta-left">G1 · M0 · C4 · selected G26</span><span id="stage-meta-right">center = zenith · rim = horizon</span></div>
+          <div class="site-captions" id="site-captions">
+            <div class="site-caption"><strong>G1 · Goldstone</strong><br>one displayable contact · DSS-26 / MMS 2</div>
+            <div class="site-caption"><strong>M0 · Madrid</strong><br>no displayable spacecraft contact in this snapshot</div>
+            <div class="site-caption"><strong>C4 · Canberra</strong><br>four displayable contacts · four dish aims</div>
+          </div>
+        </div>
+        <div class="stage-copy" aria-live="polite">
+          <div class="kicker" id="scene-kicker">Persistent overview</div>
+          <h2 id="scene-title">Three local skies</h2>
+          <p id="scene-description">All three DSN complexes stay in fixed positions. Every point is a real dish aim; the selected dish alone retains a short observed trail.</p>
+          <div class="facts">
+            <div class="fact"><strong>Glance answer</strong><span id="scene-glance">Where is each active complex actually pointing?</span></div>
+            <div class="fact"><strong>Live proof</strong><span id="scene-live">Measured head positions and retained trail samples advance only with a newer NASA source snapshot; the wheel changes only selection and highlighting.</span></div>
+            <div class="fact"><strong>User action</strong><span id="scene-action">Turn the wheel to identify and deliberately focus a contact.</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="stage-controls">
+        <button class="control-button" type="button" id="play">Pause</button>
+        <button class="control-button" type="button" id="source">Next source sample</button>
+        <label class="toggle"><input id="gaps" type="checkbox" checked> Physical LED gaps</label>
+        <span class="stage-clock" id="clock">SOURCE 1 · FRAME 1/40</span>
+      </div>
+    </section>
+
+    <section aria-labelledby="architecture-heading">
+      <div class="section-head">
+        <div><p class="micro">The product architecture</p><h2 id="architecture-heading">Overview first. Meaning on demand.</h2></div>
+        <p class="section-note">The front display never tries to carry every metric at once. Each level answers one progressively deeper question.</p>
+      </div>
+      <div class="flow">
+        <article class="flow-card">
+          <div class="flow-copy"><p class="kicker">Level 1 · Network</p><h3>Where is the DSN looking?</h3><p>Three stable local skies, explicit site contact totals, one node per dish aim and a selected observed trail.</p></div>
+          <div class="flow-screen"><canvas id="flow-network" width="1296" height="288" role="img" aria-label="Static 72 by 16 pixel preview of the Three Skies Network view"></canvas></div>
+          <div class="flow-foot"><span>All sites</span><span>Source geometry</span></div>
+        </article>
+        <article class="flow-card">
+          <div class="flow-copy"><p class="kicker">Level 2 · Instrument</p><h3>What is this contact doing?</h3><p>One literal sky plot, complete available identity, separate TX/RX lanes, streams, band, rate, power and rare modes.</p></div>
+          <div class="flow-screen"><canvas id="flow-instrument" width="1296" height="288" role="img" aria-label="Static 72 by 16 pixel preview of the selected live RF Instrument"></canvas></div>
+          <div class="flow-foot"><span>One contact</span><span>Live RF detail</span></div>
+        </article>
+        <article class="flow-card">
+          <div class="flow-copy"><p class="kicker">Level 3 · Distance</p><h3>What does separation mean?</h3><p>The existing Earth-to-craft representation, light-time label and real-time watch remain a distinct emotional layer.</p></div>
+          <div class="flow-screen"><canvas id="flow-distance" width="1296" height="288" role="img" aria-label="Static 72 by 16 pixel preview of the preserved Distance view"></canvas></div>
+          <div class="flow-foot"><span>Same contact</span><span>Light-time meaning</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="interaction-heading">
+      <div class="section-head"><div><p class="micro">The interaction</p><h2 id="interaction-heading">Deliberate focus, never surprise rotation.</h2></div><p class="section-note">Nothing interactive waits for an asset upload. Selection is immediate; rich scenes commit only after wheel rest.</p></div>
+      <div class="interaction">
+        <div class="gesture-list">
+          <div class="gesture"><strong>Ambient</strong><span>Equal G/M/C scopes stay fixed. There is no contact carousel hiding the topology.</span></div>
+          <div class="gesture"><strong>Wheel</strong><span>Instant native picker shows the feed’s short code and global index; rest opens a Focus Lens that scrolls NASA’s friendly name when that craft has a config entry, otherwise the complete live short code. Unsupported custom-font characters appear as ?.</span></div>
+          <div class="gesture"><strong>START</strong><span>A cached line starts immediately and enters Instrument. A cold line says PREPARING and stays put—never autoplaying later.</span></div>
+          <div class="gesture"><strong>Hold</strong><span>Cycles Network → Instrument → Distance while preserving the selected contact.</span></div>
+          <div class="gesture"><strong>Tap</strong><span>Starts or releases the existing Distance watch when a usable range is known.</span></div>
+        </div>
+        <article class="event-card">
+          <p class="kicker">Source-driven one-shot · implemented</p>
+          <h3>Observed Handoff Echo</h3>
+          <p>When adjacent accepted snapshots unambiguously move one craft association and both dishes publish pointing, production pulses the old measured endpoint, shows the complete craft/dish label, then pulses the new endpoint. The mutually exclusive 6/8/6-frame phases are cached as one composed asset, so text cannot cover either measured cell. No cross-scope path is drawn.</p>
+          <div class="event-screen"><canvas id="event-handoff" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of an observed Voyager association change between DSN sites"></canvas></div>
+          <div class="screen-meta"><span>Illustrative VGR 1 · G → C</span><span>4s one-shot · preview repeats</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="truth-heading">
+      <div class="section-head"><div><p class="micro">The trust contract</p><h2 id="truth-heading">A loop may look alive. The source lease proves it.</h2></div><p class="section-note">x70 remains black. x71 is reserved for source freshness and never reused as RF decoration.</p></div>
+      <div class="truth-grid">
+        <article class="truth-card"><p class="kicker">Spatial truth</p><h3>One measured aim, one cell</h3><p>Azimuth/elevation belong to a dish. Multiple contacts on one dish share one spatial point with a nonspatial tally. Collisions never get decorative jitter.</p></article>
+        <article class="truth-card"><p class="kicker">Temporal truth</p><h3>Observed steps only</h3><p>Tracking tails retain distinct accepted source positions. No interpolation, radar sweep, orbit or predicted handoff is added.</p></article>
+        <article class="truth-card">
+          <p class="kicker">Freshness truth</p><h3>Cyan, amber, red</h3><p>The native lease advances only when NASA’s source timestamp advances. Delayed and stale scenes freeze their apparent RF/tracking motion.</p>
+          <div class="rail-set">
+            <div class="rail"><canvas id="rail-fresh" width="1296" height="288" role="img" aria-label="72 by 16 freshness example with cyan source lease"></canvas><span>Fresh</span></div>
+            <div class="rail"><canvas id="rail-delayed" width="1296" height="288" role="img" aria-label="72 by 16 freshness example with blinking amber rail"></canvas><span>Delayed</span></div>
+            <div class="rail"><canvas id="rail-stale" width="1296" height="288" role="img" aria-label="72 by 16 freshness example with steady red rail"></canvas><span>Stale</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="decision" aria-label="Superseded design decision">
+      <div class="yes"><p class="kicker">Built, now optional rollback</p><h2>Triptych + Focus + Tail</h2><p>This equal Three Skies triptych is retained under <code>DSN_NETWORK_STYLE=skies</code>, but it no longer defines ambient Network by default. Wheel focus temporarily enlarges the selected site and scrolls one complete available identity. Only the selected dish receives a short observed trail. Instrument and Distance remain the deeper levels.</p><ul><li>Contact totals are attached to site labels—never unexplained right-edge digits.</li><li>Exact receive-stream count stays in Instrument.</li><li>A true-position Handoff Echo pulses the two observed local-sky cells; missing pointing falls back to complete native text.</li><li>Dish Roster is the default; the older paged contact rows remain a second rollback.</li><li>Eight-sector roses remain a historical physical-panel fallback study.</li></ul></div>
+      <div><p class="kicker">Do not build</p><h3>Decorative liveness</h3><ul><li>No continuously sweeping radar.</li><li>No invented spacecraft positions.</li><li>No automatic Focus Lens rotation.</li><li>No rate-controlled propagation speed.</li><li>No cross-scope handoff path.</li><li>No clipped labels or mystery counts.</li></ul></div>
+    </section>
+  </main>
+
+  <footer class="wrap">Superseded design study retained for history and rollback documentation. See the <a href="2026-08-08-dsn-dish-board-focus-options.html">shipped Dish Roster + selected-dish Focus reference</a>. The previews are exact framebuffers with a qualitative physical-gap model; colour, glyph separation and timing still require physical-panel evidence.</footer>
+
+  <script>
+    const W = 72, H = 16, FPS = 5, FRAMES = 40;
+    const LED = 10, GAP = 8, PITCH = LED + GAP, PAD = GAP / 2;
+    const C = {
+      off:"#000000", name:"#d7e1f0", dish:"#6e91be", antenna:"#c8aa6e",
+      uplink:"#78beff", upTether:"#1a304e", s:"#ff280a", x:"#ffa03c",
+      k:"#b4ff50", ka:"#ffffaa", unknown:"#6428ff", ring:"#224252",
+      networkTrail:"#1ea01e", scopeTrail:"#69aabe", north:"#919191",
+      selected:"#eef2fa", ledger:"#28ffb4", head:"#ffe896",
+      fresh:"#46dceb", delayed:"#ffae32",
+      stale:"#f54137", tether:"#2e4a60", downTether:"#3a280e", earth:"#4ca9d8",
+      land:"#78dc82", shade:"#19394d", white:"#e8eef7", divider:"#28374b",
+      quiet:"#556982", ddor:"#78dc82", eventOld:"#d2af50", eventNew:"#e1ebfa",
+      eventOldDim:"#372d0a", eventNewDim:"#3c4655",
+      eventText:"#9fe8ff"
+    };
+    const FONT = {
+      "A":["0110","1001","1111","1001","1001"],"B":["1110","1001","1110","1001","1110"],
+      "C":["0111","1000","1000","1000","0111"],"D":["1110","1001","1001","1001","1110"],
+      "E":["1111","1000","1110","1000","1111"],"F":["1111","1000","1110","1000","1000"],
+      "G":["0111","1000","1011","1001","0111"],"H":["1001","1001","1111","1001","1001"],
+      "I":["111","010","010","010","111"],"J":["0011","0001","0001","1001","0110"],
+      "K":["1001","1010","1100","1010","1001"],"L":["1000","1000","1000","1000","1111"],
+      "M":["10001","11011","10101","10001","10001"],"N":["1001","1101","1011","1001","1001"],
+      "O":["0110","1001","1001","1001","0110"],"P":["1110","1001","1110","1000","1000"],
+      "Q":["0110","1001","1001","1011","0111"],"R":["1110","1001","1110","1010","1001"],
+      "S":["0110","1000","0110","0001","0110"],"T":["1111","0100","0100","0100","0100"],
+      "U":["1001","1001","1001","1001","0110"],"V":["1001","1001","1001","1010","0100"],
+      "W":["10001","10001","10101","11011","10001"],"X":["1001","1001","0110","1001","1001"],
+      "Y":["1001","1001","0110","0100","0100"],"Z":["1111","0001","0110","1000","1111"],
+      "0":["0110","1011","1101","1001","0110"],"1":["010","110","010","010","111"],
+      "2":["0110","1001","0010","0100","1111"],"3":["1110","0001","0110","0001","1110"],
+      "4":["0010","0110","1010","1111","0010"],"5":["1111","1000","1110","0001","1110"],
+      "6":["0110","1000","1110","1001","0110"],"7":["1111","0001","0010","0100","0100"],
+      "8":["0110","1001","0110","1001","0110"],"9":["0110","1001","0111","0001","0110"],
+      " ":["0000","0000","0000","0000","0000"],".":["0000","0000","0000","0000","0100"],
+      "-":["0000","0000","1111","0000","0000"],"?":["0110","1001","0010","0000","0100"],
+      "/":["0001","0010","0100","1000","0000"],">":["1000","0100","0010","0100","1000"],
+      "(":["001","010","100","010","001"],")":["100","010","001","010","100"],
+      ":":["0000","0100","0000","0100","0000"]
+    };
+    const fixture = [
+      {site:"G",dish:"26",craft:"MAGNETOSPHERIC MULTISCALE 2",short:"MMS 2",az:132,el:38,up:true,down:"S",rate:"2MBPS",mode:"ddor"},
+      {site:"C",dish:"34",craft:"XMM NEWTON",short:"XMM",az:48,el:22,up:true,down:"S",rate:"64KBPS",mode:"array"},
+      {site:"C",dish:"35",craft:"LUCY",short:"LUCY",az:112,el:61,up:false,down:"X",rate:"1KBPS",mode:""},
+      {site:"C",dish:"36",craft:"SPACE WEATHER FOLLOW ON",short:"SWFO",az:221,el:14,up:true,down:"S",rate:"4MBPS",mode:"mspa"},
+      {site:"C",dish:"43",craft:"VOYAGER 1",short:"VGR 1",az:303,el:31,up:false,down:"X",rate:"160BPS",mode:""}
+    ];
+    const sites = [{key:"G",base:0,cx:15},{key:"M",base:24,cx:39},{key:"C",base:48,cx:63}];
+    const bands = {S:C.s,X:C.x,K:C.k,KA:C.ka};
+    class FB {
+      constructor(){ this.p = new Array(W*H).fill(C.off); }
+      set(x,y,c){ if(x>=0&&x<W&&y>=0&&y<H) this.p[y*W+x]=c; }
+      get(x,y){ return this.p[y*W+x]; }
+      hline(x0,x1,y,c){ for(let x=Math.max(0,x0);x<=Math.min(W-1,x1);x++) this.set(x,y,c); }
+      text(x,y,value,color,clip){
+        let cursor=x; const limits=clip||[0,W-1];
+        String(value).toUpperCase().split("").forEach(ch=>{
+          const glyph=FONT[ch];
+          if(glyph) glyph.forEach((row,dy)=>row.split("").forEach((bit,dx)=>{ const gx=cursor+dx; if(bit==="1"&&gx>=limits[0]&&gx<=limits[1]) this.set(gx,y+dy,color); }));
+          cursor+=glyphWidth(ch)+1;
+        });
+      }
+    }
+    function glyphWidth(ch){ const g=FONT[String(ch).toUpperCase()]; return g?g[0].length:4; }
+    function textWidth(value){ const chars=String(value).toUpperCase().split(""); return chars.length?chars.reduce((n,ch)=>n+glyphWidth(ch)+1,0)-1:0; }
+    function marquee(fb,value,x0,x1,y,color,phase){ const room=x1-x0+1,full=textWidth(value); if(full<=room){fb.text(x0,y,value,color,[x0,x1]);return;} const cycle=full+8,off=Math.floor(phase*cycle); fb.text(x0-off,y,value,color,[x0,x1]); fb.text(x0-off+cycle,y,value,color,[x0,x1]); }
+    function ring(fb,cx,cy,r,color=C.ring,north=null){
+      const step=r<5?45:15;
+      for(let deg=0;deg<360;deg+=step){ const a=deg*Math.PI/180; fb.set(Math.round(cx+Math.sin(a)*r),Math.round(cy-Math.cos(a)*r),color); }
+      fb.set(cx,cy,color); if(north) fb.set(cx,cy-r,north);
+    }
+    function point(link,cx,cy,r){ const a=((link.az%360)+360)%360*Math.PI/180,rr=(90-Math.max(0,Math.min(90,link.el)))/90*r; return [Math.round(cx+Math.sin(a)*rr),Math.round(cy-Math.cos(a)*rr)]; }
+    function color(link){ return link.down?(bands[link.down]||C.unknown):C.uplink; }
+    function linksAt(site){ return fixture.filter(link=>link.site===site); }
+    function freshRail(fb,source,status,frame){
+      if(status==="fresh"){ const y=(3+source*2)%15; fb.set(71,y,C.fresh); fb.set(71,y+1,C.fresh); }
+      else if(status==="delayed"){ if(Math.floor(frame/5)%2===0) [0,8,15].forEach(y=>fb.set(71,y,C.delayed)); }
+      else [0,8,15].forEach(y=>fb.set(71,y,C.stale));
+    }
+    function observedMms(source){ return {...fixture[0],az:132+source*3,el:38-Math.floor(source/2)}; }
+    function trailFor(source){ const out=[]; for(let s=Math.max(0,source-4);s<=source;s++){ const p=point(observedMms(s),15,7,6); if(!out.length||out[out.length-1][0]!==p[0]||out[out.length-1][1]!==p[1]) out.push(p); } return out; }
+
+    // Fixed-fixture explainer only. Python owns arbitrary missing/collision
+    // grouping and the pixel contracts that protect those live semantics.
+    function networkFrame(frame,source,status="fresh"){
+      const fb=new FB();
+      sites.forEach(site=>{
+        const links=linksAt(site.key).map(link=>link===fixture[0]?observedMms(source):link);
+        fb.text(site.base,0,site.key+links.length,C.antenna,[site.base,site.base+9]);
+        ring(fb,site.cx,7,6,C.ring,C.north);
+        const groups=new Map();
+        links.forEach(link=>{ const p=point(link,site.cx,7,6),key=p.join(","); if(!groups.has(key)) groups.set(key,{p,links:[]}); groups.get(key).links.push(link); });
+        groups.forEach(group=>{
+          const selected=group.links.some(link=>link.dish==="26");
+          if(selected) trailFor(source).slice(0,-1).forEach(p=>fb.set(p[0],p[1],C.networkTrail));
+          const shown=group.links[0]; fb.set(group.p[0],group.p[1],selected?C.selected:color(shown));
+          if(group.links.length>1) fb.text(site.base,10,String(group.links.length),C.ledger,[site.base,site.base+4]);
+        });
+        if(site.key==="G") fb.text(site.base,10,"26",C.dish,[site.base,site.base+9]);
+      });
+      freshRail(fb,source,status,frame); return fb;
+    }
+    function miniScope(fb,site,cx,cy,r,source){ ring(fb,cx,cy,r,C.ring,C.north); linksAt(site).forEach(link=>{ const current=link===fixture[0]?observedMms(source):link,p=point(current,cx,cy,r); fb.set(p[0],p[1],color(current)); }); }
+    function focusFrame(frame,source,status="fresh",heartbeatSource=source){
+      const fb=new FB(),selected=observedMms(source),phase=frame/FRAMES;
+      fb.text(0,0,"G26",C.dish,[0,19]);
+      marquee(fb,selected.craft,0,20,6,C.name,phase);
+      fb.text(0,11,"1/5",C.antenna,[0,20]);
+      ring(fb,35,8,7,C.ring,C.north);
+      linksAt("G").forEach(link=>{
+        const current=link===fixture[0]?selected:link,p=point(current,35,8,7);
+        for(let s=Math.max(0,source-4);s<source;s++){ const historical=point(observedMms(s),35,8,7); fb.set(historical[0],historical[1],C.networkTrail); }
+        fb.set(p[0],p[1],C.selected);
+      });
+      fb.text(48,0,"M0",C.antenna,[48,57]); miniScope(fb,"M",66,4,3,source);
+      fb.text(48,8,"C4",C.antenna,[48,57]); miniScope(fb,"C",66,12,3,source);
+      freshRail(fb,heartbeatSource,status,frame); return fb;
+    }
+    function pickerFrame(){
+      const fb=new FB(),label="MMS2 1/5",x=Math.floor((W-textWidth(label))/2);
+      fb.text(x,5,label,C.antenna,[0,71]);
+      return fb;
+    }
+    function carrier(fb,y,frame,count,colorValue,outward,span=1){
+      const x0=16,x1=60,width=x1-x0;
+      for(let i=0;i<count;i++){ const fraction=(i/count+frame/FRAMES+.2)%1,offset=Math.max(0,Math.min(width,Math.round(fraction*(width+1)))),x=outward?x0+offset:x1-offset,dir=outward?-1:1; for(let j=0;j<span;j++){ const xx=x+dir*j; if(xx>=x0&&xx<=x1) fb.set(xx,y,colorValue); } }
+    }
+    function instrumentFrame(frame,source,status="fresh"){
+      const fb=new FB(),link=observedMms(source),phase=frame/FRAMES,motionFrame=status==="fresh"?frame:0;
+      ring(fb,7,7,6); fb.set(7,0,C.fresh);
+      for(let s=Math.max(0,source-4);s<source;s++){ const historical=point(observedMms(s),7,7,6); fb.set(historical[0],historical[1],C.scopeTrail); }
+      const aim=point(link,7,7,6); fb.set(aim[0],aim[1],C.head);
+      fb.text(16,0,"26",C.dish,[16,26]); for(let y=0;y<5;y++) fb.set(27,y,C.divider); marquee(fb,link.craft,29,69,0,C.name,phase);
+      fb.hline(16,60,6,C.upTether); carrier(fb,6,motionFrame,3,C.uplink,true,2);
+      fb.hline(16,60,9,C.tether); carrier(fb,9,motionFrame,5,C.s,false,2);
+      fb.text(16,11,"S",C.s,[16,25]); fb.text(69-textWidth("2MBPS"),11,"2MBPS",C.s,[38,69]);
+      [[68,6],[67,7],[69,7],[68,8],[67,9],[69,9],[68,10]].forEach(p=>fb.set(p[0],p[1],C.ddor));
+      freshRail(fb,source,status,frame); return fb;
+    }
+    function drawGlobe(fb,frame){
+      const cx=7,cy=8,r=6;
+      for(let y=-r;y<=r;y++) for(let x=-r;x<=r;x++) if(x*x+y*y<=r*r){ const edge=x*x+y*y>(r-1)*(r-1); fb.set(cx+x,cy+y,edge?C.earth:(x<2?C.shade:C.earth)); }
+      const shift=Math.floor(frame/8)%3; [[-2,-2],[-1,-1],[0,-1],[1,1],[2,1],[-1,2]].forEach(([x,y])=>fb.set(cx+x+shift-1,cy+y,C.land));
+    }
+    function drawCraft(fb){ const sprite=["..11...",".1111..","1111111","..11...","...1..."]; sprite.forEach((row,y)=>row.split("").forEach((bit,x)=>{if(bit==="1")fb.set(61+x,5+y,C.name);})); }
+    function distanceFrame(frame,source,status="fresh"){
+      const fb=new FB(),phase=frame/FRAMES,rfPhase=(status==="fresh"?frame:0)/FRAMES;
+      drawGlobe(fb,frame); drawCraft(fb);
+      fb.text(14,0,"26",C.dish,[14,25]); for(let y=0;y<5;y++) fb.set(27,y,C.divider); marquee(fb,"MAGNETOSPHERIC MULTISCALE 2",30,69,0,C.name,phase);
+      fb.hline(15,60,6,C.upTether); fb.hline(15,60,8,C.downTether);
+      const out=15+Math.round(rfPhase*45),incoming=60-Math.round(rfPhase*45);
+      for(let d=0;d<3;d++) fb.set(out-d,6,d===0?C.uplink:C.upTether);
+      for(let d=0;d<2;d++) fb.set(incoming+d,8,d===0?C.s:C.downTether);
+      fb.text(14,11,"SUBSEC",C.name,[14,44]); fb.text(69-textWidth("2MBPS"),11,"2MBPS",C.s,[45,69]);
+      if(status!=="fresh") freshRail(fb,source,status,frame);
+      return fb;
+    }
+    function handoffFrame(frame,source,status="fresh"){
+      const step=frame%20,fb=new FB();
+      const oldLink={site:"G",dish:"14",craft:"VOYAGER 1",az:290,el:28,up:false,down:"X"};
+      if(step<6||step>=14){
+        sites.forEach(site=>{
+          fb.text(site.base,0,site.key,C.antenna,[site.base,site.base+4]);
+          ring(fb,site.cx,7,6,C.ring,C.north);
+        });
+        if(step<6){
+          const endpoint=point(oldLink,15,7,6);
+          fb.set(endpoint[0],endpoint[1],step%2===0?C.eventOld:C.eventOldDim);
+        }else{
+          const endpoint=point(fixture[4],63,7,6);
+          fb.set(endpoint[0],endpoint[1],step%2===0?C.eventNew:C.eventNewDim);
+        }
+      }else{
+        const label="VGR1 14>43",x=Math.floor((W-textWidth(label))/2);
+        fb.text(x,5,label,C.eventText,[0,71]);
+      }
+      return fb;
+    }
+    const sceneCopy={
+      network:{kicker:"Persistent overview",title:"Three local skies",description:"All three DSN complexes stay in fixed positions. Every point is a real dish aim; the selected dish alone retains a short observed trail.",glance:"Where is each active complex actually pointing?",live:"Measured head positions and retained trail samples advance only with a newer NASA source snapshot; the wheel changes only selection and highlighting.",action:"Turn the wheel to identify and deliberately focus a contact.",left:"G1 · M0 · C4 · selected G26",right:"center = zenith · rim = horizon"},
+      picker:{kicker:"Instant interaction",title:"Native wheel picker",description:"One encoder detent responds immediately with the feed’s compact craft code and its position in the global contact list. No animation upload sits between the hand and the display.",glance:"Which contact am I moving toward?",live:"This is a local interaction layer, not a new DSN telemetry claim.",action:"When the wheel rests, the selected contact commits into the Focus Lens.",left:"MMS2 · contact 1 of 5",right:"native text · no asset wait"},
+      focus:{kicker:"Deliberate semantic zoom",title:"User-invoked Focus Lens",description:"The selected Goldstone scope expands, one complete available identity scrolls, and Madrid/Canberra remain visible as context. This accepted geometry snapshot does not restart while the independent source heartbeat advances.",glance:"Which real dish/contact did I select?",live:"The frozen lens preserves one readable cycle; the cyan lease can still prove a newer source version.",action:"START narrates if cached; hold continues to Instrument.",left:"G26 · MAGNETOSPHERIC MULTISCALE 2",right:"M0 + C4 remain visible"},
+      instrument:{kicker:"Selected live RF",title:"Instrument",description:"The same G26 contact becomes a literal pointing scope plus separate outbound and inbound lanes. Density carries rate; direction never changes propagation speed.",glance:"What is MMS 2’s DSN contact doing now?",live:"Direction, streams, band, rate, power, modes and source freshness.",action:"Hold continues to Distance; START narrates this exact contact.",left:"G26 · MMS 2 · DUPLEX",right:"S · 2MBPS · DDOR"},
+      distance:{kicker:"Physical meaning",title:"Distance",description:"The existing Earth/craft composition remains intact. Its carrier slice and light-time label explain separation without pretending the feed identifies a particular message.",glance:"What does this contact’s separation mean?",live:"A local watch may continue honestly under explicit OFF AIR or STALE labeling.",action:"Tap starts or releases the real-time watch when range is known.",left:"G26 · MMS 2",right:"represented crossing · SUBSEC"},
+      handoff:{kicker:"Implemented source event",title:"Observed Handoff Echo",description:"This four-second data-specific effect pulses the old Goldstone cell, shows the complete label, then pulses the new Canberra cell. The three phases share one composed asset and never overlap.",glance:"Which two local aims bounded this observed association change?",live:"It is gated on an unambiguous adjacent-snapshot change with both aims present.",action:"Missing geometry or a label that cannot fit falls back to the same complete scrolling text card.",left:"Illustrative VGR 1 · G → C",right:"6 / 8 / 6 frames · no cross-scope path"}
+    };
+    const renderers={network:networkFrame,picker:pickerFrame,focus:focusFrame,instrument:instrumentFrame,distance:distanceFrame,handoff:handoffFrame};
+    function paint(canvas,fb,gaps){ const ctx=canvas.getContext("2d"),square=gaps?LED:PITCH,offset=gaps?PAD:0; ctx.fillStyle="#020304";ctx.fillRect(0,0,canvas.width,canvas.height); for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=fb.get(x,y);ctx.fillStyle=c===C.off?"#080a0e":c;ctx.fillRect(x*PITCH+offset,y*PITCH+offset,square,square);} }
+    const reduceMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let scene="network",frame=0,source=0,focusSource=0,playing=!reduceMotion;
+    const stage=document.getElementById("stage"),gaps=document.getElementById("gaps");
+    function drawStatic(){
+      const gapMode=gaps.checked;
+      paint(document.getElementById("flow-network"),networkFrame(8,2,"fresh"),gapMode);
+      paint(document.getElementById("flow-instrument"),instrumentFrame(13,2,"fresh"),gapMode);
+      paint(document.getElementById("flow-distance"),distanceFrame(17,2,"fresh"),gapMode);
+      paint(document.getElementById("event-handoff"),handoffFrame(frame,2,"fresh"),gapMode);
+      paint(document.getElementById("rail-fresh"),networkFrame(0,3,"fresh"),gapMode);
+      paint(document.getElementById("rail-delayed"),networkFrame(0,3,"delayed"),gapMode);
+      paint(document.getElementById("rail-stale"),networkFrame(0,3,"stale"),gapMode);
+    }
+    function render(){
+      const geometrySource=scene==="focus"?focusSource:source;
+      paint(stage,renderers[scene](frame,geometrySource,"fresh",source),gaps.checked);
+      paint(document.getElementById("event-handoff"),handoffFrame(frame,2,"fresh"),gaps.checked);
+      paint(document.getElementById("rail-delayed"),networkFrame(frame,3,"delayed"),gaps.checked);
+      const sceneFrames=scene==="handoff"?20:40;
+      document.getElementById("clock").textContent="SOURCE "+(source+1)+" · FRAME "+(frame+1)+"/"+sceneFrames;
+    }
+    function selectScene(next){
+      scene=next;frame=0;
+      if(scene==="focus") focusSource=source;
+      document.querySelectorAll(".scene-tab").forEach(tab=>tab.setAttribute("aria-selected",String(tab.dataset.scene===scene)));
+      const copy=sceneCopy[scene];
+      document.getElementById("scene-kicker").textContent=copy.kicker;
+      document.getElementById("scene-title").textContent=copy.title;
+      document.getElementById("scene-description").textContent=copy.description;
+      document.getElementById("scene-glance").textContent=copy.glance;
+      document.getElementById("scene-live").textContent=copy.live;
+      document.getElementById("scene-action").textContent=copy.action;
+      document.getElementById("stage-meta-left").textContent=copy.left;
+      document.getElementById("stage-meta-right").textContent=copy.right;
+      document.getElementById("site-captions").hidden=scene!=="network";
+      render();
+    }
+    document.querySelectorAll(".scene-tab").forEach(tab=>tab.addEventListener("click",()=>selectScene(tab.dataset.scene)));
+    document.getElementById("play").textContent=playing?"Pause":"Play";
+    document.getElementById("play").addEventListener("click",event=>{playing=!playing;event.currentTarget.textContent=playing?"Pause":"Play";});
+    document.getElementById("source").addEventListener("click",()=>{
+      source=(source+1)%6;
+      if(scene!=="focus") frame=0;
+      render();
+    });
+    gaps.addEventListener("change",()=>{drawStatic();render();});
+    drawStatic();render();
+    setInterval(()=>{
+      if(!playing||document.hidden)return;
+      if(scene==="handoff"&&frame===19){ selectScene("network"); return; }
+      if(scene==="focus"&&frame===39){ selectScene("network"); return; }
+      frame=(frame+1)%FRAMES;
+      if(frame===0&&scene==="network") source=(source+1)%6;
+      render();
+    },1000/FPS);
+  </script>
+</body>
+</html>

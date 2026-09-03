@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>DSN Network — shipped Dish Roster + Focus reference</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a0f;
+      --panel: #101720;
+      --panel-2: #151e29;
+      --edge: #293646;
+      --edge-hi: #3b4c60;
+      --ink: #edf2f8;
+      --muted: #94a3b6;
+      --quiet: #657489;
+      --cyan: #46dceb;
+      --blue: #78beff;
+      --orange: #ffa03c;
+      --mint: #28ffb4;
+      --amber: #ffae32;
+      --red: #f54137;
+      --radius: 18px;
+      --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--bg); }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font: 15px/1.55 var(--body);
+      background:
+        radial-gradient(1100px 620px at 6% -8%, rgba(70, 220, 235, 0.11), transparent 58%),
+        radial-gradient(900px 580px at 95% 0%, rgba(255, 160, 60, 0.08), transparent 62%),
+        linear-gradient(180deg, #0a0f16, #07090d 72%);
+    }
+
+    a { color: var(--cyan); }
+    button, select, input { font: inherit; }
+    .wrap { width: min(1200px, calc(100% - 32px)); margin: 0 auto; }
+
+    header { padding: 58px 0 28px; }
+    .eyebrow, .kicker {
+      margin: 0 0 12px;
+      color: var(--cyan);
+      font: 750 11px/1.25 var(--mono);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 980px;
+      margin: 0;
+      font-size: clamp(40px, 7vw, 76px);
+      line-height: 0.98;
+      letter-spacing: -0.055em;
+      font-weight: 700;
+    }
+    .lede {
+      max-width: 880px;
+      margin: 24px 0 0;
+      color: #bdc8d6;
+      font-size: clamp(17px, 2.2vw, 22px);
+      line-height: 1.48;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+    .chip {
+      border: 1px solid var(--edge);
+      border-radius: 999px;
+      padding: 7px 11px;
+      color: #b8c4d2;
+      background: rgba(14, 20, 28, 0.8);
+      font: 700 11px/1 var(--mono);
+    }
+    .chip strong { color: var(--ink); }
+
+    .verdict {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: 20px;
+      margin: 12px 0 28px;
+      padding: 22px;
+      border: 1px solid rgba(70, 220, 235, 0.34);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(135deg, rgba(70, 220, 235, 0.10), transparent 56%),
+        var(--panel);
+      box-shadow: 0 28px 72px rgba(0, 0, 0, 0.22);
+    }
+    .verdict-label {
+      color: var(--cyan);
+      font: 750 12px/1.35 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .verdict p { max-width: 850px; margin: 0; font-size: 18px; line-height: 1.55; }
+
+    .truth-banner {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      border: 1px solid var(--edge);
+      border-radius: 14px;
+      background: var(--edge);
+    }
+    .truth-banner > div { padding: 15px 17px; background: #101721; }
+    .truth-banner strong { display: block; color: var(--ink); margin-bottom: 4px; }
+    .truth-banner span { color: var(--muted); font-size: 13px; }
+
+    .controls {
+      position: sticky;
+      top: 10px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 28px;
+      padding: 11px 13px;
+      border: 1px solid rgba(57, 72, 90, 0.88);
+      border-radius: 14px;
+      background: rgba(12, 17, 24, 0.9);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(14px);
+    }
+    button, select, .toggle {
+      min-height: 35px;
+      border: 1px solid var(--edge);
+      border-radius: 9px;
+      color: var(--ink);
+      background: #171f2a;
+      font: 700 11px/1 var(--mono);
+      letter-spacing: 0.025em;
+    }
+    button { cursor: pointer; padding: 0 13px; }
+    button:hover, select:hover, .toggle:hover { border-color: var(--cyan); }
+    select { padding: 0 28px 0 11px; }
+    .toggle { display: inline-flex; align-items: center; gap: 8px; padding: 0 11px; cursor: pointer; }
+    .toggle input { accent-color: var(--cyan); }
+    .clock { margin-left: auto; color: var(--muted); font: 700 11px/1 var(--mono); white-space: nowrap; }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 22px;
+      margin: 50px 0 18px;
+    }
+    h2 { margin: 0; font-size: clamp(27px, 4vw, 42px); line-height: 1.08; letter-spacing: -0.04em; }
+    h3 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -0.02em; }
+    .section-note { max-width: 570px; margin: 0; color: var(--muted); text-align: right; }
+
+    .hero-flow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+      align-items: center;
+      gap: 14px;
+      padding: 18px;
+      border: 1px solid rgba(70, 220, 235, 0.28);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 25px 72px rgba(0, 0, 0, 0.22);
+    }
+    .flow-card { min-width: 0; }
+    .flow-card h3 { margin-bottom: 7px; }
+    .flow-card > p { min-height: 46px; margin: 0 0 13px; color: var(--muted); }
+    .flow-arrow { color: var(--cyan); text-align: center; font: 800 30px/1 var(--mono); }
+    .flow-arrow small { display: block; margin-top: 8px; color: var(--muted); font: 700 9px/1.35 var(--mono); text-transform: uppercase; }
+
+    .screen-shell {
+      overflow: hidden;
+      border: 1px solid #344457;
+      border-radius: 13px;
+      background: #05070a;
+      box-shadow: inset 0 0 0 1px #070a0e, 0 14px 32px rgba(0, 0, 0, 0.3);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      image-rendering: pixelated;
+      background: #000;
+    }
+    .screen-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      margin-top: 10px;
+      color: #8190a3;
+      font: 700 10px/1.35 var(--mono);
+      text-transform: uppercase;
+    }
+    .equation {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .equation div {
+      padding: 12px 13px;
+      border: 1px solid var(--edge);
+      border-radius: 11px;
+      background: #121a24;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .equation strong { display: block; color: var(--ink); font: 800 17px/1.2 var(--mono); margin-bottom: 5px; }
+
+    .current-vs-plan {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .comparison-card, .option-card, .legend-card, .decision-card {
+      min-width: 0;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+    .comparison-card { padding: 18px; }
+    .comparison-card .label, .option-card .label {
+      display: inline-flex;
+      margin-bottom: 10px;
+      border: 1px solid var(--edge);
+      border-radius: 999px;
+      padding: 5px 8px;
+      color: var(--muted);
+      font: 750 9px/1 var(--mono);
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+    .comparison-card .label.warn { color: var(--amber); border-color: rgba(255,174,50,.35); }
+    .comparison-card .label.good, .option-card.recommended .label { color: var(--cyan); border-color: rgba(70,220,235,.38); }
+    .comparison-card h3 { margin-bottom: 7px; }
+    .comparison-card > p { min-height: 70px; margin: 0 0 14px; color: var(--muted); }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .option-card { display: flex; flex-direction: column; padding: 18px; }
+    .option-card.recommended {
+      border-color: rgba(70, 220, 235, 0.42);
+      background: linear-gradient(145deg, rgba(70,220,235,.07), transparent 45%), var(--panel);
+    }
+    .option-card h3 { margin-bottom: 7px; }
+    .option-card > p { margin: 0 0 14px; color: var(--muted); }
+    .option-card .screen-shell { margin-top: auto; }
+    .facts { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+    .facts li { position: relative; padding-left: 16px; color: #aebac8; font-size: 13px; }
+    .facts li::before { content: ""; position: absolute; left: 0; top: .63em; width: 6px; height: 2px; background: var(--cyan); }
+
+    .focus-variants { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .focus-variants .option-card > p { min-height: 82px; }
+
+    .legend-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 18px; }
+    .legend-card { padding: 20px; }
+    .legend-card h3 { margin-bottom: 13px; }
+    .legend-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 11px; }
+    .legend-item { display: grid; grid-template-columns: 30px 1fr; align-items: center; gap: 10px; color: #aeb9c7; font-size: 13px; }
+    .swatch { display: grid; place-items: center; min-height: 24px; border-radius: 7px; background: #080c11; font: 800 12px/1 var(--mono); }
+    .swatch.cyan { color: var(--blue); }
+    .swatch.warm { color: var(--orange); }
+    .swatch.mint { color: var(--mint); }
+    .swatch.white { color: #eef2fa; }
+    .truth-list { margin: 0; padding-left: 20px; color: #aeb9c7; }
+    .truth-list li { margin: 7px 0; }
+
+    .decision-card {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      overflow: hidden;
+      margin-bottom: 60px;
+      background: var(--edge);
+    }
+    .decision-card > div { padding: 22px; background: var(--panel); }
+    .decision-card h3 { margin-bottom: 10px; }
+    .decision-card p, .decision-card li { color: #aeb9c7; }
+    .decision-card ul { margin-bottom: 0; padding-left: 19px; }
+
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border: 1px solid var(--edge); border-radius: 14px; background: var(--panel); }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--edge); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font: 750 10px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    td { color: #afbbc9; }
+    td strong { color: var(--ink); }
+    tr:last-child td { border-bottom: 0; }
+
+    footer { padding: 0 0 42px; color: #718197; font-size: 12px; }
+
+    @media (max-width: 900px) {
+      .hero-flow { grid-template-columns: 1fr; }
+      .flow-arrow { transform: rotate(90deg); padding: 2px 0; }
+      .flow-arrow small { display: none; }
+      .current-vs-plan, .options-grid, .legend-grid, .decision-card { grid-template-columns: 1fr; }
+      .focus-variants { grid-template-columns: 1fr; }
+      .truth-banner { grid-template-columns: 1fr; }
+      .section-head { align-items: start; flex-direction: column; }
+      .section-note { text-align: left; }
+    }
+    @media (max-width: 620px) {
+      .wrap { width: min(100% - 20px, 1200px); }
+      header { padding-top: 38px; }
+      .verdict { grid-template-columns: 1fr; }
+      .equation { grid-template-columns: 1fr; }
+      .legend-list { grid-template-columns: 1fr; }
+      .clock { width: 100%; margin-left: 0; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <p class="eyebrow">BUSY Bar · DSN Network redesign</p>
+    <h1>Dishes first. Direction on demand.</h1>
+    <p class="lede">Three Skies is scientifically honest, but it asks the overview to teach local alt-az geometry, dish sharing, LED collisions and link counts at once. The shipped default makes Network a literal inventory of ground dishes and links, then moves the sky plot into a selected-dish Focus where its meaning is explicit.</p>
+    <div class="chips">
+      <span class="chip"><strong>72×16</strong> exact framebuffers</span>
+      <span class="chip"><strong>G3 / M0 / C5</strong> stress fixture</span>
+      <span class="chip"><strong>DSS-34</strong> two links, one aim</span>
+      <span class="chip"><strong>Shipped default</strong> implementation reference</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="verdict">
+      <div class="verdict-label">Shipped decision</div>
+      <p>The ambient Network is a three-row <strong>dish roster</strong>. An attached association count such as <strong>34(2)</strong> makes Canberra’s five links reconcile immediately to four active dishes. Selecting DSS-34 opens a <strong>single labeled dish-aim scope</strong> beside the spacecraft links that share it.</p>
+    </section>
+
+    <section class="truth-banner" aria-label="Information hierarchy">
+      <div><strong>Network = inventory</strong><span>Which DSN sites, ground dishes and live spacecraft links are present?</span></div>
+      <div><strong>Focus = one dish aim</strong><span>Where is the selected physical antenna pointing in its own local sky?</span></div>
+      <div><strong>Instrument / Distance = detail</strong><span>What is the RF doing, and what does the physical separation mean?</span></div>
+    </section>
+
+    <div class="controls" aria-label="Preview controls">
+      <button id="play" type="button">Pause</button>
+      <button id="source" type="button">Next source sample</button>
+      <label class="toggle"><input id="gaps" type="checkbox" checked> Physical LED gaps</label>
+      <label for="freshness" class="kicker" style="margin:0">Feed</label>
+      <select id="freshness">
+        <option value="fresh">Fresh</option>
+        <option value="delayed">Delayed</option>
+        <option value="stale">Stale</option>
+      </select>
+      <span id="clock" class="clock">SOURCE 1 · FRAME 1/40</span>
+    </div>
+
+    <section aria-labelledby="flow-title">
+      <div class="section-head">
+        <div><p class="kicker">Shipped flow</p><h2 id="flow-title">One board, then one honest aim</h2></div>
+        <p class="section-note">The identities are based on the accepted snapshot that caused the confusion. RF direction, band and angles in this study are illustrative rather than current telemetry.</p>
+      </div>
+      <div class="hero-flow">
+        <article class="flow-card">
+          <h3>Network board</h3>
+          <p>Site total, each active ground dish, and an attached per-dish link count. No spacecraft-position metaphor.</p>
+          <div class="screen-shell"><canvas id="hero-network" width="1296" height="288" aria-label="Shipped DSN dish roster"></canvas></div>
+          <div class="screen-meta"><span>G3 · M0 · C5</span><span>34(2) means two links on DSS-34</span></div>
+        </article>
+        <div class="flow-arrow" aria-hidden="true">→<small>select DSS-34</small></div>
+        <article class="flow-card">
+          <h3>DSS-34 Focus</h3>
+          <p>One local-sky aim belongs to one physical dish. A mint owner bar keeps the selected target explicit while its full name and one other co-dish link scroll completely.</p>
+          <div class="screen-shell"><canvas id="hero-focus" width="1296" height="288" aria-label="Selected DSS-34 dish aim and links"></canvas></div>
+          <div class="screen-meta"><span>one dish aim · AZ048 EL22</span><span>selected target repeats on every page</span></div>
+        </article>
+      </div>
+      <div class="equation" aria-label="Canberra link accounting">
+        <div><strong>C5</strong>Five displayable Canberra dish-to-spacecraft links.</div>
+        <div><strong>34 · 35 · 36 · 43</strong>Four physical ground dishes carrying those links.</div>
+        <div><strong>34(2)</strong>DSS-34 owns two links, so it still has one measured antenna aim.</div>
+      </div>
+    </section>
+
+    <section aria-labelledby="contrast-title">
+      <div class="section-head">
+        <div><p class="kicker">Why change it</p><h2 id="contrast-title">The same truth, with less decoding</h2></div>
+        <p class="section-note">Three Skies answers “where are the dishes aimed?” before it answers the more basic Network question: “which dishes and links are active?”</p>
+      </div>
+      <div class="current-vs-plan">
+        <article class="comparison-card">
+          <span class="label warn">Current abstraction</span>
+          <h3>Three local skies</h3>
+          <p><code>C5</code> means five links, four plotted heads mean four quantized dish aims, and the collision tally explains a shared or rounded cell. All true; too much reconciliation for an ambient glance.</p>
+          <div class="screen-shell"><canvas id="current-skies" width="1296" height="288" aria-label="Current Three Skies concept with five Canberra links and four dish aims"></canvas></div>
+          <div class="screen-meta"><span>C5 but four heads</span><span>plot = dish pointing, not craft position</span></div>
+        </article>
+        <article class="comparison-card">
+          <span class="label good">Shipped abstraction</span>
+          <h3>Ground-dish roster</h3>
+          <p><code>C5</code> is directly reconciled by <code>34(2) 35 36 43</code>. The parenthesized count is attached to its owner; no free dot or detached collision ledger needs interpretation.</p>
+          <div class="screen-shell"><canvas id="proposed-roster" width="1296" height="288" aria-label="Shipped explicit dish and link roster"></canvas></div>
+          <div class="screen-meta"><span>five links · four dishes</span><span>selected DSS-34 is white</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="options-title">
+      <div class="section-head">
+        <div><p class="kicker">Network candidates</p><h2 id="options-title">Six ways to draw the board</h2></div>
+        <p class="section-note">The first is the shipped default. The others are preserved design alternatives, not promises of future production changes.</p>
+      </div>
+      <div class="options-grid">
+        <article class="option-card recommended">
+          <span class="label">1 · Shipped default</span>
+          <h3>Explicit dish roster</h3>
+          <p>Use ordinary text semantics: site link total, dish suffix, and an attached count only when a dish owns more than one link.</p>
+          <div class="screen-shell"><canvas id="option-explicit" width="1296" height="288" aria-label="Explicit parenthesized dish link count"></canvas></div>
+          <ul class="facts"><li>No positional metaphor or learned RF glyph.</li><li><code>34(2)</code> remains legible with LED gaps.</li><li>Exact TX/RX stays in Focus and Instrument.</li></ul>
+        </article>
+        <article class="option-card">
+          <span class="label">2 · Richer RF</span>
+          <h3>Dish + contact chevrons</h3>
+          <p>Every 4×5 badge is one link. Blue <code>&gt;</code> is TX, warm <code>&lt;</code> is RX; two adjacent badges after 34 show two links.</p>
+          <div class="screen-shell"><canvas id="option-chevrons" width="1296" height="288" aria-label="Dish roster with one TX RX chevron badge per link"></canvas></div>
+          <ul class="facts"><li>Preserves per-link direction and receive band.</li><li>Still resolves C5 without paging.</li><li>Requires one small, testable legend.</li></ul>
+        </article>
+        <article class="option-card">
+          <span class="label">3 · Literal contacts</span>
+          <h3>Repeat the dish per link</h3>
+          <p>Draw one dish suffix for every live link. Canberra therefore shows five entries and repeats 34.</p>
+          <div class="screen-shell"><canvas id="option-repeat" width="1296" height="288" aria-label="One repeated dish suffix for each active link"></canvas></div>
+          <ul class="facts"><li>Five tokens visibly equal C5.</li><li>No count glyph needed.</li><li>Risk: two 34s can look like two antennas unless explicitly taught.</li></ul>
+        </article>
+        <article class="option-card">
+          <span class="label">4 · Capacity context</span>
+          <h3>Fixed antenna fleet</h3>
+          <p>Every known dish keeps a stable slot. Active dishes brighten; inactive dishes remain dim, so the network’s available ground hardware stays visible.</p>
+          <div class="screen-shell"><canvas id="option-fleet" width="1296" height="288" aria-label="Fixed DSN antenna fleet with active dishes highlighted"></canvas></div>
+          <ul class="facts"><li>Excellent spatial memory and maintenance context.</li><li>Shows that not every dish is always linked.</li><li>Weakest at explaining DSS-34’s two simultaneous links.</li></ul>
+        </article>
+        <article class="option-card">
+          <span class="label">5 · Summary + target</span>
+          <h3>Global totals with selected dish</h3>
+          <p>Keep site totals permanently at the top, then use the remaining two rows for the selected dish and its link identities.</p>
+          <div class="screen-shell"><canvas id="option-summary" width="1296" height="288" aria-label="Network totals and selected dish details"></canvas></div>
+          <ul class="facts"><li>Names are immediately available without another view.</li><li>Very clear wheel target.</li><li>Hides the other active dish suffixes, so it is weaker as Network.</li></ul>
+        </article>
+        <article class="option-card">
+          <span class="label">6 · Existing rollback</span>
+          <h3>Three Skies</h3>
+          <p>Keep the current renderer as a rollback and as evidence that the underlying alt-az data remains valuable—just at the selected-dish level.</p>
+          <div class="screen-shell"><canvas id="option-skies" width="1296" height="288" aria-label="Existing Three Skies layout retained as rollback"></canvas></div>
+          <ul class="facts"><li>Beautiful, live and scientifically grounded.</li><li>Best answer to “where is a dish aimed?”</li><li>Not the best first answer to “what is connected?”</li></ul>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="focus-title">
+      <div class="section-head">
+        <div><p class="kicker">Selected-dish candidates</p><h2 id="focus-title">Three ways to make pointing understandable</h2></div>
+        <p class="section-note">Every version names the ground dish before showing geometry. A missing angle produces an explicit no-aim state, never an invented point.</p>
+      </div>
+      <div class="focus-variants">
+        <article class="option-card recommended">
+          <span class="label">A · Shipped Focus</span>
+          <h3>One aim + two link rows</h3>
+          <p>The plot is small but literal. Each craft gets a separate TX/RX row outside it, so one head can never be mistaken for two spacecraft positions.</p>
+          <div class="screen-shell"><canvas id="focus-scope" width="1296" height="288" aria-label="One DSS-34 aim with two named links"></canvas></div>
+        </article>
+        <article class="option-card">
+          <span class="label">B · Plainest</span>
+          <h3>Connection tree</h3>
+          <p>Remove the plot entirely and show one selected dish branching orthogonally to its two links. Equal branch lengths carry no distance meaning.</p>
+          <div class="screen-shell"><canvas id="focus-tree" width="1296" height="288" aria-label="DSS-34 orthogonal connection tree to two spacecraft links"></canvas></div>
+        </article>
+        <article class="option-card">
+          <span class="label">C · Honest fallback</span>
+          <h3>No published aim</h3>
+          <p>If either angle is absent, retain the dish and links but replace geometry with a complete <code>NO AIM</code> label.</p>
+          <div class="screen-shell"><canvas id="focus-missing" width="1296" height="288" aria-label="Selected dish with no published pointing"></canvas></div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="legend-title">
+      <div class="section-head">
+        <div><p class="kicker">Reading contract</p><h2 id="legend-title">Nothing floats without an owner</h2></div>
+        <p class="section-note">The page uses the production font, palette and a qualitative 10-lit / 8-gap panel model.</p>
+      </div>
+      <div class="legend-grid">
+        <article class="legend-card">
+          <h3>Visual vocabulary</h3>
+          <div class="legend-list">
+            <div class="legend-item"><span class="swatch white">34</span><span>White dish number = current wheel target.</span></div>
+            <div class="legend-item"><span class="swatch mint">(2)</span><span>Attached count = live links owned by that dish.</span></div>
+            <div class="legend-item"><span class="swatch mint">▮</span><span>Focus owner bar = exact wheel/START-selected spacecraft.</span></div>
+            <div class="legend-item"><span class="swatch cyan">TX</span><span>Blue, upper lane or right chevron = Earth transmits.</span></div>
+            <div class="legend-item"><span class="swatch warm">RX</span><span>Warm, lower lane or left chevron = Earth receives.</span></div>
+            <div class="legend-item"><span class="swatch cyan">▮</span><span>Cyan x71 lease = NASA source timestamp advanced.</span></div>
+            <div class="legend-item"><span class="swatch white">●</span><span>Scope marker = selected physical dish direction.</span></div>
+          </div>
+        </article>
+        <article class="legend-card">
+          <h3>Truth contract</h3>
+          <ul class="truth-list">
+            <li><strong>Site counts are links, not dishes.</strong> C5 can therefore coexist with four dish numbers.</li>
+            <li><strong>The roster contains no spacecraft positions.</strong> It is ground-network topology.</li>
+            <li><strong>The Focus marker is DSS-34’s aim.</strong> Center is zenith; rim is horizon; north is up.</li>
+            <li><strong>Two links can share one aim.</strong> MSPA and source associations do not create a second antenna.</li>
+            <li><strong><code>NO LINKS</code> is narrow.</strong> It means no displayable active spacecraft association in the accepted source snapshot—not idle, powered down, broken or out of view.</li>
+            <li><strong>No fake motion.</strong> The board changes only on accepted source data; the heartbeat owns freshness.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="decision-title">
+      <div class="section-head">
+        <div><p class="kicker">Final call</p><h2 id="decision-title">What shipped</h2></div>
+      </div>
+      <div class="decision-card">
+        <div>
+          <h3>Explicit roster is the default</h3>
+          <p>It passes the three-second test without a legend: four Canberra dish numbers, five total links, and DSS-34 visibly owns two.</p>
+          <ul><li>Keep <code>DSN_NETWORK_STYLE=skies</code> as rollback during hardware testing.</li><li>Use native wheel text immediately; commit Focus only after wheel rest.</li><li>Preserve Instrument and Distance unchanged.</li></ul>
+        </div>
+        <div>
+          <h3>Keep richer variants as studies</h3>
+          <p>The 4×5 TX/RX badges remain a useful hardware experiment, but they do not replace the complete text roster without a separate legibility and truth review.</p>
+          <ul><li>Do not reintroduce detached counts.</li><li>Do not make the local-sky plot ambient again.</li><li>Do not use line length, diagonal beams or sweeping radar as liveness.</li></ul>
+        </div>
+      </div>
+
+      <table aria-label="Concept comparison">
+        <thead><tr><th>Concept</th><th>Fastest answer</th><th>Main cost</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Explicit roster</strong></td><td>Which dishes and how many links?</td><td>No per-link RF direction</td><td>Shipped default</td></tr>
+          <tr><td><strong>Contact chevrons</strong></td><td>Dish, multiplicity, TX and RX</td><td>Small learned glyph</td><td>Hardware prototype</td></tr>
+          <tr><td><strong>Repeated dishes</strong></td><td>One token per link</td><td>Duplicate 34 can imply two dishes</td><td>Fallback study</td></tr>
+          <tr><td><strong>Fixed fleet</strong></td><td>Active vs inactive antenna capacity</td><td>Multiplicity is weak</td><td>Operations variant</td></tr>
+          <tr><td><strong>Three Skies</strong></td><td>Where are active dishes aimed?</td><td>Not self-explanatory as Network</td><td>Move to Focus / retain rollback</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="wrap">Implementation and design reference. The identities mirror one accepted DSN snapshot; the RF flags and angles are illustrative rather than live telemetry. Exact browser framebuffers and the physical-gap preview are not proof of real-panel colour or glyph legibility.</footer>
+
+  <script>
+    const W=72,H=16,FPS=5,FRAMES=40,LED=10,GAP=8,PITCH=LED+GAP,PAD=GAP/2;
+    const C={
+      off:"#000000",name:"#d7e1f0",dish:"#6e91be",antenna:"#c8aa6e",selected:"#eef2fa",
+      uplink:"#78beff",s:"#ff280a",x:"#ffa03c",k:"#b4ff50",ka:"#ffffaa",unknown:"#6428ff",
+      ring:"#224252",north:"#919191",ledger:"#28ffb4",quiet:"#556982",divider:"#28374b",
+      fresh:"#46dceb",delayed:"#ffae32",stale:"#f54137",tree:"#59758f"
+    };
+    const FONT={
+      "A":["0110","1001","1111","1001","1001"],"B":["1110","1001","1110","1001","1110"],
+      "C":["0111","1000","1000","1000","0111"],"D":["1110","1001","1001","1001","1110"],
+      "E":["1111","1000","1110","1000","1111"],"F":["1111","1000","1110","1000","1000"],
+      "G":["0111","1000","1011","1001","0111"],"H":["1001","1001","1111","1001","1001"],
+      "I":["111","010","010","010","111"],"J":["0011","0001","0001","1001","0110"],
+      "K":["1001","1010","1100","1010","1001"],"L":["1000","1000","1000","1000","1111"],
+      "M":["10001","11011","10101","10001","10001"],"N":["1001","1101","1011","1001","1001"],
+      "O":["0110","1001","1001","1001","0110"],"P":["1110","1001","1110","1000","1000"],
+      "Q":["0110","1001","1001","1011","0111"],"R":["1110","1001","1110","1010","1001"],
+      "S":["0110","1000","0110","0001","0110"],"T":["1111","0100","0100","0100","0100"],
+      "U":["1001","1001","1001","1001","0110"],"V":["1001","1001","1001","1010","0100"],
+      "W":["10001","10001","10101","11011","10001"],"X":["1001","1001","0110","1001","1001"],
+      "Y":["1001","1001","0110","0100","0100"],"Z":["1111","0001","0110","1000","1111"],
+      "0":["0110","1011","1101","1001","0110"],"1":["010","110","010","010","111"],
+      "2":["0110","1001","0010","0100","1111"],"3":["1110","0001","0110","0001","1110"],
+      "4":["0010","0110","1010","1111","0010"],"5":["1111","1000","1110","0001","1110"],
+      "6":["0110","1000","1110","1001","0110"],"7":["1111","0001","0010","0100","0100"],
+      "8":["0110","1001","0110","1001","0110"],"9":["0110","1001","0111","0001","0110"],
+      " ":["0000","0000","0000","0000","0000"],".":["0000","0000","0000","0000","0100"],
+      "-":["0000","0000","1111","0000","0000"],"?":["0110","1001","0010","0000","0100"],
+      "/":["0001","0010","0100","1000","0000"],">":["1000","0100","0010","0100","1000"],
+      "(":["001","010","100","010","001"],")":["100","010","001","010","100"],
+      ":":["0000","0100","0000","0100","0000"]
+    };
+    const fixture=[
+      {site:"G",dish:"23",craft:"IMAP",up:false,down:"X",az:292,el:34},
+      {site:"G",dish:"24",craft:"CHDR",up:true,down:"S",az:236,el:49},
+      {site:"G",dish:"26",craft:"SOHO",up:true,down:"X",az:171,el:61},
+      {site:"C",dish:"34",craft:"M01O",up:true,down:"S",az:48,el:22},
+      {site:"C",dish:"34",craft:"MRO",up:false,down:"X",az:48,el:22},
+      {site:"C",dish:"35",craft:"SPP",up:false,down:"X",az:112,el:62},
+      {site:"C",dish:"36",craft:"LRO",up:true,down:"S",az:221,el:14},
+      {site:"C",dish:"43",craft:"JNO",up:true,down:"X",az:303,el:31}
+    ];
+    const friendlyNames={M01O:"MARS ODYSSEY",MRO:"MARS RECONNAISSANCE ORBITER"};
+    const bandColor={S:C.s,X:C.x,K:C.k,KA:C.ka};
+
+    class FB{
+      constructor(){this.p=new Array(W*H).fill(C.off);}
+      set(x,y,color){if(x>=0&&x<W&&y>=0&&y<H)this.p[y*W+x]=color;}
+      get(x,y){return this.p[y*W+x];}
+      hline(x0,x1,y,color){for(let x=Math.max(0,x0);x<=Math.min(W-1,x1);x++)this.set(x,y,color);}
+      vline(x,y0,y1,color){for(let y=Math.max(0,y0);y<=Math.min(H-1,y1);y++)this.set(x,y,color);}
+      text(x,y,value,color,clip=[0,W-1]){
+        let cursor=x;
+        String(value).toUpperCase().split("").forEach(ch=>{
+          const glyph=FONT[ch]||FONT["?"];
+          glyph.forEach((row,dy)=>row.split("").forEach((bit,dx)=>{const gx=cursor+dx;if(bit==="1"&&gx>=clip[0]&&gx<=clip[1])this.set(gx,y+dy,color);}));
+          cursor+=glyphWidth(ch)+1;
+        });
+      }
+    }
+    function glyphWidth(ch){const glyph=FONT[String(ch).toUpperCase()]||FONT["?"];return glyph[0].length;}
+    function textWidth(value){const chars=String(value).toUpperCase().split("");return chars.length?chars.reduce((n,ch)=>n+glyphWidth(ch)+1,0)-1:0;}
+    function centeredText(fb,y,value,color,clip=[0,69]){const x=clip[0]+Math.floor((clip[1]-clip[0]+1-textWidth(value))/2);fb.text(x,y,value,color,clip);}
+    function marqueeText(fb,y,value,color,clip,frame){
+      const width=textWidth(value),box=clip[1]-clip[0]+1;
+      if(width<=box){fb.text(clip[0],y,value,color,clip);return;}
+      const cycle=width+8,offset=Math.floor((frame%FRAMES)/FRAMES*cycle),start=clip[0]-offset;
+      fb.text(start,y,value,color,clip);
+      if(offset)fb.text(start+cycle,y,value,color,clip);
+    }
+    function ring(fb,cx,cy,r){const step=r<5?45:15;for(let deg=0;deg<360;deg+=step){const a=deg*Math.PI/180;fb.set(Math.round(cx+Math.sin(a)*r),Math.round(cy-Math.cos(a)*r),C.ring);}fb.set(cx,cy,C.ring);fb.set(cx,cy-r,C.north);}
+    function scopePoint(link,cx,cy,r){const az=((link.az%360)+360)%360*Math.PI/180,rr=(90-Math.max(0,Math.min(90,link.el)))/90*r;return[Math.round(cx+Math.sin(az)*rr),Math.round(cy-Math.cos(az)*rr)];}
+    function siteLinks(site){return fixture.filter(link=>link.site===site);}
+    function dishGroups(site){const groups=[];for(const link of siteLinks(site)){let group=groups.find(item=>item.dish===link.dish);if(!group){group={dish:link.dish,links:[]};groups.push(group);}group.links.push(link);}return groups;}
+
+    function freshnessRail(fb,source,status,frame){
+      if(status==="fresh"){const y=(2+source*2)%15;fb.set(71,y,C.fresh);fb.set(71,y+1,C.fresh);}
+      else if(status==="delayed"){if(Math.floor(frame/5)%2===0)[0,8,15].forEach(y=>fb.set(71,y,C.delayed));}
+      else [0,8,15].forEach(y=>fb.set(71,y,C.stale));
+    }
+    function drawDishCount(fb,x,y,dish,count,selected=false){
+      fb.text(x,y,dish,selected?C.selected:C.dish,[x,x+8]);
+      if(count>1)fb.text(x+10,y,"("+count+")",C.ledger,[x+10,69]);
+    }
+    function explicitRoster(frame,source,status){
+      const fb=new FB();
+      fb.text(0,0,"G3",C.antenna,[0,8]);drawDishCount(fb,11,0,"23",1);drawDishCount(fb,21,0,"24",1);drawDishCount(fb,31,0,"26",1);
+      fb.text(0,5,"M0",C.antenna,[0,9]);fb.text(13,5,"NO LINKS",C.quiet,[13,50]);
+      fb.text(0,10,"C5",C.antenna,[0,8]);drawDishCount(fb,11,10,"34",2,true);drawDishCount(fb,33,10,"35",1);drawDishCount(fb,43,10,"36",1);drawDishCount(fb,53,10,"43",1);
+      freshnessRail(fb,source,status,frame);return fb;
+    }
+    const TX_PIXELS=[[0,0],[1,1],[2,2],[1,3],[0,4]],RX_PIXELS=[[3,0],[2,1],[1,2],[2,3],[3,4]];
+    function drawChevron(fb,x,y,link){if(link.up)TX_PIXELS.forEach(([dx,dy])=>fb.set(x+dx,y+dy,C.uplink));if(link.down)RX_PIXELS.forEach(([dx,dy])=>fb.set(x+dx,y+dy,bandColor[link.down]||C.unknown));}
+    function chevronRoster(frame,source,status){
+      const fb=new FB();
+      fb.text(0,0,"G3",C.antenna,[0,8]);[["23",10,19],["24",24,33],["26",38,47]].forEach(([dish,x,bx])=>{fb.text(x,0,dish,C.dish,[x,x+8]);drawChevron(fb,bx,0,siteLinks("G").find(link=>link.dish===dish));});
+      fb.text(0,5,"M0",C.antenna,[0,9]);fb.text(13,5,"NO LINKS",C.quiet,[13,50]);
+      fb.text(0,10,"C5",C.antenna,[0,8]);const cg=dishGroups("C"),layout=[["34",10,19],["35",28,37],["36",42,51],["43",56,65]];
+      layout.forEach(([dish,x,bx])=>{const group=cg.find(g=>g.dish===dish);fb.text(x,10,dish,dish==="34"?C.selected:C.dish,[x,x+8]);group.links.forEach((link,i)=>drawChevron(fb,bx+i*4,10,link));});
+      freshnessRail(fb,source,status,frame);return fb;
+    }
+    function repeatedRoster(frame,source,status){
+      const fb=new FB();
+      fb.text(0,0,"G3",C.antenna,[0,8]);["23","24","26"].forEach((dish,i)=>fb.text(11+i*12,0,dish,C.dish,[11+i*12,19+i*12]));
+      fb.text(0,5,"M0",C.antenna,[0,9]);fb.text(13,5,"NO LINKS",C.quiet,[13,50]);
+      fb.text(0,10,"C5",C.antenna,[0,8]);["34","34","35","36","43"].forEach((dish,i)=>fb.text(10+i*10,10,dish,i===0?C.selected:C.dish,[10+i*10,18+i*10]));
+      freshnessRail(fb,source,status,frame);return fb;
+    }
+    function fleetFrame(frame,source,status){
+      const fb=new FB(),fleets={G:["13","14","15","24","25","26"],M:["53","54","55","56","63","65"],C:["34","35","36","43","45","46"]};
+      [["G",0],["M",5],["C",10]].forEach(([site,y])=>{fb.text(0,y,site,C.antenna,[0,4]);const active=new Set(dishGroups(site).map(group=>group.dish));fleets[site].forEach((dish,i)=>fb.text(7+i*10,y,dish,active.has(dish)?(dish==="34"?C.selected:C.dish):C.quiet,[7+i*10,15+i*10]));});
+      freshnessRail(fb,source,status,frame);return fb;
+    }
+    function summaryFrame(frame,source,status){
+      const fb=new FB();fb.text(0,0,"G3",C.antenna,[0,8]);fb.text(25,0,"M0",C.antenna,[25,34]);fb.text(50,0,"C5",C.antenna,[50,58]);
+      centeredText(fb,5,"C34 2 LINKS",C.selected,[0,69]);centeredText(fb,10,"M01O/MRO",C.name,[0,69]);freshnessRail(fb,source,status,frame);return fb;
+    }
+    function currentSkies(frame,source,status){
+      const fb=new FB(),sites=[{key:"G",base:0,cx:15},{key:"M",base:24,cx:39},{key:"C",base:48,cx:63}];
+      sites.forEach(site=>{const links=siteLinks(site.key),groups=dishGroups(site.key);fb.text(site.base,0,site.key+links.length,C.antenna,[site.base,site.base+9]);ring(fb,site.cx,7,6);const cells=new Map();groups.forEach(group=>{const p=scopePoint(group.links[0],site.cx,7,6),key=p.join(",");if(!cells.has(key))cells.set(key,{p,count:0,groups:[]});const cell=cells.get(key);cell.count+=group.links.length;cell.groups.push(group);});cells.forEach(cell=>{const selected=cell.groups.some(group=>group.dish==="34");const link=cell.groups[0].links[0];fb.set(cell.p[0],cell.p[1],selected?C.selected:(bandColor[link.down]||C.uplink));});if(site.key==="C"){
+        fb.text(48,10,"2",C.ledger,[48,51]);fb.set(53,10,C.ledger);fb.set(53,14,C.ledger);fb.vline(54,10,14,C.ledger);
+      }});freshnessRail(fb,source,status,frame);return fb;
+    }
+    function drawFocusContact(fb,link,y,selected,frame){
+      if(selected)fb.vline(14,y,y+4,C.ledger);
+      marqueeText(fb,y,friendlyNames[link.craft]||link.craft,selected?C.selected:C.name,[16,37],frame);
+      if(link.up)fb.text(39,y,"TX",C.uplink,[39,47]);
+      if(link.down)fb.text(54,y,"RX",bandColor[link.down]||C.unknown,[54,62]);
+    }
+    function focusScope(frame,source,status){
+      const fb=new FB();fb.text(0,0,"C34 AZ048 EL22",C.selected,[0,69]);ring(fb,7,10,5);
+      const links=siteLinks("C").filter(link=>link.dish==="34"),p=scopePoint(links[0],7,10,5);fb.set(p[0],p[1],C.selected);
+      drawFocusContact(fb,links[0],6,true,frame);drawFocusContact(fb,links[1],11,false,frame);
+      freshnessRail(fb,source,status,frame);return fb;
+    }
+    function focusTree(frame,source,status){
+      const fb=new FB(),links=siteLinks("C").filter(link=>link.dish==="34");fb.text(0,0,"C34 AZ048 EL22",C.selected,[0,69]);
+      fb.vline(4,6,13,C.tree);fb.hline(4,13,7,C.tree);fb.hline(4,13,12,C.tree);
+      drawFocusContact(fb,links[0],5,true,frame);drawFocusContact(fb,links[1],10,false,frame);freshnessRail(fb,source,status,frame);return fb;
+    }
+    function missingFocus(frame,source,status){
+      const fb=new FB(),links=siteLinks("C").filter(link=>link.dish==="34");fb.text(0,0,"C34 NO AIM",C.ledger,[0,69]);fb.text(5,8,"?",C.ledger,[5,8]);
+      drawFocusContact(fb,links[0],6,true,frame);drawFocusContact(fb,links[1],11,false,frame);freshnessRail(fb,source,status,frame);return fb;
+    }
+
+    const renderers={
+      "hero-network":explicitRoster,"hero-focus":focusScope,"current-skies":currentSkies,"proposed-roster":explicitRoster,
+      "option-explicit":explicitRoster,"option-chevrons":chevronRoster,"option-repeat":repeatedRoster,"option-fleet":fleetFrame,
+      "option-summary":summaryFrame,"option-skies":currentSkies,"focus-scope":focusScope,"focus-tree":focusTree,"focus-missing":missingFocus
+    };
+    function paint(canvas,fb,gaps){const ctx=canvas.getContext("2d"),size=gaps?LED:PITCH,offset=gaps?PAD:0;ctx.fillStyle="#020304";ctx.fillRect(0,0,canvas.width,canvas.height);for(let y=0;y<H;y++)for(let x=0;x<W;x++){const color=fb.get(x,y);ctx.fillStyle=color===C.off?"#080a0e":color;ctx.fillRect(x*PITCH+offset,y*PITCH+offset,size,size);}}
+    const gaps=document.getElementById("gaps"),freshness=document.getElementById("freshness"),clock=document.getElementById("clock"),play=document.getElementById("play");
+    const reduceMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;let playing=!reduceMotion,frame=0,source=0;
+    function render(){const gapMode=gaps.checked,status=freshness.value;Object.entries(renderers).forEach(([id,renderer])=>paint(document.getElementById(id),renderer(frame,source,status),gapMode));clock.textContent="SOURCE "+(source+1)+" · FRAME "+(frame+1)+"/40";}
+    play.textContent=playing?"Pause":"Play";
+    play.addEventListener("click",()=>{playing=!playing;play.textContent=playing?"Pause":"Play";});
+    document.getElementById("source").addEventListener("click",()=>{source=(source+1)%6;frame=0;render();});
+    gaps.addEventListener("change",render);freshness.addEventListener("change",()=>{frame=0;render();});
+    render();
+    setInterval(()=>{if(!playing||document.hidden)return;frame=(frame+1)%FRAMES;if(frame===0&&freshness.value==="fresh")source=(source+1)%6;render();},1000/FPS);
+  </script>
+</body>
+</html>

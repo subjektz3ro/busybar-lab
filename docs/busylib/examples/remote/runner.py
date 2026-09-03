@@ -1,0 +1,629 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import inspect
+import logging
+import shlex
+import time
+from collections.abc import Awaitable, Callable
+from urllib.parse import urlparse
+
+from busylib import display, exceptions
+from busylib.client import AsyncBusyBar
+from busylib.features import collect_device_snapshot
+from examples.remote.keymap import KeyDecoder, KeyMap, StdinReader, load_keymap
+from examples.remote.command_core import (
+    CommandInput,
+    CommandRegistry,
+    register_command,
+)
+from examples.remote.commands import InputCapture, discover_commands
+from examples.remote.commands.call import build_call_handler
+from examples.remote.constants import (
+    ICON_SETS,
+    TEXT_HTTP_POLL,
+    TEXT_INIT_CONNECTING,
+    TEXT_INIT_HTTP,
+    TEXT_INIT_START,
+    TEXT_INIT_STREAMING,
+    TEXT_INIT_WAIT_FRAME,
+    TEXT_POLL_FAIL,
+    TEXT_POLL_LEN,
+    TEXT_STOPPED,
+    TEXT_STREAMING_INFO,
+)
+from .periodic_tasks import (
+    build_periodic_tasks,
+    cloud_link,
+    stream_dashboard_state,
+    update_check,
+)
+from .renderers import TerminalRenderer
+from .settings import settings
+
+logger = logging.getLogger(__name__)
+
+
+PERIODIC_TASKS: dict[
+    str,
+    tuple[Callable[[AsyncBusyBar, TerminalRenderer], Awaitable[None]], float],
+] = {
+    "link_check": (cloud_link, 10),
+    "update_check": (update_check, 3600),
+}
+
+
+def _resolve_pixel_char(icons: dict[str, str]) -> str:
+    """
+    Resolve the pixel character for frame rendering.
+
+    Priority is settings override, selected icon-set pixel, then fallback.
+    """
+    if settings.pixel_char:
+        return settings.pixel_char
+
+    default_icon_value = icons.get("pixel")
+    if default_icon_value:
+        return default_icon_value
+
+    default_icon_value = ICON_SETS.get("nerd", {}).get("pixel")
+    if default_icon_value:
+        return default_icon_value
+
+    return "*"
+
+
+def _format_streaming_info(addr: str, protocol: str) -> str:
+    """
+    Build streaming info with protocol and host address.
+
+    The address is normalized to include the host and port if provided.
+    """
+    base_addr = addr if "://" in addr else f"http://{addr}"
+    parsed = urlparse(base_addr)
+    host = parsed.hostname or addr
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return TEXT_STREAMING_INFO.format(protocol=protocol, host=host)
+
+
+async def _forward_keys(
+    client: AsyncBusyBar,
+    keymap: KeyMap,
+    stop_event: asyncio.Event,
+    status_message: Callable[[str], None] | None = None,
+    command_queue: asyncio.Queue[Callable[[], Awaitable[None]]] | None = None,
+    renderer: TerminalRenderer | None = None,
+    command_registry: CommandRegistry | None = None,
+    command_input: CommandInput | None = None,
+    input_capture: InputCapture | None = None,
+) -> None:
+    """
+    Forward terminal key presses to the BUSY Bar input API.
+
+    Handles help overlay toggle and quit hotkeys.
+    """
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[bytes] = asyncio.Queue()
+    reader = StdinReader(loop, queue)
+    decoder = KeyDecoder(keymap)
+    command_active = False
+    command_input = command_input or CommandInput()
+    reader.start()
+    try:
+        while not stop_event.is_set():
+            try:
+                chunk = await asyncio.wait_for(
+                    queue.get(), timeout=settings.key_timeout
+                )
+            except asyncio.TimeoutError:
+                continue
+            if input_capture and input_capture.handle(chunk):
+                continue
+            if (
+                not command_active
+                and renderer
+                and any(b in (0x68, 0x48) for b in chunk)
+            ):  # h/H for help
+                renderer.render_help(keymap)
+                continue
+
+            async def handle_key_bytes(data: bytes) -> bool:
+                """
+                Decode and forward key bytes to the device input API.
+
+                Returns True when a stop request was triggered.
+                """
+                for raw_seq, key_event in decoder.feed(data):
+                    if raw_seq in keymap.exit_sequences:
+                        stop_event.set()
+                        return True
+                    if key_event is None:
+                        continue
+                    try:
+                        await client.input(key_event)
+                    except Exception as exc:  # noqa: BLE001 pragma: no cover - network dependent
+                        logger.debug("Failed to send key %s: %s", key_event.value, exc)
+                return False
+
+            async def handle_command_bytes(data: bytes) -> None:
+                """
+                Consume command mode input and dispatch on Enter.
+
+                Supports history navigation and ESC to cancel the prompt.
+                """
+                nonlocal command_active
+                for event, payload in command_input.feed(data):
+                    if event == "cancel":
+                        command_active = False
+                        if renderer:
+                            renderer.update_command_line(None)
+                        continue
+                    if event == "submit":
+                        line = (payload or "").strip()
+                        command_active = False
+                        command_input.begin()
+                        if renderer:
+                            renderer.update_command_line(None)
+                        if line and command_queue and command_registry:
+                            await command_queue.put(
+                                lambda line=line: _handle_command_line(
+                                    line,
+                                    command_registry=command_registry,
+                                    status_message=status_message,
+                                )
+                            )
+                        continue
+                    if event == "update":
+                        if isinstance(payload, tuple):
+                            command_text, command_cursor = payload
+                        else:
+                            command_text = payload or ""
+                            command_cursor = len(command_text)
+                        if renderer:
+                            renderer.update_command_line(
+                                command_text, cursor=command_cursor
+                            )
+
+            if command_active:
+                await handle_command_bytes(chunk)
+                continue
+
+            if b":" in chunk:
+                before, _sep, after = chunk.partition(b":")
+                if before:
+                    should_stop = await handle_key_bytes(before)
+                    if should_stop:
+                        return
+                command_active = True
+                command_input.begin()
+                if renderer:
+                    renderer.update_command_line("", cursor=0)
+                if after:
+                    await handle_command_bytes(after)
+                continue
+
+            should_stop = await handle_key_bytes(chunk)
+            if should_stop:
+                return
+    finally:
+        reader.stop()
+
+
+async def _handle_command_line(
+    line: str,
+    *,
+    command_registry: CommandRegistry,
+    status_message: Callable[[str], None] | None = None,
+) -> None:
+    """
+    Execute a command line with error handling.
+    """
+    command_name = _extract_command_name(line)
+    if status_message and command_name:
+        status_message(f"command: start {command_name}")
+
+    try:
+        handled, error = await command_registry.handle(line)
+        if not handled and status_message:
+            if error and error.startswith("Unknown command: "):
+                status_message(f"command: not found {command_name or 'unknown'}")
+            else:
+                status_message(
+                    f"command: failed {command_name or 'unknown'}: {error or 'Unknown command'}"
+                )
+            return
+        if handled and status_message:
+            status_message(f"command: done {command_name or 'unknown'}")
+    except exceptions.BusyBarAPIError as exc:
+        if exc.code == 423:
+            message = f"{exc.error} (code: {exc.code})"
+            logger.info("Command blocked: %s", message)
+            if status_message:
+                status_message(
+                    f"command: failed {command_name or 'unknown'}: {message}"
+                )
+            return
+        logger.warning("Command failed: %s", exc)
+        if status_message:
+            status_message(f"command: failed {command_name or 'unknown'}: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Command failed")
+        if status_message:
+            status_message(f"command: failed {command_name or 'unknown'}: {exc}")
+
+
+def _extract_command_name(line: str) -> str | None:
+    """
+    Extract the command name from a raw command line.
+
+    Returns None for empty or syntactically invalid command lines.
+    """
+    try:
+        parts = shlex.split(line, posix=True)
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    return parts[0].strip().lower() or None
+
+
+def _build_help_handler(
+    command_registry: CommandRegistry,
+    status_message: Callable[[str], None],
+) -> Callable[[list[str]], Awaitable[None]]:
+    """
+    Build command help handler using registry metadata and command parsers.
+
+    Shows per-command descriptions and arguments extracted from command classes.
+    """
+
+    async def _handler(args: list[str]) -> None:
+        """
+        Render command help to the remote log pane.
+        """
+        if not args:
+            names = command_registry.list_commands()
+            status_message(f"help: commands {', '.join(names)}")
+            status_message("help: use help <cmd>")
+            return
+
+        target = args[0].strip().lower()
+        if not target:
+            status_message("help: missing command name")
+            return
+
+        command = command_registry.find_command_object(target)
+        if command is None:
+            entry = command_registry.get_entry(target)
+            if entry is not None:
+                status_message(f"help {target}: built-in handler")
+                return
+            status_message(f"help: not found {target}")
+            return
+
+        description = inspect.getdoc(command.__class__) or "No description."
+        summary = description.splitlines()[0].strip()
+        status_message(f"help {command.name}: {summary}")
+        if command.aliases:
+            status_message(f"aliases: {', '.join(command.aliases)}")
+
+        parser = command.build_parser()
+        for line in _format_parser_arguments(parser):
+            status_message(line)
+
+    return _handler
+
+
+def _format_parser_arguments(parser: argparse.ArgumentParser) -> list[str]:
+    """
+    Format parser actions for compact command help output.
+
+    Returns one line per positional/optional argument, excluding built-in help.
+    """
+    lines: list[str] = []
+    for action in parser._actions:
+        if isinstance(action, argparse._HelpAction):
+            continue
+
+        help_text = (action.help or "").strip()
+        if action.option_strings:
+            opts = ", ".join(action.option_strings)
+            takes_value = action.nargs != 0
+            metavar = action.metavar or action.dest.upper()
+            suffix = f" <{metavar}>" if takes_value else ""
+            descriptor = f"arg: {opts}{suffix}"
+        else:
+            descriptor = f"arg: {action.dest}"
+
+        if help_text:
+            descriptor = f"{descriptor} - {help_text}"
+        lines.append(descriptor)
+
+    if not lines:
+        return ["arg: (none)"]
+    return lines
+
+
+async def _run_command_queue(
+    queue: asyncio.Queue[Callable[[], Awaitable[None]]],
+    *,
+    stop_event: asyncio.Event,
+) -> None:
+    """
+    Process queued command lines without blocking the frame loop.
+    """
+    while True:
+        if stop_event.is_set() and queue.empty():
+            return
+        try:
+            task = await asyncio.wait_for(queue.get(), timeout=0.05)
+        except asyncio.TimeoutError:
+            continue
+        await task()
+
+
+async def _poll_http(
+    client: AsyncBusyBar,
+    spec: display.DisplaySpec,
+    interval: float,
+    stop_event: asyncio.Event,
+    renderer: TerminalRenderer,
+    clear_screen: Callable[[str], None],
+    status_message: Callable[[str], None],
+) -> None:
+    """
+    Poll /api/screen over HTTP and render frames.
+
+    The terminal is cleared on the first received frame only.
+    """
+    expected_len = spec.width * spec.height * 3
+    cleared = False
+    status_message(TEXT_INIT_HTTP)
+    status_message(TEXT_INIT_WAIT_FRAME)
+    try:
+        while not stop_event.is_set():
+            try:
+                frame_bytes = await client.screen(spec)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(TEXT_POLL_FAIL, exc)
+                await asyncio.sleep(interval)
+                continue
+
+            if frame_bytes:
+                if not cleared:
+                    status_message(TEXT_INIT_STREAMING)
+                    clear_screen("http_poll_first_frame")
+                    cleared = True
+                if len(frame_bytes) != expected_len:
+                    logger.debug(
+                        TEXT_POLL_LEN.format(
+                            size=len(frame_bytes),
+                            expected=expected_len,
+                        )
+                    )
+                renderer.render(frame_bytes)
+            await asyncio.sleep(interval)
+    finally:
+        stop_event.set()
+
+
+async def _run(
+    args: argparse.Namespace,
+    *,
+    icons: dict[str, str],
+    clear_screen: Callable[[str], None],
+    clear_terminal: Callable[[], None],
+    status_message: Callable[[str], None],
+) -> None:
+    """
+    Run the remote streaming loop with keyboard forwarding and status updates.
+
+    This manages streaming tasks and periodic polling.
+    """
+    keymap = load_keymap(args.keymap_file) if not args.no_send_input else None
+    command_input = CommandInput()
+    input_capture = InputCapture()
+
+    had_error = False
+    try:
+        spec = display.get_display_spec(display.FRONT_DISPLAY)
+        stop_event = asyncio.Event()
+        renderer: TerminalRenderer | None = None
+        status_history: list[str] = []
+
+        def _emit_status(message: str) -> None:
+            """
+            Emit a status message into logs and fallback stderr output.
+            """
+            status_history.append(message)
+            if renderer is not None:
+                renderer.append_log(message)
+                return
+            status_message(message)
+
+        def _set_status_line(text: str | None) -> None:
+            """
+            Update the renderer's transient status line, once it exists.
+
+            Commands are built before the renderer, so this closure resolves
+            it lazily instead of capturing a `None` reference.
+            """
+            if renderer is not None:
+                renderer.update_status_line(text)
+
+        _emit_status(TEXT_INIT_START)
+        client = AsyncBusyBar(addr=args.addr, token=args.token)
+        base_url = getattr(client, "base_url", None) or args.addr or "unknown"
+        _emit_status(TEXT_INIT_CONNECTING.format(addr=base_url))
+        command_registry = CommandRegistry()
+        for command in discover_commands(
+            client=client,
+            status_message=_emit_status,
+            stop_event=stop_event,
+            input_capture=input_capture,
+            status_line=_set_status_line,
+        ):
+            register_command(command_registry, command)
+        register_command(
+            command_registry,
+            "call",
+            build_call_handler(client, _emit_status),
+        )
+        register_command(
+            command_registry,
+            "api",
+            build_call_handler(client, _emit_status),
+        )
+        register_command(
+            command_registry,
+            "help",
+            _build_help_handler(command_registry, _emit_status),
+        )
+        command_queue: asyncio.Queue[Callable[[], Awaitable[None]]] = asyncio.Queue()
+        renderer = TerminalRenderer(
+            spec,
+            args.spacer,
+            _resolve_pixel_char(icons),
+            icons,
+            frame_mode=getattr(args, "frame", settings.frame_mode),
+            clear_screen=clear_screen,
+        )
+        for message in status_history:
+            renderer.append_log(message)
+        poll_interval = args.http_poll_interval
+        if getattr(client, "is_cloud", False):
+            if poll_interval is None or poll_interval < 1.0:
+                poll_interval = 1.0
+        # Firmware on API v18.0.0+ removed the dedicated `/api/screen/ws`
+        # WebSocket entirely; front-display frames now arrive embedded in the
+        # same `/api/status/ws` protobuf state stream instead (see
+        # `stream_dashboard_state(render_screen=True)` below). Explicit
+        # `--http-poll-interval` still selects the legacy raw HTTP polling
+        # path for firmware that lacks frame-in-state updates.
+        use_state_stream_screen = poll_interval is None or poll_interval <= 0
+        parsed_addr = urlparse(base_url)
+        if poll_interval is not None and poll_interval > 0:
+            protocol = parsed_addr.scheme or "http"
+        else:
+            protocol = "wss" if parsed_addr.scheme == "https" else "ws"
+        renderer.update_info(streaming_info=_format_streaming_info(base_url, protocol))
+        info_stop = asyncio.Event()
+
+        tasks: list[asyncio.Task] = []
+        initial_snapshot = await collect_device_snapshot(client)
+        renderer.update_info(snapshot=initial_snapshot)
+        _emit_status(
+            "status/ws protobuf stream: frame updates currently contain front display only"
+        )
+        if keymap:
+            tasks.append(
+                asyncio.create_task(
+                    _forward_keys(
+                        client=client,
+                        keymap=keymap,
+                        stop_event=stop_event,
+                        status_message=status_message,
+                        command_queue=command_queue,
+                        renderer=renderer,
+                        command_registry=command_registry,
+                        command_input=command_input,
+                        input_capture=input_capture,
+                    )
+                )
+            )
+        tasks.append(
+            asyncio.create_task(
+                _run_command_queue(
+                    command_queue,
+                    stop_event=stop_event,
+                )
+            )
+        )
+
+        async def _periodic_loop() -> None:
+            """
+            Periodically refresh renderer info tasks.
+
+            Uses the configured intervals to avoid excessive polling.
+            """
+            task_map = build_periodic_tasks(client, renderer, tasks=PERIODIC_TASKS)
+            last_run = {name: 0.0 for name in task_map}
+
+            while not stop_event.is_set() and not info_stop.is_set():
+                now = time.monotonic()
+
+                for name, (interval, task) in task_map.items():
+                    if now - last_run[name] >= interval:
+                        await command_queue.put(lambda task=task: task())
+                        last_run[name] = now
+
+                await asyncio.sleep(settings.frame_sleep)
+
+        tasks.append(asyncio.create_task(_periodic_loop()))
+        tasks.append(
+            asyncio.create_task(
+                stream_dashboard_state(
+                    client=client,
+                    renderer=renderer,
+                    initial_snapshot=initial_snapshot,
+                    render_screen=use_state_stream_screen,
+                )
+            )
+        )
+
+        if use_state_stream_screen:
+            logger.info("Streaming screen frames via /api/status/ws: %s", base_url)
+        else:
+            logger.info(
+                TEXT_HTTP_POLL.format(
+                    interval=poll_interval,
+                    addr=base_url,
+                )
+            )
+            tasks.append(
+                asyncio.create_task(
+                    _poll_http(
+                        client=client,
+                        spec=spec,
+                        interval=poll_interval,
+                        stop_event=stop_event,
+                        renderer=renderer,
+                        clear_screen=clear_screen,
+                        status_message=_emit_status,
+                    )
+                )
+            )
+
+        try:
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            stop_event.set()
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            results = await asyncio.gather(*done, return_exceptions=True)
+            for result in results:
+                if isinstance(result, asyncio.CancelledError):
+                    continue
+                if isinstance(result, BaseException):
+                    raise result
+        except KeyboardInterrupt:
+            stop_event.set()
+            info_stop.set()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            print()
+            print(TEXT_STOPPED)
+        finally:
+            info_stop.set()
+            await client.aclose()
+    except BaseException:
+        had_error = True
+        raise
+    finally:
+        if not had_error:
+            clear_terminal()

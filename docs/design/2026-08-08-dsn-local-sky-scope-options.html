@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>DSN Local Sky Scopes — ten deeper directions</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070a0e;
+      --panel: #111720;
+      --edge: #293442;
+      --edge-hi: #405166;
+      --ink: #e9eef5;
+      --muted: #96a4b6;
+      --cyan: #46dceb;
+      --amber: #ffa03c;
+      --green: #96be78;
+      --radius: 17px;
+      --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--bg); }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font: 15px/1.55 var(--body);
+      background:
+        radial-gradient(950px 520px at 15% -7%, rgba(70, 220, 235, 0.11), transparent 60%),
+        radial-gradient(820px 480px at 94% 2%, rgba(255, 160, 60, 0.08), transparent 60%),
+        linear-gradient(180deg, #0a0e14, #07090d 70%);
+    }
+
+    a { color: var(--cyan); }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+
+    header { padding: 58px 0 28px; }
+    .eyebrow {
+      margin: 0 0 13px;
+      color: var(--cyan);
+      font: 700 12px/1.2 var(--mono);
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 930px;
+      margin: 0;
+      font-size: clamp(39px, 7vw, 76px);
+      line-height: .98;
+      letter-spacing: -.055em;
+      font-weight: 680;
+    }
+    .lede {
+      max-width: 850px;
+      margin: 23px 0 0;
+      color: #bac5d3;
+      font-size: clamp(17px, 2.2vw, 22px);
+      line-height: 1.5;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 23px; }
+    .chip {
+      padding: 7px 11px;
+      border: 1px solid var(--edge);
+      border-radius: 999px;
+      color: #b8c3d1;
+      background: rgba(14, 20, 28, .78);
+      font: 700 11px/1 var(--mono);
+      letter-spacing: .035em;
+    }
+    .chip strong { color: var(--ink); }
+    a.chip { text-decoration: none; }
+    a.chip:hover, a.chip:focus-visible { border-color: rgba(70,220,235,.6); color: var(--ink); }
+
+    .truth {
+      display: grid;
+      grid-template-columns: 175px minmax(0, 1fr);
+      gap: 20px;
+      margin: 12px 0 26px;
+      padding: 22px;
+      border: 1px solid rgba(70, 220, 235, .34);
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, rgba(70, 220, 235, .09), transparent 55%), var(--panel);
+    }
+    .truth-label {
+      color: var(--cyan);
+      font: 700 11px/1.4 var(--mono);
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .truth p { margin: 0; font-size: 17px; }
+
+    .controls {
+      position: sticky;
+      top: 10px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 11px;
+      margin-bottom: 25px;
+      padding: 11px 13px;
+      border: 1px solid rgba(57, 72, 90, .85);
+      border-radius: 14px;
+      background: rgba(12, 17, 24, .9);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+      backdrop-filter: blur(14px);
+    }
+    button, .toggle {
+      min-height: 34px;
+      border: 1px solid var(--edge);
+      border-radius: 9px;
+      color: var(--ink);
+      background: #171f2a;
+      font: 700 11px/1 var(--mono);
+      letter-spacing: .03em;
+    }
+    button { padding: 0 13px; cursor: pointer; }
+    button:hover { border-color: var(--cyan); }
+    .toggle { display: inline-flex; align-items: center; gap: 8px; padding: 0 11px; cursor: pointer; }
+    .toggle input { accent-color: var(--cyan); }
+    .scrub { flex: 1 1 230px; min-width: 150px; accent-color: var(--cyan); }
+    .clock { margin-left: auto; color: var(--muted); font: 700 11px/1 var(--mono); white-space: nowrap; }
+    .control-note { flex-basis: 100%; color: #7f8da0; font-size: 12px; }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 11px;
+      margin-bottom: 31px;
+    }
+    .legend-card {
+      padding: 14px;
+      border: 1px solid var(--edge);
+      border-radius: 13px;
+      background: rgba(17, 23, 32, .8);
+    }
+    .legend-card strong { display: block; margin-bottom: 4px; font: 700 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .legend-card span { color: #b7c2cf; font-size: 13px; }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin: 42px 0 16px;
+    }
+    h2 { margin: 0; font-size: clamp(26px, 3.7vw, 39px); line-height: 1.08; letter-spacing: -.04em; }
+    .section-note { max-width: 520px; margin: 0; color: var(--muted); text-align: right; }
+
+    .concepts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .concept {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,.025), transparent 120px), var(--panel);
+      box-shadow: 0 18px 48px rgba(0,0,0,.17);
+    }
+    .concept.recommended { border-color: rgba(70,220,235,.52); box-shadow: 0 0 0 1px rgba(70,220,235,.07) inset, 0 18px 54px rgba(0,0,0,.24); }
+    .concept-copy { padding: 19px 20px 4px; }
+    .kicker { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; color: var(--muted); font: 700 11px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .rank { display: inline-grid; width: 25px; height: 25px; place-items: center; border: 1px solid var(--edge-hi); border-radius: 50%; color: var(--ink); }
+    .tag { padding: 4px 7px; border: 1px solid rgba(70,220,235,.45); border-radius: 999px; color: var(--cyan); font-size: 9px; }
+    h3 { margin: 0; font-size: 23px; line-height: 1.2; letter-spacing: -.025em; }
+    .thesis { min-height: 48px; margin: 9px 0 0; color: #b6c1ce; }
+
+    .display-shell {
+      margin: 16px 14px 0;
+      padding: 11px;
+      border: 1px solid #2b313a;
+      border-radius: 15px;
+      background: linear-gradient(180deg, #252b33, #101318 72%), #11151a;
+      box-shadow: inset 0 1px rgba(255,255,255,.06), 0 10px 26px rgba(0,0,0,.35);
+    }
+    .bezel { padding: 7px; border: 1px solid #07090c; border-radius: 8px; background: #020305; box-shadow: inset 0 0 18px rgba(0,0,0,.95); }
+    canvas { display: block; width: 100%; height: auto; aspect-ratio: 72 / 16; background: #020305; }
+    .screen-meta { display: flex; justify-content: space-between; gap: 11px; margin-top: 8px; color: #8996a7; font: 700 10px/1.3 var(--mono); letter-spacing: .02em; text-transform: uppercase; }
+    .details { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 17px 20px 21px; }
+    .detail-label { margin-bottom: 5px; color: var(--muted); font: 700 10px/1.2 var(--mono); letter-spacing: .09em; text-transform: uppercase; }
+    .detail-copy { margin: 0; color: #c5ced9; font-size: 14px; }
+    .risk { color: #f0bd86; }
+
+    .table-wrap { overflow-x: auto; margin-bottom: 18px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--panel); }
+    table { width: 100%; min-width: 850px; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 13px 15px; border-bottom: 1px solid var(--edge); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: rgba(255,255,255,.02); font: 700 10px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+    tbody tr:last-child td { border-bottom: 0; }
+    td:first-child { color: var(--ink); font-weight: 700; }
+    .low { color: #9cd99a; } .med { color: #f0bd86; } .high { color: #f28e82; }
+
+    .recommendation {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
+      gap: 18px;
+      margin: 18px 0 70px;
+    }
+    .recommendation > div { padding: 22px; border: 1px solid var(--edge); border-radius: var(--radius); background: var(--panel); }
+    .recommendation .primary { border-color: rgba(70,220,235,.38); background: linear-gradient(145deg, rgba(70,220,235,.08), transparent 48%), var(--panel); }
+    .recommendation h3 { margin-bottom: 10px; }
+    .recommendation p { margin: 0; color: #c1cbd7; }
+    .recommendation ol { margin: 13px 0 0; padding-left: 22px; color: #c1cbd7; }
+    .recommendation li + li { margin-top: 7px; }
+    footer { padding: 0 0 44px; color: #768396; font-size: 12px; text-align: center; }
+
+    @media (max-width: 830px) {
+      .concepts, .recommendation { grid-template-columns: 1fr; }
+      .legend { grid-template-columns: 1fr 1fr; }
+      .truth { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .section-note { margin-top: 8px; text-align: left; }
+      .clock { width: 100%; margin-left: 0; }
+    }
+    @media (max-width: 540px) {
+      .wrap { width: min(calc(100% - 20px), 1180px); }
+      header { padding-top: 36px; }
+      .legend, .details { grid-template-columns: 1fr; }
+      .display-shell { margin-inline: 8px; padding: 8px; }
+      .concept-copy, .details { padding-inline: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <p class="eyebrow">BUSY Bar · DSN Network Study · 72×16</p>
+    <h1>Three skies,<br>ten instruments.</h1>
+    <p class="lede">
+      Goldstone, Madrid and Canberra do not share one local sky. These options
+      all begin with the same truthful idea: map each dish's published azimuth
+      and elevation inside its own complex, then decide what deserves the
+      remaining pixels—identity, history, RF state, collisions or handoffs.
+    </p>
+    <div class="chips" aria-label="Representative topology">
+      <span class="chip"><strong>G1</strong> Goldstone</span>
+      <span class="chip"><strong>M0</strong> Madrid</span>
+      <span class="chip"><strong>C4</strong> Canberra</span>
+      <span class="chip">same topology in every preview</span>
+      <span class="chip">illustrative history and event stress cases</span>
+      <a class="chip" href="2026-08-08-dsn-three-skies-final.html">✓ final Three Skies recommendation</a>
+      <a class="chip" href="2026-08-08-dsn-network-view-options.html">← broader Network study</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="truth" aria-labelledby="truth-heading">
+      <div class="truth-label" id="truth-heading">The invariant</div>
+      <p>
+        North is up, east is right, the horizon is the outer edge and zenith is
+        the center. Node position comes from NASA's dish-local azimuth and
+        elevation. None of these scopes is a geographic map, inertial craft
+        position, predicted pass or decorative orbit. Pointing is dish-scoped:
+        multiple contacts on one dish share one true cell and resolve through
+        a nonspatial tally or selection page, never invented jitter.
+      </p>
+    </section>
+
+    <section class="controls" aria-label="Preview controls">
+      <button type="button" id="play">Pause motion</button>
+      <button type="button" id="next">Next contact</button>
+      <label class="toggle"><input type="checkbox" id="gaps" checked> Physical LED gaps</label>
+      <input class="scrub" id="scrub" type="range" min="0" max="399" value="0" aria-label="Animation frame">
+      <span class="clock" id="clock">CONTACT 1/5 · SOURCE 1</span>
+      <span class="control-note">This study auto-cycles contacts for comparison. A production Focus Lens would open only from deliberate wheel selection.</span>
+    </section>
+
+    <section class="legend" aria-label="Shared scope grammar">
+      <div class="legend-card"><strong>Node position</strong><span>Observed dish-local azimuth/elevation. Missing angles become <b>?</b>, never 0°/0°.</span></div>
+      <div class="legend-card"><strong>Node color</strong><span>One bright LED owns the measured cell. Downlink hue refines band; uplink-only is blue; selection recolors that same cell white.</span></div>
+      <div class="legend-card"><strong>History</strong><span>Only repeated accepted source samples make trails. They are observed pointing, not prediction.</span></div>
+      <div class="legend-card"><strong>Freshness edge</strong><span>The two-pixel cyan lease at x71 advances only with NASA's source timestamp; stale scopes freeze.</span></div>
+    </section>
+
+    <section aria-labelledby="options-heading">
+      <div class="section-head">
+        <h2 id="options-heading">Ten directions</h2>
+        <p class="section-note">Every preview is an exact 72×16 framebuffer using the production proportional font, DSN palette and qualitative physical LED-gap model.</p>
+      </div>
+      <div class="concepts">
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">1</span> Purest form</div><h3>Equal triptych</h3><p class="thesis">Three permanent 24×16 local scopes. Nothing changes size or location; every current pointing node shares the same grammar.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="triptych" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of three equal local sky scopes"></canvas></div><div class="screen-meta"><span id="triptych-meta">G1 · M0 · C4</span><span>center = zenith</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">Fastest network comparison and strongest spatial memory. Madrid's empty scope remains unmistakably present.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy risk">Four Canberra nodes compete inside one 13-pixel ring; exact dish and craft identity require selection.</p></div></div>
+        </article>
+
+        <article class="concept recommended">
+          <div class="concept-copy"><div class="kicker"><span class="rank">2</span> Focus + context <span class="tag">BEST BALANCE</span></div><h3>User-invoked focus lens</h3><p class="thesis">On deliberate wheel focus, expand the selected site's real scope while the other two remain visible as miniature skies. Never auto-rotate this layout.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="focus" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of a selected large sky scope with two context scopes"></canvas></div><div class="screen-meta"><span id="focus-meta">Focus: G26 · MMS 2</span><span>two sites remain visible</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">The selected site gains room for a readable short identity and separated nodes without losing global context.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy">Scope sizes move with selection. Mini scopes show occupancy and geometry, not detailed identity.</p></div></div>
+        </article>
+
+        <article class="concept recommended">
+          <div class="concept-copy"><div class="kicker"><span class="rank">3</span> Live history <span class="tag">MOST LIVE</span></div><h3>Tracking tails</h3><p class="thesis">Keep the equal triptych, but retain the last five distinct pixel-visible source samples behind only the selected pointing head.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="trails" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of local sky scopes with an observed pointing trail"></canvas></div><div class="screen-meta"><span id="trails-meta">5 distinct positions max</span><span>tail = observed history</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">You can watch a real antenna track across its local sky over minutes. This cannot be reproduced honestly from an offline craft list.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy risk">Real DSN pointing often changes slowly; the desk object must dwell long enough for a trail to become meaningful.</p></div></div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">4</span> Physical-panel safe</div><h3>Eight-sector roses</h3><p class="thesis">Deliberately quantize each local sky to eight compass sectors and three elevation zones, using sturdy two-pixel tangential marks.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="split" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of three eight-sector local sky roses"></canvas></div><div class="screen-meta"><span id="split-meta">8 azimuth sectors · 3 elevation zones</span><span>declared bins</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">Trades false precision for shapes that survive the dark LED gaps. Exact degrees remain in the picker and Instrument.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy">Slow motion appears only when a declared boundary is crossed; several contacts can still share a bin.</p></div></div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">5</span> Rectangular alternative</div><h3>Horizon raster</h3><p class="thesis">Unwrap each local sky: azimuth runs left→right and elevation runs horizon→zenith vertically inside three aligned plots.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="raster" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of three unwrapped azimuth and elevation rasters"></canvas></div><div class="screen-meta"><span id="raster-meta">x = azimuth · y = elevation</span><span>shared scale</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">Uses nearly every pixel for measurable position and makes site-to-site comparison easy on aligned axes.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy risk">It is analytically clearer but loses the intuitive “looking into the sky” quality of a polar scope.</p></div></div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">6</span> Physical sculpture</div><h3>Antenna ballet</h3><p class="thesis">Use each site cell as a tiny antenna yard: the selected real dish leans with elevation while an azimuth nib and contact beads retain the rest.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="ballet" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of three antenna yards posed by observed pointing"></canvas></div><div class="screen-meta"><span id="ballet-meta">pose = published elevation</span><span>nib = azimuth octant</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">Most directly mimics the physical machines operating on Earth; it reads as a kinetic desk sculpture rather than a chart.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy">Only one dish per site gets a full pose. Three coarse tilt states are honest and legible; pretending at finer precision is not.</p></div></div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">7</span> Dense-contact defense</div><h3>Collision shutter</h3><p class="thesis">When records quantize to the same LED, keep their one truthful cell, page its colors on a fixed clock, and show the multiplicity in a nonspatial gutter.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="bloom" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview resolving collocated pointing records without moving them"></canvas></div><div class="screen-meta"><span id="bloom-meta">C: 2 records share one cell</span><span>no invented jitter</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">Makes overlap explicit without fabricating two pointing positions. The wheel resolves the collocated identities.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy risk">Color paging can look like telemetry. It must freeze with stale data and keep one fixed eight-second loop regardless of occupant count.</p></div></div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">8</span> Transition story</div><h3>Observed handoff echo</h3><p class="thesis">On an unambiguous same-craft site transition, briefly mark the old and new endpoints inside their own scopes—without connecting their unrelated local skies.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="handoff" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of an observed association change between local sky scopes"></canvas></div><div class="screen-meta"><span id="handoff-meta">Illustrative: G → C</span><span>observed between snapshots</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">Turns the three-site reason for the DSN into a rare, memorable event driven by the live source.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy">The echo is not proof of a scheduled or continuous handoff. It only marks an unambiguous association change observed between snapshots.</p></div></div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">9</span> Identity rhythm</div><h3>Scope / identity interleave</h3><p class="thesis">Show all three scopes for eight seconds, then spend one complete cycle on the selected dish, full friendly name and exact az/el.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="identity" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview alternating local scopes with full contact identity"></canvas></div><div class="screen-meta"><span id="identity-meta">Scope phase</span><span>8 sec + 8 sec</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">Solves the main polar-scope weakness—anonymous dots—without shrinking the names or permanently sacrificing the overview.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy risk">A random glance sees only one phase. The transition and 1/5 index must make the time multiplexing obvious.</p></div></div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy"><div class="kicker"><span class="rank">10</span> Rare-mode geometry</div><h3>Topology scopes</h3><p class="thesis">Keep literal pointing positions, then give arraying, MSPA and DDOR distinct node geometry instead of hiding them in a distant glyph column.</p></div>
+          <div class="display-shell"><div class="bezel"><canvas id="topology" width="1296" height="288" role="img" aria-label="Animated 72 by 16 pixel preview of local sky scopes with array, MSPA, and DDOR geometry"></canvas></div><div class="screen-meta"><span id="topology-meta">Array · MSPA · DDOR stress fixture</span><span>position remains observed</span></div></div>
+          <div class="details"><div><div class="detail-label">Why choose it</div><p class="detail-copy">The interesting network modes become part of the live sky geometry where the affected contact already lives.</p></div><div><div class="detail-label">Risk</div><p class="detail-copy">The shapes have a learning curve and can collide. They must supplement—not overwrite—RF direction and band.</p></div></div>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="compare-heading">
+      <div class="section-head"><h2 id="compare-heading">How to choose</h2><p class="section-note">The best persistent view and the best event treatment do not have to be the same option.</p></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Option</th><th>Best glance answer</th><th>Identity</th><th>Handles dense contacts</th><th>Live-only payoff</th><th>Panel risk</th></tr></thead>
+          <tbody>
+            <tr><td>Equal triptych</td><td>Where is each site pointing?</td><td>Selection only</td><td>Weak</td><td>Current pointing geometry</td><td class="low">Low–medium</td></tr>
+            <tr><td>Focus lens</td><td>What is my selected site doing?</td><td>Short selected label</td><td>Good in focus</td><td>Current geometry + focus</td><td class="med">Medium</td></tr>
+            <tr><td>Tracking tails</td><td>How has pointing moved?</td><td>Selection only</td><td>Medium</td><td>Observed source history</td><td class="med">Medium</td></tr>
+            <tr><td>Eight-sector roses</td><td>Which coarse sky zone is active?</td><td>Selection only</td><td>Medium</td><td>Source-driven bin changes</td><td class="low">Low</td></tr>
+            <tr><td>Horizon raster</td><td>Compare precise positions</td><td>Selection only</td><td>Good</td><td>Aligned live measurements</td><td class="low">Low</td></tr>
+            <tr><td>Antenna ballet</td><td>How are the machines posed?</td><td>Dish number</td><td>Roster beads</td><td>Physical dish motion</td><td class="med">Medium</td></tr>
+            <tr><td>Collision shutter</td><td>How many share this pixel?</td><td>Selection only</td><td>Best</td><td>Live multiplicity</td><td class="high">High</td></tr>
+            <tr><td>Handoff echo</td><td>What network change occurred?</td><td>Event target</td><td>Not applicable</td><td>Observed site transition</td><td class="med">Medium</td></tr>
+            <tr><td>Identity interleave</td><td>Who owns the selected dot?</td><td>Full marquee</td><td>Overview phase</td><td>Current identity + pointing</td><td class="low">Low</td></tr>
+            <tr><td>Topology scopes</td><td>Which rare mode is active?</td><td>Selection only</td><td>Weak–medium</td><td>Array/MSPA/DDOR state</td><td class="high">High</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="recommendation" aria-label="Recommendation">
+      <div class="primary">
+        <h3>Recommended direction: combine 1 + 2 + 3</h3>
+        <p>Keep the <strong>Equal Triptych</strong> as the persistent Network view. On deliberate selection, use the <strong>Focus Lens</strong>, and add <strong>Tracking Tails</strong> only to the selected contact. It preserves spatial memory, gives the chosen contact room, and makes slow observed movement the live proof.</p>
+        <ol><li>Wheel selects a contact and expands its site after the existing rest delay.</li><li>The current head and sampled trail remain source-timestamp driven.</li><li>START narration and hold-to-Instrument/Distance keep the established interaction model.</li><li>Observed Handoff Echo can remain a rare event treatment across either layout.</li></ol>
+      </div>
+      <div>
+        <h3>Most beautiful alternative</h3>
+        <p><strong>Antenna Ballet</strong> is the next physical-test candidate when the goal is a kinetic desk sculpture. It sacrifices precision for a much stronger sense that real machines on Earth are moving.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">Design study only. Any selected concept must be rebuilt in Python, covered by final-frame contracts, gap-previewed and verified on the physical BUSY Bar.</footer>
+
+  <script>
+    // Self-contained design renderer. If a concept graduates, rebuild it in
+    // Python and verify final composed frames on the physical panel.
+    const W = 72;
+    const H = 16;
+    const FPS = 5;
+    const SELECT_FRAMES = 80;
+    const TOTAL_FRAMES = 400;
+    const LED = 10;
+    const GAP = 8;
+    const PITCH = LED + GAP;
+    const PAD = GAP / 2;
+
+    const C = {
+      off: "#000000",
+      name: "#d7e1f0",
+      dish: "#6e91be",
+      antenna: "#c8aa6e",
+      uplink: "#78beff",
+      s: "#ff280a",
+      x: "#ffa03c",
+      k: "#b4ff50",
+      ka: "#ffffaa",
+      unknown: "#6428ff",
+      ring: "#224252",
+      trail: "#69aabe",
+      head: "#ffe896",
+      fresh: "#46dceb",
+      event: "#e8eef7",
+      ddor: "#78dc82",
+      dim: "#243242",
+      quiet: "#556982",
+      white: "#e8eef7"
+    };
+
+    const FONT = {
+      "A":["0110","1001","1111","1001","1001"], "B":["1110","1001","1110","1001","1110"],
+      "C":["0111","1000","1000","1000","0111"], "D":["1110","1001","1001","1001","1110"],
+      "E":["1111","1000","1110","1000","1111"], "F":["1111","1000","1110","1000","1000"],
+      "G":["0111","1000","1011","1001","0111"], "H":["1001","1001","1111","1001","1001"],
+      "I":["111","010","010","010","111"], "J":["0011","0001","0001","1001","0110"],
+      "K":["1001","1010","1100","1010","1001"], "L":["1000","1000","1000","1000","1111"],
+      "M":["10001","11011","10101","10001","10001"], "N":["1001","1101","1011","1001","1001"],
+      "O":["0110","1001","1001","1001","0110"], "P":["1110","1001","1110","1000","1000"],
+      "Q":["0110","1001","1001","1011","0111"], "R":["1110","1001","1110","1010","1001"],
+      "S":["0110","1000","0110","0001","0110"], "T":["1111","0100","0100","0100","0100"],
+      "U":["1001","1001","1001","1001","0110"], "V":["1001","1001","1001","1010","0100"],
+      "W":["10001","10001","10101","11011","10001"], "X":["1001","1001","0110","1001","1001"],
+      "Y":["1001","1001","0110","0100","0100"], "Z":["1111","0001","0110","1000","1111"],
+      "0":["0110","1011","1101","1001","0110"], "1":["010","110","010","010","111"],
+      "2":["0110","1001","0010","0100","1111"], "3":["1110","0001","0110","0001","1110"],
+      "4":["0010","0110","1010","1111","0010"], "5":["1111","1000","1110","0001","1110"],
+      "6":["0110","1000","1110","1001","0110"], "7":["1111","0001","0010","0100","0100"],
+      "8":["0110","1001","0110","1001","0110"], "9":["0110","1001","0111","0001","0110"],
+      " ":["0000","0000","0000","0000","0000"], ".":["0000","0000","0000","0000","0100"],
+      "-":["0000","0000","1111","0000","0000"], "?":["0110","1001","0010","0000","0100"],
+      "/":["0001","0010","0100","1000","0000"], ":":["0000","0100","0000","0100","0000"]
+    };
+
+    const fixture = [
+      { site:"G", dish:"26", craft:"MAGNETOSPHERIC MULTISCALE 2", short:"MMS 2", az:132, el:38, up:true, down:"S", mode:"ddor" },
+      { site:"C", dish:"34", craft:"XMM NEWTON", short:"XMM", az:48, el:22, up:true, down:"S", mode:"array" },
+      { site:"C", dish:"35", craft:"LUCY", short:"LUCY", az:112, el:61, up:false, down:"X", mode:"" },
+      { site:"C", dish:"36", craft:"SPACE WEATHER FOLLOW ON", short:"SWFO", az:221, el:14, up:true, down:"S", mode:"mspa" },
+      { site:"C", dish:"43", craft:"VOYAGER 1", short:"VGR 1", az:303, el:31, up:false, down:"X", mode:"" }
+    ];
+    const sites = [
+      { key:"G", name:"GOLDSTONE", base:0, cx:15 },
+      { key:"M", name:"MADRID", base:24, cx:39 },
+      { key:"C", name:"CANBERRA", base:48, cx:63 }
+    ];
+    const bands = { S:C.s, X:C.x, K:C.k, KA:C.ka };
+
+    class Framebuffer {
+      constructor() { this.pixels = new Array(W * H).fill(C.off); }
+      set(x, y, color) { if (x >= 0 && x < W && y >= 0 && y < H) this.pixels[y * W + x] = color; }
+      get(x, y) { return this.pixels[y * W + x]; }
+      hline(x0, x1, y, color) { for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x += 1) this.set(x, y, color); }
+      text(x, y, value, color, clip) {
+        let cursor = x;
+        const limits = clip || [0, W - 1];
+        String(value).toUpperCase().split("").forEach(function(ch) {
+          const glyph = FONT[ch];
+          if (glyph) {
+            glyph.forEach(function(row, dy) {
+              row.split("").forEach(function(bit, dx) {
+                const gx = cursor + dx;
+                if (bit === "1" && gx >= limits[0] && gx <= limits[1]) this.set(gx, y + dy, color);
+              }, this);
+            }, this);
+          }
+          cursor += glyphWidth(ch) + 1;
+        }, this);
+      }
+    }
+
+    function glyphWidth(ch) { const glyph = FONT[String(ch).toUpperCase()]; return glyph ? glyph[0].length : 4; }
+    function textWidth(value) {
+      const chars = String(value).toUpperCase().split("");
+      return chars.length ? chars.reduce(function(total, ch) { return total + glyphWidth(ch) + 1; }, 0) - 1 : 0;
+    }
+    function marquee(fb, value, x0, x1, y, color, phase) {
+      const room = x1 - x0 + 1;
+      const full = textWidth(value);
+      if (full <= room) { fb.text(x0, y, value, color, [x0, x1]); return; }
+      const cycle = full + 8;
+      const offset = Math.floor(phase * cycle);
+      fb.text(x0 - offset, y, value, color, [x0, x1]);
+      fb.text(x0 - offset + cycle, y, value, color, [x0, x1]);
+    }
+    function linksAt(site) { return fixture.filter(function(link) { return link.site === site; }); }
+    function selectedIndex(tick) { return Math.floor(tick / SELECT_FRAMES) % fixture.length; }
+    function selectedLink(tick) { return fixture[selectedIndex(tick)]; }
+    function sourceVersion(tick) { return Math.floor(tick / 50); }
+    function freshness(fb, tick) {
+      const y = (3 + sourceVersion(tick) * 2) % 15;
+      fb.set(71, y, C.fresh);
+      fb.set(71, y + 1, C.fresh);
+    }
+
+    function ring(fb, cx, cy, radius, color) {
+      if (radius >= 5) {
+        for (let degrees = 0; degrees < 360; degrees += 15) {
+          const angle = degrees * Math.PI / 180;
+          fb.set(Math.round(cx + Math.sin(angle) * radius), Math.round(cy - Math.cos(angle) * radius), color || C.ring);
+        }
+      } else {
+        const diagonal = Math.max(1, Math.round(radius * .7));
+        [[0,-radius],[diagonal,-diagonal],[radius,0],[diagonal,diagonal],[0,radius],[-diagonal,diagonal],[-radius,0],[-diagonal,-diagonal]].forEach(function(point) {
+          fb.set(cx + point[0], cy + point[1], color || C.ring);
+        });
+      }
+      fb.set(cx, cy, color || C.ring);
+    }
+    function scopePoint(link, cx, cy, radius) {
+      const angle = link.az * Math.PI / 180;
+      const r = (90 - Math.max(0, Math.min(90, link.el))) / 90 * radius;
+      return [Math.round(cx + Math.sin(angle) * r), Math.round(cy - Math.cos(angle) * r)];
+    }
+    function azPoint(link, cx, cy, radius) {
+      const angle = link.az * Math.PI / 180;
+      return [Math.round(cx + Math.sin(angle) * radius), Math.round(cy - Math.cos(angle) * radius)];
+    }
+    function nodeColor(link) { return link.down ? (bands[link.down] || C.unknown) : C.uplink; }
+    function rfNode(fb, x, y, link, selected, bounds) {
+      const x0 = bounds ? bounds[0] : 0;
+      const x1 = bounds ? bounds[1] : 70;
+      const xx = Math.max(x0, Math.min(x1, x));
+      fb.set(xx, Math.max(0, Math.min(15, y)), selected ? C.white : nodeColor(link));
+    }
+    function drawTriptych(fb, tick, options) {
+      const opts = options || {};
+      const selected = selectedIndex(tick);
+      sites.forEach(function(site) {
+        const links = linksAt(site.key);
+        fb.text(site.base, 0, site.key + links.length, C.antenna, [site.base, site.base + 9]);
+        ring(fb, site.cx, 7, 6);
+        fb.set(site.cx, 1, C.antenna);
+        const grouped = new Map();
+        let missing = 0;
+        links.forEach(function(link) {
+          if (!Number.isFinite(link.az) || !Number.isFinite(link.el)) {
+            missing += 1;
+            return;
+          }
+          let point = scopePoint(link, site.cx, 7, 6);
+          if (opts.collision && site.key === "C" && link.dish === "35") {
+            point = scopePoint(links[0], site.cx, 7, 6);
+          }
+          const key = point.join(",");
+          if (!grouped.has(key)) grouped.set(key, { point:point, links:[] });
+          grouped.get(key).links.push(link);
+        });
+        if (missing) fb.text(site.base, 9, "?" + missing, C.quiet, [site.base, site.base + 8]);
+        grouped.forEach(function(group) {
+          if (group.links.length > 1) {
+            const selectedOccupant = group.links.find(function(link) { return fixture.indexOf(link) === selected; });
+            const slot = opts.collision ? Math.floor((tick % 40) / (40 / group.links.length)) % group.links.length : 0;
+            const occupant = selectedOccupant || group.links[slot];
+            fb.set(group.point[0], group.point[1], fixture.indexOf(occupant) === selected ? C.white : nodeColor(occupant));
+            fb.text(site.base, 9, String(group.links.length), C.white, [site.base, site.base + 4]);
+            fb.set(site.base + 7, 9, C.white);
+            fb.set(site.base + 7, 11, C.white);
+            fb.set(site.base + 7, 13, C.white);
+            return;
+          }
+          group.links.forEach(function(link) {
+            if (opts.trails && fixture.indexOf(link) === selected) drawTrail(fb, link, site.cx, 7, 6);
+            if (opts.topology) drawTopologyNode(fb, group.point[0], group.point[1], link, fixture.indexOf(link) === selected, [site.base, site.base + 21]);
+            else rfNode(fb, group.point[0], group.point[1], link, fixture.indexOf(link) === selected, [site.base, site.base + 21]);
+          });
+        });
+      });
+      freshness(fb, tick);
+    }
+    function drawTrail(fb, link, cx, cy, radius) {
+      const rates = { "26":[-8,-2], "34":[-5,1], "35":[8,-1], "36":[-7,1], "43":[5,1] };
+      const rate = rates[link.dish] || [-5,0];
+      const seen = new Set();
+      for (let age = 5; age >= 1; age -= 1) {
+        const historical = Object.assign({}, link, { az:link.az + rate[0] * age, el:link.el + rate[1] * age });
+        const point = scopePoint(historical, cx, cy, radius);
+        const key = point.join(",");
+        if (!seen.has(key)) fb.set(point[0], point[1], C.trail);
+        seen.add(key);
+      }
+    }
+    function drawTopologyNode(fb, x, y, link, selected, bounds) {
+      rfNode(fb, x, y, link, selected, bounds);
+      const x0 = bounds[0], x1 = bounds[1];
+      if (link.mode === "array") {
+        [[-1,-1],[-1,0],[-1,1]].forEach(function(d) { fb.set(Math.max(x0, x + d[0]), y + d[1], C.antenna); });
+      } else if (link.mode === "mspa") {
+        [[1,-1],[1,0],[1,1],[2,-1],[2,1]].forEach(function(d) { fb.set(Math.min(x1, x + d[0]), y + d[1], C.name); });
+      } else if (link.mode === "ddor") {
+        [[-1,0],[1,0],[0,-2],[0,1]].forEach(function(d) { fb.set(Math.max(x0, Math.min(x1, x + d[0])), y + d[1], C.ddor); });
+      }
+    }
+
+    function renderTriptych(tick) {
+      const fb = new Framebuffer();
+      drawTriptych(fb, tick);
+      return { fb:fb, meta:"G1 · M0 · C4" };
+    }
+    function renderFocus(tick) {
+      const fb = new Framebuffer();
+      const selected = selectedLink(tick);
+      const focusSite = sites.find(function(site) { return site.key === selected.site; });
+      const others = sites.filter(function(site) { return site.key !== selected.site; });
+      const focusLinks = linksAt(focusSite.key);
+      fb.text(0, 0, focusSite.key + focusLinks.length, C.antenna, [0, 9]);
+      fb.text(0, 6, focusSite.key + selected.dish, C.dish, [0, 20]);
+      marquee(fb, selected.short, 0, 20, 11, C.name, (tick % SELECT_FRAMES) / SELECT_FRAMES);
+      ring(fb, 35, 8, 7);
+      fb.set(35, 1, C.antenna);
+      focusLinks.forEach(function(link) {
+        const point = scopePoint(link, 35, 8, 6);
+        if (link === selected) drawTrail(fb, link, 35, 8, 6);
+        rfNode(fb, point[0], point[1], link, link === selected, [22, 46]);
+      });
+      others.forEach(function(site, index) {
+        const y0 = index * 8;
+        const cy = y0 + 4;
+        fb.text(48, y0, site.key + linksAt(site.key).length, C.antenna, [48, 57]);
+        ring(fb, 66, cy, 3);
+        linksAt(site.key).forEach(function(link) {
+          const point = scopePoint(link, 66, cy, 2);
+          fb.set(point[0], point[1], nodeColor(link));
+        });
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:"Focus: " + selected.site + selected.dish + " · " + selected.short };
+    }
+    function renderTrails(tick) {
+      const fb = new Framebuffer();
+      drawTriptych(fb, tick, { trails:true });
+      return { fb:fb, meta:"Five distinct observed positions maximum" };
+    }
+    function renderSplit(tick) {
+      const fb = new Framebuffer();
+      const selected = selectedIndex(tick);
+      sites.forEach(function(site) {
+        const links = linksAt(site.key);
+        fb.text(site.base, 0, site.key + links.length, C.antenna, [site.base, site.base + 9]);
+        ring(fb, site.cx, 8, 6);
+        fb.set(site.cx, 2, C.antenna);
+        const bins = new Map();
+        links.forEach(function(link) {
+          const sector = Math.round(((link.az % 360) + 360) % 360 / 45) % 8;
+          const zone = link.el >= 60 ? 0 : (link.el >= 30 ? 3 : 6);
+          const angle = sector * Math.PI / 4;
+          const x = Math.round(site.cx + Math.sin(angle) * zone);
+          const y = Math.round(8 - Math.cos(angle) * zone);
+          const key = x + "," + y;
+          if (!bins.has(key)) bins.set(key, { x:x, y:y, sector:sector, links:[] });
+          bins.get(key).links.push(link);
+        });
+        bins.forEach(function(bin) {
+          const selectedOccupant = bin.links.find(function(link) { return fixture.indexOf(link) === selected; });
+          const occupant = selectedOccupant || bin.links[Math.floor((tick % 40) / Math.max(1, 40 / bin.links.length)) % bin.links.length];
+          const color = selectedOccupant ? C.white : nodeColor(occupant);
+          const horizontal = bin.sector % 4 === 0;
+          fb.set(bin.x, bin.y, color);
+          fb.set(bin.x + (horizontal ? 1 : 0), bin.y + (horizontal ? 0 : 1), color);
+          if (bin.links.length > 1) {
+            fb.text(site.base, 10, String(bin.links.length), C.white, [site.base, site.base + 4]);
+          }
+        });
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:"Eight azimuth sectors · three elevation zones" };
+    }
+    function renderRaster(tick) {
+      const fb = new Framebuffer();
+      const selected = selectedIndex(tick);
+      sites.forEach(function(site) {
+        const links = linksAt(site.key);
+        fb.text(site.base, 0, site.key + links.length, C.antenna, [site.base, site.base + 9]);
+        fb.hline(site.base + 1, site.base + 21, 5, C.ring);
+        fb.hline(site.base + 1, site.base + 21, 15, C.ring);
+        links.forEach(function(link) {
+          const x = site.base + 1 + Math.round((link.az % 360) / 360 * 20);
+          const y = 14 - Math.round(link.el / 90 * 8);
+          rfNode(fb, x, y, link, fixture.indexOf(link) === selected, [site.base, site.base + 21]);
+        });
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:"Azimuth x · elevation y · shared scale" };
+    }
+
+    const DISH = {
+      low:["11000","01110","00100","00100","00100","01110"],
+      mid:["10000","11000","01100","00100","00100","01110"],
+      high:["00100","01110","00100","00100","00100","01110"]
+    };
+    function drawDish(fb, x, y, elevation) {
+      const glyph = elevation < 30 ? DISH.low : (elevation < 60 ? DISH.mid : DISH.high);
+      glyph.forEach(function(row, dy) { row.split("").forEach(function(bit, dx) { if (bit === "1") fb.set(x + dx, y + dy, C.antenna); }); });
+    }
+    function renderBallet(tick) {
+      const fb = new Framebuffer();
+      const selected = selectedLink(tick);
+      sites.forEach(function(site) {
+        const links = linksAt(site.key);
+        const link = links.find(function(item) { return item === selected; }) || links[0];
+        fb.text(site.base, 0, site.key + links.length, C.antenna, [site.base, site.base + 9]);
+        if (!link) {
+          fb.text(site.base + 6, 7, "?", C.quiet, [site.base + 6, site.base + 10]);
+          return;
+        }
+        fb.text(site.base + 1, 6, link.dish, C.dish, [site.base + 1, site.base + 9]);
+        drawDish(fb, site.base + 10, 6, link.el);
+        ring(fb, site.base + 18, 10, 3);
+        const nib = azPoint(link, site.base + 18, 10, 2);
+        fb.set(nib[0], nib[1], C.head);
+        links.forEach(function(item, index) {
+          const x = site.base + 2 + index * 3;
+          fb.set(x, 14, item.up ? C.uplink : nodeColor(item));
+          fb.set(x, 15, nodeColor(item));
+        });
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:"Pose = elevation · nib = azimuth octant" };
+    }
+    function renderBloom(tick) {
+      const fb = new Framebuffer();
+      drawTriptych(fb, tick, { collision:true });
+      return { fb:fb, meta:"C: two records share one true cell" };
+    }
+
+    function renderHandoff(tick) {
+      const fb = new Framebuffer();
+      drawTriptych(fb, tick);
+      const phase = (tick % SELECT_FRAMES) / SELECT_FRAMES;
+      const oldLink = { az:290, el:28 };
+      const newLink = fixture[4];
+      const oldPoint = scopePoint(oldLink, 16, 9, 5);
+      const newPoint = scopePoint(newLink, 64, 9, 5);
+      if (phase < .45) {
+        fb.set(oldPoint[0], oldPoint[1], C.event);
+        fb.set(oldPoint[0], oldPoint[1] + 1, C.x);
+      }
+      if (phase >= .3 && phase <= .7) {
+        for (let y = 5; y <= 10; y += 2) {
+          fb.set(22, y, C.event);
+          fb.set(46, y, C.event);
+        }
+      }
+      if (phase > .55) {
+        fb.set(newPoint[0], newPoint[1] - 1, C.event);
+        fb.set(newPoint[0], newPoint[1], C.x);
+      }
+      freshness(fb, tick);
+      return { fb:fb, meta:"Illustrative observed G → C association change" };
+    }
+    function renderIdentity(tick) {
+      const local = tick % SELECT_FRAMES;
+      if (local < SELECT_FRAMES / 2) {
+        const scene = renderTriptych(tick);
+        return { fb:scene.fb, meta:"Scope phase · all three sites" };
+      }
+      const fb = new Framebuffer();
+      const link = selectedLink(tick);
+      const phase = (local - SELECT_FRAMES / 2) / (SELECT_FRAMES / 2);
+      marquee(fb, link.craft, 0, 69, 0, C.name, phase);
+      fb.text(0, 6, link.site + link.dish + " " + (selectedIndex(tick) + 1) + "/5", C.dish, [0, 37]);
+      fb.text(0, 11, "AZ" + link.az + " EL" + link.el, C.head, [0, 58]);
+      if (link.up) { fb.set(65, 7, C.uplink); fb.set(66, 7, C.uplink); }
+      if (link.down) { fb.set(65, 13, nodeColor(link)); fb.set(66, 13, nodeColor(link)); }
+      freshness(fb, tick);
+      return { fb:fb, meta:"Identity phase · " + link.site + link.dish + " · " + link.short };
+    }
+    function renderTopology(tick) {
+      const fb = new Framebuffer();
+      drawTriptych(fb, tick, { topology:true });
+      return { fb:fb, meta:"Array · MSPA · DDOR stress fixture" };
+    }
+
+    function paint(canvas, fb, showGaps) {
+      const ctx = canvas.getContext("2d");
+      const square = showGaps ? LED : PITCH;
+      const offset = showGaps ? PAD : 0;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#020305";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < H; y += 1) {
+        for (let x = 0; x < W; x += 1) {
+          const color = fb.get(x, y);
+          ctx.fillStyle = color === C.off ? "#080a0e" : color;
+          ctx.fillRect(x * PITCH + offset, y * PITCH + offset, square, square);
+        }
+      }
+    }
+
+    const renderers = {
+      triptych:renderTriptych,
+      focus:renderFocus,
+      trails:renderTrails,
+      split:renderSplit,
+      raster:renderRaster,
+      ballet:renderBallet,
+      bloom:renderBloom,
+      handoff:renderHandoff,
+      identity:renderIdentity,
+      topology:renderTopology
+    };
+    const canvases = {};
+    Object.keys(renderers).forEach(function(key) { canvases[key] = document.getElementById(key); });
+    const play = document.getElementById("play");
+    const next = document.getElementById("next");
+    const gaps = document.getElementById("gaps");
+    const scrub = document.getElementById("scrub");
+    const clock = document.getElementById("clock");
+    let tick = 0;
+    let running = true;
+    let last = performance.now();
+    let accumulator = 0;
+
+    function render() {
+      const gapMode = gaps.checked;
+      Object.keys(renderers).forEach(function(key) {
+        const scene = renderers[key](tick);
+        paint(canvases[key], scene.fb, gapMode);
+        const meta = document.getElementById(key + "-meta");
+        if (meta) meta.textContent = scene.meta;
+      });
+      clock.textContent = "CONTACT " + (selectedIndex(tick) + 1) + "/5 · SOURCE " + (sourceVersion(tick) + 1);
+      scrub.value = String(tick);
+    }
+    function animate(now) {
+      const delta = Math.min(250, now - last);
+      last = now;
+      let changed = false;
+      if (running) {
+        accumulator += delta;
+        while (accumulator >= 1000 / FPS) {
+          tick = (tick + 1) % TOTAL_FRAMES;
+          accumulator -= 1000 / FPS;
+          changed = true;
+        }
+      }
+      if (changed) render();
+      requestAnimationFrame(animate);
+    }
+    play.addEventListener("click", function() {
+      running = !running;
+      play.textContent = running ? "Pause motion" : "Play motion";
+    });
+    next.addEventListener("click", function() {
+      tick = ((Math.floor(tick / SELECT_FRAMES) + 1) % fixture.length) * SELECT_FRAMES;
+      accumulator = 0;
+      render();
+    });
+    gaps.addEventListener("change", render);
+    scrub.addEventListener("input", function(event) {
+      tick = Number(event.target.value);
+      running = false;
+      play.textContent = "Play motion";
+      accumulator = 0;
+      render();
+    });
+    render();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

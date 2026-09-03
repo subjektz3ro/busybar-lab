@@ -1,0 +1,7 @@
+# SECURITY.md promises a detail-free public fallback when private advisories
+# are unavailable, so a blank issue must remain possible.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/subjektz3ro/busybar-lab/security/advisories/new
+    about: Do not put vulnerability details, tokens, logs, network addresses, or coordinates in a public issue.

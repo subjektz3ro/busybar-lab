@@ -1,0 +1,2142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>DSN Network View — 72×16 design study</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b10;
+      --panel: #111720;
+      --panel-2: #151d28;
+      --edge: #283342;
+      --edge-hi: #39485a;
+      --ink: #e9eef5;
+      --muted: #94a2b5;
+      --quiet: #657286;
+      --cyan: #46dceb;
+      --blue: #78beff;
+      --orange: #ffa03c;
+      --amber: #ffae32;
+      --green: #96be78;
+      --red: #f54137;
+      --radius: 17px;
+      --body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      min-width: 320px;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font: 15px/1.55 var(--body);
+      background:
+        radial-gradient(1000px 560px at 12% -8%, rgba(70, 220, 235, 0.10), transparent 60%),
+        radial-gradient(900px 520px at 92% 6%, rgba(255, 160, 60, 0.09), transparent 62%),
+        linear-gradient(180deg, #0a0e14, #07090d 72%);
+    }
+
+    a { color: var(--cyan); }
+
+    .wrap {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    header {
+      padding: 58px 0 30px;
+    }
+
+    .eyebrow {
+      margin: 0 0 13px;
+      color: var(--cyan);
+      font: 700 12px/1.2 var(--mono);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(38px, 7vw, 74px);
+      line-height: 0.98;
+      letter-spacing: -0.055em;
+      font-weight: 680;
+    }
+
+    .lede {
+      max-width: 820px;
+      margin: 24px 0 0;
+      color: #bac5d3;
+      font-size: clamp(17px, 2.2vw, 22px);
+      line-height: 1.5;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .chip {
+      border: 1px solid var(--edge);
+      border-radius: 999px;
+      padding: 7px 11px;
+      color: #b7c2d0;
+      background: rgba(14, 20, 28, 0.78);
+      font: 700 11px/1 var(--mono);
+      letter-spacing: 0.04em;
+    }
+
+    .chip strong { color: var(--ink); }
+
+    .verdict {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: 20px;
+      margin: 12px 0 28px;
+      padding: 22px;
+      border: 1px solid rgba(70, 220, 235, 0.32);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(135deg, rgba(70, 220, 235, 0.10), transparent 52%),
+        var(--panel);
+      box-shadow: 0 26px 70px rgba(0, 0, 0, 0.22);
+    }
+
+    .verdict-label {
+      color: var(--cyan);
+      font: 700 12px/1.35 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .verdict p {
+      max-width: 820px;
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.55;
+    }
+
+    .controls {
+      position: sticky;
+      top: 10px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 0 0 24px;
+      padding: 11px 13px;
+      border: 1px solid rgba(57, 72, 90, 0.85);
+      border-radius: 14px;
+      background: rgba(12, 17, 24, 0.88);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+      backdrop-filter: blur(14px);
+    }
+
+    button,
+    .toggle {
+      min-height: 34px;
+      border: 1px solid var(--edge);
+      border-radius: 9px;
+      color: var(--ink);
+      background: #171f2a;
+      font: 700 11px/1 var(--mono);
+      letter-spacing: 0.035em;
+    }
+
+    button {
+      cursor: pointer;
+      padding: 0 13px;
+    }
+
+    button:hover { border-color: var(--cyan); }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 11px;
+      cursor: pointer;
+    }
+
+    .toggle input { accent-color: var(--cyan); }
+
+    .scrub {
+      flex: 1 1 220px;
+      min-width: 150px;
+      accent-color: var(--cyan);
+    }
+
+    .clock {
+      margin-left: auto;
+      color: var(--muted);
+      font: 700 11px/1 var(--mono);
+      white-space: nowrap;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 18px;
+      margin: 42px 0 16px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(25px, 3.6vw, 38px);
+      line-height: 1.1;
+      letter-spacing: -0.035em;
+    }
+
+    .section-note {
+      max-width: 520px;
+      margin: 0;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .research-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .research-card {
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--edge);
+      border-radius: 14px;
+      background:
+        linear-gradient(160deg, rgba(70, 220, 235, 0.035), transparent 55%),
+        rgba(17, 23, 32, 0.78);
+    }
+
+    .research-card h3 {
+      margin-bottom: 7px;
+      font-size: 17px;
+    }
+
+    .research-card p {
+      margin: 0;
+      color: #b6c1ce;
+      font-size: 13px;
+    }
+
+    .research-card a,
+    .source-list a {
+      color: var(--cyan);
+      text-decoration-color: rgba(70, 220, 235, 0.35);
+      text-underline-offset: 3px;
+    }
+
+    .source-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px 14px;
+      margin: 0 0 28px;
+      padding: 12px 14px;
+      border: 1px solid var(--edge);
+      border-radius: 12px;
+      color: var(--muted);
+      background: rgba(9, 13, 18, 0.58);
+      font-size: 12px;
+    }
+
+    .source-list strong {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .concepts {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .concept {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 120px),
+        var(--panel);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.17);
+    }
+
+    .concept.recommended {
+      border-color: rgba(70, 220, 235, 0.52);
+      box-shadow:
+        0 0 0 1px rgba(70, 220, 235, 0.07) inset,
+        0 18px 54px rgba(0, 0, 0, 0.24);
+    }
+
+    .concept.wide { grid-column: 1 / -1; }
+
+    .dual-preview {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .dual-preview .display-shell { margin-inline: 0; }
+
+    .display-label {
+      margin: 0 0 7px;
+      color: var(--muted);
+      font: 700 10px/1 var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    canvas.rear {
+      aspect-ratio: 2 / 1;
+    }
+
+    .concept-copy {
+      padding: 19px 20px 4px;
+    }
+
+    .concept-kicker {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font: 700 11px/1.2 var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .rank {
+      display: inline-grid;
+      width: 25px;
+      height: 25px;
+      place-items: center;
+      border: 1px solid var(--edge-hi);
+      border-radius: 50%;
+      color: var(--ink);
+    }
+
+    .recommend-tag {
+      border: 1px solid rgba(70, 220, 235, 0.45);
+      border-radius: 999px;
+      padding: 4px 7px;
+      color: var(--cyan);
+      font-size: 9px;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 23px;
+      line-height: 1.2;
+      letter-spacing: -0.025em;
+    }
+
+    .thesis {
+      min-height: 48px;
+      margin: 9px 0 0;
+      color: #b6c1ce;
+    }
+
+    .display-shell {
+      margin: 16px 14px 0;
+      padding: 11px;
+      border: 1px solid #2b313a;
+      border-radius: 15px;
+      background:
+        linear-gradient(180deg, #252b33, #101318 72%),
+        #11151a;
+      box-shadow:
+        inset 0 1px rgba(255, 255, 255, 0.06),
+        0 10px 26px rgba(0, 0, 0, 0.35);
+    }
+
+    .display-bezel {
+      padding: 7px;
+      border: 1px solid #07090c;
+      border-radius: 8px;
+      background: #020305;
+      box-shadow:
+        inset 0 0 18px rgba(0, 0, 0, 0.95),
+        0 0 18px rgba(70, 220, 235, 0.025);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 72 / 16;
+      background: #020305;
+    }
+
+    .screen-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+      color: #8996a7;
+      font: 700 10px/1.3 var(--mono);
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+    }
+
+    .concept-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 17px 20px 21px;
+    }
+
+    .detail-label {
+      margin-bottom: 5px;
+      color: var(--muted);
+      font: 700 10px/1.2 var(--mono);
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .detail-copy {
+      margin: 0;
+      color: #c5ced9;
+      font-size: 14px;
+    }
+
+    .failure { color: #f0bd86; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px 16px;
+      margin: 18px 0 0;
+      padding: 14px 16px;
+      border: 1px solid var(--edge);
+      border-radius: 13px;
+      background: rgba(16, 22, 30, 0.72);
+      color: #b8c3d0;
+      font-size: 13px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: var(--swatch);
+      box-shadow: 0 0 8px color-mix(in srgb, var(--swatch) 55%, transparent);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    table {
+      width: 100%;
+      min-width: 850px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--edge);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.02);
+      font: 700 10px/1.3 var(--mono);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    tbody tr:last-child td { border-bottom: 0; }
+    td:first-child { color: var(--ink); font-weight: 700; }
+    .yes { color: #9cd99a; }
+    .some { color: #f0bd86; }
+    .no { color: #8c99a8; }
+
+    .recommendation {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+      gap: 18px;
+      margin: 18px 0 70px;
+    }
+
+    .recommendation > div {
+      padding: 22px;
+      border: 1px solid var(--edge);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .recommendation .primary {
+      border-color: rgba(70, 220, 235, 0.38);
+      background:
+        linear-gradient(145deg, rgba(70, 220, 235, 0.08), transparent 48%),
+        var(--panel);
+    }
+
+    .recommendation h3 { margin-bottom: 10px; }
+    .recommendation p { margin: 0; color: #c1cbd7; }
+    .recommendation ol { margin: 13px 0 0; padding-left: 22px; color: #c1cbd7; }
+    .recommendation li + li { margin-top: 7px; }
+
+    .fine {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    footer {
+      padding: 0 0 44px;
+      color: #768396;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 830px) {
+      .concepts { grid-template-columns: 1fr; }
+      .concept.wide { grid-column: auto; }
+      .research-grid { grid-template-columns: 1fr 1fr; }
+      .verdict { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .section-note { margin-top: 8px; text-align: left; }
+      .recommendation { grid-template-columns: 1fr; }
+      .clock { width: 100%; margin-left: 0; }
+    }
+
+    @media (max-width: 540px) {
+      .wrap { width: min(100% - 20px, 1180px); }
+      header { padding-top: 36px; }
+      .concept-details { grid-template-columns: 1fr; }
+      .research-grid,
+      .dual-preview { grid-template-columns: 1fr; }
+      .display-shell { margin-inline: 8px; padding: 8px; }
+      .dual-preview .display-shell { margin-inline: 0; }
+      .concept-copy,
+      .concept-details { padding-inline: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <p class="eyebrow">BUSY Bar · DSN Network View Study · 72×16</p>
+    <h1>Show the network,<br>not just a page of it.</h1>
+    <p class="lede">
+      The current screen is a strong per-contact board. It is not the clearest
+      global overview: five simultaneous contacts can look like only two, and
+      the unlabeled digit at the right looks like a connection count even
+      though it is not. These are several ways to change that.
+    </p>
+    <div class="chips" aria-label="Representative fixture">
+      <span class="chip"><strong>G1</strong> Goldstone contact</span>
+      <span class="chip"><strong>M0</strong> Madrid contacts</span>
+      <span class="chip"><strong>C4</strong> Canberra contacts</span>
+      <span class="chip"><strong>5</strong> concurrent dish/craft links</span>
+      <span class="chip">same current topology · illustrative history</span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="verdict" aria-labelledby="verdict-heading">
+      <div class="verdict-label" id="verdict-heading">Short answer</div>
+      <p>
+        No—the current layout is not the best answer to “what is the DSN doing
+        globally?” It spends scarce pixels on one friendly name and one
+        contact-level receive-record digit per site. The strongest direction is
+        <strong>Global summary + focus</strong>: show <strong>G1 M0 C4</strong>
+        continuously, then use the remaining space for one richly identified
+        live contact. It makes the tradeoff explicit instead of hiding it in
+        synchronized pages.
+      </p>
+    </section>
+
+    <section class="controls" aria-label="Preview controls">
+      <button type="button" id="play">Pause motion</button>
+      <button type="button" id="next">Next contact</button>
+      <label class="toggle">
+        <input type="checkbox" id="gaps" checked>
+        Physical LED gaps
+      </label>
+      <input class="scrub" id="scrub" type="range" min="0" max="199" value="0" aria-label="Animation frame">
+      <span class="clock" id="clock">CONTACT 1/5 · FRAME 00</span>
+    </section>
+
+    <section aria-labelledby="research-heading">
+      <div class="section-head">
+        <h2 id="research-heading">What the research says to protect</h2>
+        <p class="section-note">
+          The useful lesson is not “use chart X.” It is to decide whether a
+          glance should answer overview, identity, relation, change or history,
+          then give that task a stable visual grammar.
+        </p>
+      </div>
+      <div class="research-grid">
+        <article class="research-card">
+          <h3>Overview before detail</h3>
+          <p>
+            Shneiderman's information-seeking model starts with the whole
+            collection, then selection and details. That supports Network →
+            Instrument → Distance—and argues against making Network look like
+            a complete snapshot when it is only one page.
+            <a href="https://www.cs.umd.edu/~ben/papers/Shneiderman1996eyes.pdf">Original paper</a>
+          </p>
+        </article>
+        <article class="research-card">
+          <h3>Make the source hierarchy spatial</h3>
+          <p>
+            Treemaps use bounded area to reveal a hierarchy in limited space.
+            DSN data already has one: network → site → dish/craft contact. A
+            mosaic can make site load visible without adding another number.
+            <a href="https://www.cs.umd.edu/~ben/papers/Johnson1991Tree.pdf">Original paper</a>
+          </p>
+        </article>
+        <article class="research-card">
+          <h3>Time can explain “zero”</h3>
+          <p>
+            LifeLines and horizon graphs show why compact, aligned histories
+            help people notice duration, events and comparison. That suggests
+            contact lifelines and site small-multiples—not a continuously
+            decorative waveform.
+            <a href="https://www.cs.umd.edu/~ben/papers/Plaisant1996LifeLines.pdf">LifeLines</a> ·
+            <a href="https://idl.uw.edu/papers/horizon">Horizon study</a>
+          </p>
+        </article>
+        <article class="research-card">
+          <h3>Glanceable means abstract and stable</h3>
+          <p>
+            Research on peripheral displays recommends matching expectations,
+            simplifying to essentials, making states visibly distinct and
+            keeping mappings consistent. That favors stable G/M/C positions
+            and coarse, repeated RF marks over tiny changing legends.
+            <a href="https://www2.eecs.berkeley.edu/Pubs/TechRpts/2006/EECS-2006-113.pdf">Berkeley report</a>
+          </p>
+        </article>
+        <article class="research-card">
+          <h3>Dashboards need a strong hierarchy</h3>
+          <p>
+            IBM's dashboard guidance puts the big-picture status first and
+            gives the most important information the strongest contrast and
+            area. On this bar, site totals and freshness outrank an unlabeled
+            per-contact receive-record digit.
+            <a href="https://carbondesignsystem.com/data-visualization/dashboards/">Carbon guidance</a>
+          </p>
+        </article>
+        <article class="research-card">
+          <h3>Design at native resolution</h3>
+          <p>
+            Tidbyt's official pixel-display guidance says to author at the
+            device's actual resolution, complete animation cycles, and expire
+            stale time-sensitive content. BUSY Bar adds harsher LED gaps and
+            contrast limits, so every option below stays mostly off and loops
+            on fixed clocks.
+            <a href="https://tidbyt.dev/docs/reference/gifs">GIF guidance</a> ·
+            <a href="https://tidbyt.dev/docs/reference/widgets">Widget guidance</a>
+          </p>
+        </article>
+        <article class="research-card">
+          <h3>Never make colour carry truth alone</h3>
+          <p>
+            NASA human-interface guidance favors consistent, redundant coding
+            and unambiguous feedback. Here, lane position establishes TX/RX,
+            colour refines band, and freshness gets its own fixed edge grammar.
+            That matters because X-band orange and feed-delay amber are easy to
+            confuse when both appear as tiny moving lights.
+            <a href="https://www.nasa.gov/wp-content/uploads/2023/03/human-integration-design-processes.pdf">NASA HSI guidance</a>
+          </p>
+        </article>
+      </div>
+      <div class="source-list">
+        <strong>Source truth</strong>
+        <span>NASA itself frames DSN Now as a network overview with antenna selection for technical detail, and notes that one antenna can communicate with more than one spacecraft.</span>
+        <a href="https://eyes.nasa.gov/apps/dsn-now/index.html">NASA DSN Now</a>
+      </div>
+    </section>
+
+    <section aria-labelledby="concepts-heading">
+      <div class="section-head">
+        <h2 id="concepts-heading">Fifteen ways to spend 1,152 pixels</h2>
+        <p class="section-note">
+          Every front preview is an exact 72×16 framebuffer rendered with the
+          production proportional 5-pixel font and a qualitative 1.23 mm LED /
+          2.2 mm pitch gap model. The final option also explores the 160×80 rear.
+        </p>
+      </div>
+
+      <div class="concepts">
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">0</span> Baseline</div>
+            <h3>Current contact carousel</h3>
+            <p class="thesis">
+              Three beautiful detail rows, but only one contact per site is
+              visible on a page. Shorter site lists repeat while the busiest
+              site advances.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="current" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="current-meta">Page 1/4</span><span>bare digit = RX record count</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">One full contact identity, duplex direction and band for each site.</p>
+            </div>
+            <div>
+              <div class="detail-label">Why it misleads</div>
+              <p class="detail-copy failure">The frame looks complete even though Canberra has three more simultaneous contacts off-screen.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept recommended">
+          <div class="concept-copy">
+            <div class="concept-kicker">
+              <span class="rank">1</span> Recommended
+              <span class="recommend-tag">BEST BALANCE</span>
+            </div>
+            <h3>Global summary + one focus</h3>
+            <p class="thesis">
+              Keep global load permanently visible as <strong>G1 M0 C4</strong>.
+              Give the rest of the panel to one honest, full-name live contact.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="summary" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="summary-meta">1/5 · G26</span><span>all counts stay visible</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">How many links each complex has, which of all five is selected, its full name and its two RF directions.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy">Only the selected dish/craft pair is named. Exact receive-record counts move to Instrument, where they have context.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">2</span> Most literal overview</div>
+            <h3>Dish occupancy matrix</h3>
+            <p class="thesis">
+              Use each five-pixel site row as five fixed dish slots. Every
+              active antenna/contact is visible at once, with tiny TX/RX badges.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="matrix" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="matrix-meta">Selected: G26 · MMS 2</span><span>5 dish/contact slots visible</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Exactly which DSS antennas have displayable contacts, and which have uplink and/or downlink records.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">Full spacecraft names do not fit. Identity moves to the instant wheel picker and selected Instrument.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">3</span> Evolutionary</div>
+            <h3>Indexed site rows</h3>
+            <p class="thesis">
+              Preserve the current three-row grammar, but make every displayed
+              contact visibly “selected from N” with site totals and node ticks.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="indexed" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="indexed-meta">Canberra: contact 1 of 4</span><span>no unexplained RX digit</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">G/M/C totals, selected position within each site, friendly name and selected RF direction.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy">Other links are explicit nodes rather than named contacts. The name viewport is narrower than today.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">4</span> Live history</div>
+            <h3>Contact strip chart</h3>
+            <p class="thesis">
+              Turn 60 columns into recent accepted source snapshots. It answers
+              not only “Madrid has zero now,” but “how long has that been true?”
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="history" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span>about 10 minutes ago</span><span>now →</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Current site totals, recent occupancy changes, downlink bands and source-timestamp heartbeat.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">It is an instrument, not a mission portrait: identities and live RF detail require another view.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">5</span> Ambient / artistic</div>
+            <h3>Topology loom</h3>
+            <p class="thesis">
+              Three Earth sites fan into five concurrent craft endpoints. The
+              source really controls every strand, acquisition and handoff.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="loom" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="loom-meta">Focus: G26 · MMS 2</span><span>all strands are concurrent</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">The global network as a living shape: site load, duplex direction, acquisitions and handoffs.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">The most novel option is also the least self-decoding. Names and line crossings are hard at 72×16.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">6</span> Space-filling hierarchy</div>
+            <h3>Site mosaic</h3>
+            <p class="thesis">
+              Let each complex occupy area proportional to its current contact
+              load, then subdivide that area into actual dish/contact tiles.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="mosaic" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="mosaic-meta">Selected: G26 · MMS 2</span><span>area = site share</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Canberra owns four times Goldstone's active-contact area; Madrid remains an explicit minimum-width zero cell.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">Boundaries move when counts change. That is expressive, but it weakens the stable G/M/C mental map.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">7</span> Contact history</div>
+            <h3>Spacecraft handoff rails</h3>
+            <p class="thesis">
+              Give each craft a recent source-time rail. Site-coloured segments
+              make an observed G→M→C handoff a visible change in the line itself.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="lifelines" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="lifelines-meta">1/5 · G26 · MMS 2</span><span>right edge = latest source</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Which craft are continuously observed, which site saw them, whether a handoff occurred, and the full selected identity.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy">Four non-selected rails are anonymous until selected; snapshot changes are observed associations, not proof of a planned handoff.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">8</span> Change-first</div>
+            <h3>Event radar</h3>
+            <p class="thesis">
+              Keep site totals fixed at the top. Spend the lower two-thirds on
+              the latest real acquisition, loss, handoff or topology change.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="eventradar" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="event-meta">Representative: acquisition</span><span>no event = calm summary</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">What changed, which contact caused it, and the still-current global load.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">It is superb when the source changes and intentionally quiet otherwise. It should complement, not replace, a topology overview.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">9</span> Lowest migration risk</div>
+            <h3>Overview/detail interleave</h3>
+            <p class="thesis">
+              Insert a short, unmistakable all-contact overview before every
+              existing full-detail page. Preserve today's art and teach its paging.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="interleave" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="interleave-meta">Overview phase</span><span>2 sec overview · 6 sec detail</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">At least once per loop: exact totals and all dishes. Then the familiar full names and RF lanes return.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">A random glance still sees only one phase. The transition must be obvious so overview and detail are never confused.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">10</span> Small multiples</div>
+            <h3>Three site horizons</h3>
+            <p class="thesis">
+              Give G, M and C identical miniature charts with the same scale:
+              current count above, recent contact load below.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="multiples" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="multiples-meta">20 accepted samples per site</span><span>same scale · now at right</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Direct site-to-site comparison: Canberra is busy, Madrid has been empty, Goldstone recently dropped from two to one.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy">Only load survives the compression. Names, dishes and RF direction move to focus views.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">11</span> Actual pointing</div>
+            <h3>Three local sky scopes</h3>
+            <p class="thesis">
+              Give each complex a fixed polar scope. Every dot is an antenna's
+              source-reported local azimuth and elevation—not a decorative orbit.
+              <a href="2026-08-08-dsn-three-skies-final.html">See the final recommendation →</a>
+              <a href="2026-08-08-dsn-local-sky-scope-options.html">Explore ten deeper variants →</a>
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="skyscopes" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="skyscopes-meta">G1 · M0 · C4 pointing nodes</span><span>center = zenith</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Which local skies are active, how each real dish is aimed, and whether contacts cluster or diverge.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">At 24×16, nodes collide and exact identities require selection. Users must learn that each scope is local—not a shared map of space.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">12</span> Signal census</div>
+            <h3>RF band census</h3>
+            <p class="thesis">
+              Replace moving portraits with three explicit summaries: contact
+              total, active uplink records, and receive records by band.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="bandcensus" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="bandcensus-meta">G: 1 contact · TX1 · S1</span><span>labels remove colour guesswork</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Per-site contact load, duplex activity, and the distribution of active downlink records across S/X/K/Ka.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy">It is precise but clinical. TX and band values count signal records, not craft, so the labels and docs must keep that distinction explicit.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept recommended">
+          <div class="concept-copy">
+            <div class="concept-kicker">
+              <span class="rank">13</span> Focus + context
+              <span class="recommend-tag">BEST NEW IDEA</span>
+            </div>
+            <h3>Focus-lens roster</h3>
+            <p class="thesis">
+              Keep every live contact on-screen as a thin context rail, while
+              the wheel-selected contact expands into a full-name duplex panel.
+            </p>
+          </div>
+          <div class="display-shell">
+            <div class="display-bezel"><canvas id="focuslens" width="1296" height="288"></canvas></div>
+            <div class="screen-meta"><span id="focuslens-meta">1/5 · G26 · MMS 2</span><span>all five remain present</span></div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">One readable identity and rich duplex link, plus a persistent one-glance proof that four other contacts are concurrent.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy">Context rails encode site/direction/band but not friendly names. Expansion geometry needs careful hardware testing.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="concept wide">
+          <div class="concept-copy">
+            <div class="concept-kicker"><span class="rank">14</span> Use both screens</div>
+            <h3>Dual-display mission control</h3>
+            <p class="thesis">
+              Let the 72×16 front remain a glanceable summary + focus. Use the
+              160×80 rear for the complete contact roster and technical context.
+            </p>
+          </div>
+          <div class="dual-preview">
+            <div>
+              <p class="display-label">Front · 72×16</p>
+              <div class="display-shell">
+                <div class="display-bezel"><canvas id="dual-front" width="1296" height="288"></canvas></div>
+                <div class="screen-meta"><span id="dual-meta">1/5 · G26 · MMS 2</span><span>ambient</span></div>
+              </div>
+            </div>
+            <div>
+              <p class="display-label">Rear · 160×80</p>
+              <div class="display-shell">
+                <div class="display-bezel"><canvas class="rear" id="dual-rear" width="1280" height="640"></canvas></div>
+                <div class="screen-meta"><span>all five identities</span><span>inspection</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="concept-details">
+            <div>
+              <div class="detail-label">Immediately visible</div>
+              <p class="detail-copy">Front: global state and one emotional mission identity. Rear: every site, dish, full name, direction, band and receive-record count.</p>
+            </div>
+            <div>
+              <div class="detail-label">Tradeoff</div>
+              <p class="detail-copy failure">Only useful when the rear display is physically visible. It also creates two surfaces whose interaction and freshness must remain synchronized.</p>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="legend" aria-label="RF color legend">
+        <span class="legend-item"><span class="swatch" style="--swatch:#78beff"></span> uplink / Earth → craft</span>
+        <span class="legend-item"><span class="swatch" style="--swatch:#ff280a"></span> S-band downlink</span>
+        <span class="legend-item"><span class="swatch" style="--swatch:#ffa03c"></span> X-band downlink</span>
+        <span class="legend-item"><span class="swatch" style="--swatch:#b4ff50"></span> K-band downlink</span>
+        <span class="legend-item"><span class="swatch" style="--swatch:#ffffaa"></span> Ka-band downlink</span>
+        <span class="legend-item"><span class="swatch" style="--swatch:#46dceb"></span> accepted NASA source timestamp</span>
+      </div>
+    </section>
+
+    <section aria-labelledby="compare-heading">
+      <div class="section-head">
+        <h2 id="compare-heading">What each design optimizes</h2>
+        <p class="section-note">There is no layout that shows six full names, six dishes, duplex RF, bands and history simultaneously on a 72×16 front panel.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Concept</th>
+              <th>Total network at a glance</th>
+              <th>Every exact dish</th>
+              <th>Full friendly name</th>
+              <th>Why it is genuinely live</th>
+              <th>Physical-panel risk</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Current carousel</td>
+              <td class="no">Hidden behind pages</td>
+              <td class="some">Eventually</td>
+              <td class="yes">Three at a time</td>
+              <td>Live direction, band, topology and freshness</td>
+              <td class="yes">Already proven</td>
+            </tr>
+            <tr>
+              <td>Summary + focus</td>
+              <td class="yes">Exact G/M/C totals</td>
+              <td class="some">Selected + total</td>
+              <td class="yes">One wide marquee</td>
+              <td>Counts, identity, duplex contact and timestamp all update from source</td>
+              <td class="yes">Low</td>
+            </tr>
+            <tr>
+              <td>Dish matrix</td>
+              <td class="yes">All active dishes</td>
+              <td class="yes">Up to five/site</td>
+              <td class="no">Picker/detail only</td>
+              <td>Every slot appears/disappears with an actual dish/craft record</td>
+              <td class="some">Medium</td>
+            </tr>
+            <tr>
+              <td>Indexed rows</td>
+              <td class="yes">Totals + node ticks</td>
+              <td class="some">Selected + nodes</td>
+              <td class="yes">Three narrow marquees</td>
+              <td>Node count, selection, RF direction and timestamp all remain source-driven</td>
+              <td class="yes">Low–medium</td>
+            </tr>
+            <tr>
+              <td>Strip chart</td>
+              <td class="yes">Now + recent history</td>
+              <td class="no">Not identified</td>
+              <td class="no">No</td>
+              <td>Only accepted timestamped snapshots advance the chart</td>
+              <td class="yes">Low</td>
+            </tr>
+            <tr>
+              <td>Topology loom</td>
+              <td class="yes">All strands</td>
+              <td class="some">Selectable nodes</td>
+              <td class="no">Picker/detail only</td>
+              <td>Topology changes reshape the network; real directions move on each strand</td>
+              <td class="no">High</td>
+            </tr>
+            <tr>
+              <td>Site mosaic</td>
+              <td class="yes">Area + exact totals</td>
+              <td class="yes">All active tiles</td>
+              <td class="no">Picker/detail only</td>
+              <td>Every source contact creates a tile; site share reshapes only on topology change</td>
+              <td class="some">Medium</td>
+            </tr>
+            <tr>
+              <td>Handoff rails</td>
+              <td class="some">Five histories</td>
+              <td class="no">Selected only</td>
+              <td class="yes">One wide marquee</td>
+              <td>Acquisition/loss extends or ends an observed period; TX/RX remain literal</td>
+              <td class="some">Medium</td>
+            </tr>
+            <tr>
+              <td>Event radar</td>
+              <td class="yes">Totals always</td>
+              <td class="some">Changed contact</td>
+              <td class="yes">Changed contact</td>
+              <td>Only actual accepted transitions activate the event area</td>
+              <td class="yes">Low</td>
+            </tr>
+            <tr>
+              <td>Interleave</td>
+              <td class="some">Brief overview phase</td>
+              <td class="yes">During overview</td>
+              <td class="yes">During detail</td>
+              <td>Overview and selected RF page both derive from the same source snapshot</td>
+              <td class="yes">Low</td>
+            </tr>
+            <tr>
+              <td>Site horizons</td>
+              <td class="yes">Three comparable charts</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td>Only accepted source samples extend the three fixed-scale histories</td>
+              <td class="yes">Low</td>
+            </tr>
+            <tr>
+              <td>Local sky scopes</td>
+              <td class="yes">Three fixed scopes</td>
+              <td class="some">Pointing nodes</td>
+              <td class="no">Picker/detail only</td>
+              <td>Node geometry steps only when source azimuth/elevation changes</td>
+              <td class="no">High / collision-prone</td>
+            </tr>
+            <tr>
+              <td>RF band census</td>
+              <td class="yes">Explicit site totals</td>
+              <td class="no">No</td>
+              <td class="no">No</td>
+              <td>Every labelled count comes from active source signal records</td>
+              <td class="yes">Low</td>
+            </tr>
+            <tr>
+              <td>Focus-lens roster</td>
+              <td class="yes">All contacts persist</td>
+              <td class="some">Focused + coded rails</td>
+              <td class="yes">One wide marquee</td>
+              <td>Contacts appear/disappear with source snapshots; selection only changes their visual emphasis</td>
+              <td class="some">Medium</td>
+            </tr>
+            <tr>
+              <td>Dual display</td>
+              <td class="yes">Front totals</td>
+              <td class="yes">Rear roster</td>
+              <td class="yes">All on rear</td>
+              <td>Both surfaces share one timestamped snapshot and freshness state</td>
+              <td class="some">Medium / placement-dependent</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="recommendation" aria-label="Recommendation">
+      <div class="primary">
+        <h3>Recommendation: prototype Summary + Focus first</h3>
+        <p>
+          It corrects the actual comprehension failure without throwing away
+          the full-name work, RF grammar, heartbeat or the three-view
+          architecture. Network becomes the global answer; Instrument keeps
+          exact stream records, power, rate, pointing and modes; Distance keeps
+          the physical-separation story.
+        </p>
+        <ol>
+          <li>Replace the naked right digit with permanent site totals: <strong>G1 M0 C4</strong>.</li>
+          <li>Use one global contact order and show <strong>2/5</strong>; never repeat a short site list to fill another site's pages.</li>
+          <li>Keep one wide full-name marquee and long duplex lanes for the selected contact.</li>
+          <li>Represent receive-record multiplicity as carrier marks; keep the exact count in Instrument.</li>
+          <li>Keep source-triggered event cards and heartbeat independent of this layout.</li>
+        </ol>
+      </div>
+      <div>
+        <h3>Then test one bolder idea</h3>
+        <p>
+          Put the Focus-Lens Roster and Handoff Rails on the real bar for a week
+          as alternate Network scenes. Focus-Lens best preserves “all five are
+          here” while still honoring full names; Handoff Rails most strongly
+          reveals a story that only live DSN snapshots can provide. The spaced
+          LEDs—not this browser—should decide which one survives.
+        </p>
+        <p class="fine" style="margin-top:14px">
+          Design study only. No running DSN app, device asset, narration cache
+          or deployment state is changed by this page.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    Prototype renderer only. Any selected concept must be rebuilt in Python,
+    covered by final-frame visual contracts, gap-previewed and verified on the
+    physical BUSY Bar.
+  </footer>
+
+  <script>
+    // This page is deliberately self-contained and offline. It mirrors the
+    // production DSN palette and proportional 5px font for honest layout
+    // exploration, but it is not shared runtime code.
+    const W = 72;
+    const H = 16;
+    const FPS = 5;
+    const CONTACT_FRAMES = 40;
+    const LED = 10;
+    const GAP = 8;
+    const PITCH = LED + GAP;
+    const PAD = GAP / 2;
+
+    const C = {
+      off: "#000000",
+      name: "#d7e1f0",
+      dish: "#6e91be",
+      rate: "#96be78",
+      antenna: "#c8aa6e",
+      uplink: "#78beff",
+      upTether: "#1a304e",
+      downTether: "#2e4a60",
+      s: "#ff280a",
+      x: "#ffa03c",
+      k: "#b4ff50",
+      ka: "#ffffaa",
+      unknown: "#6428ff",
+      cyan: "#46dceb",
+      delayed: "#ffae32",
+      stale: "#f54137",
+      quiet: "#556982",
+      white: "#e8eef7",
+      dim: "#263242",
+      neutral: "#a0a0a0"
+    };
+
+    const FONT = {
+      "A":["0110","1001","1111","1001","1001"], "B":["1110","1001","1110","1001","1110"],
+      "C":["0111","1000","1000","1000","0111"], "D":["1110","1001","1001","1001","1110"],
+      "E":["1111","1000","1110","1000","1111"], "F":["1111","1000","1110","1000","1000"],
+      "G":["0111","1000","1011","1001","0111"], "H":["1001","1001","1111","1001","1001"],
+      "I":["111","010","010","010","111"], "J":["0011","0001","0001","1001","0110"],
+      "K":["1001","1010","1100","1010","1001"], "L":["1000","1000","1000","1000","1111"],
+      "M":["10001","11011","10101","10001","10001"], "N":["1001","1101","1011","1001","1001"],
+      "O":["0110","1001","1001","1001","0110"], "P":["1110","1001","1110","1000","1000"],
+      "Q":["0110","1001","1001","1011","0111"], "R":["1110","1001","1110","1010","1001"],
+      "S":["0110","1000","0110","0001","0110"], "T":["1111","0100","0100","0100","0100"],
+      "U":["1001","1001","1001","1001","0110"], "V":["1001","1001","1001","1010","0100"],
+      "W":["10001","10001","10101","11011","10001"], "X":["1001","1001","0110","1001","1001"],
+      "Y":["1001","1001","0110","0100","0100"], "Z":["1111","0001","0110","1000","1111"],
+      "0":["0110","1011","1101","1001","0110"], "1":["010","110","010","010","111"],
+      "2":["0110","1001","0010","0100","1111"], "3":["1110","0001","0110","0001","1110"],
+      "4":["0010","0110","1010","1111","0010"], "5":["1111","1000","1110","0001","1110"],
+      "6":["0110","1000","1110","1001","0110"], "7":["1111","0001","0010","0100","0100"],
+      "8":["0110","1001","0110","1001","0110"], "9":["0110","1001","0111","0001","0110"],
+      " ":["0000","0000","0000","0000","0000"], ".":["0000","0000","0000","0000","0100"],
+      "-":["0000","0000","1111","0000","0000"], "?":["0110","1001","0010","0000","0100"],
+      "/":["0001","0010","0100","1000","0000"], ":":["0000","0100","0000","0100","0000"]
+    };
+
+    const fixture = [
+      { site:"G", dish:"26", craft:"MAGNETOSPHERIC MULTISCALE 2", short:"MMS 2", up:true, down:["S"], az:132, el:38 },
+      { site:"C", dish:"34", craft:"XMM NEWTON", short:"XMM", up:true, down:["S"], az:48, el:22 },
+      { site:"C", dish:"35", craft:"LUCY", short:"LUCY", up:false, down:["X"], az:112, el:61 },
+      { site:"C", dish:"36", craft:"SPACE WEATHER FOLLOW ON", short:"SWFO", up:true, down:["S"], az:221, el:14 },
+      { site:"C", dish:"43", craft:"VOYAGER 1", short:"VGR 1", up:false, down:["X"], az:303, el:31 }
+    ];
+    const siteRows = [["G",0],["M",5],["C",10]];
+    const bandColor = { S:C.s, X:C.x, K:C.k, KA:C.ka };
+    const siteColor = { G:C.dish, M:C.unknown, C:C.rate };
+
+    class Framebuffer {
+      constructor() {
+        this.pixels = new Array(W * H).fill(C.off);
+      }
+      set(x, y, color) {
+        if (x >= 0 && x < W && y >= 0 && y < H) {
+          this.pixels[y * W + x] = color;
+        }
+      }
+      get(x, y) {
+        return this.pixels[y * W + x];
+      }
+      hline(x0, x1, y, color) {
+        for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x += 1) this.set(x, y, color);
+      }
+      text(x, y, value, color, clip) {
+        let cursor = x;
+        const limits = clip || [0, W - 1];
+        String(value).toUpperCase().split("").forEach(function(ch) {
+          const glyph = FONT[ch];
+          if (glyph) {
+            glyph.forEach(function(row, dy) {
+              row.split("").forEach(function(bit, dx) {
+                const gx = cursor + dx;
+                if (bit === "1" && gx >= limits[0] && gx <= limits[1]) {
+                  this.set(gx, y + dy, color);
+                }
+              }, this);
+            }, this);
+          }
+          cursor += glyphWidth(ch) + 1;
+        }, this);
+      }
+    }
+
+    class RearFramebuffer {
+      constructor() {
+        this.width = 160;
+        this.height = 80;
+        this.pixels = new Array(this.width * this.height).fill(C.off);
+      }
+      set(x, y, color) {
+        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+          this.pixels[y * this.width + x] = color;
+        }
+      }
+      get(x, y) {
+        return this.pixels[y * this.width + x];
+      }
+      hline(x0, x1, y, color) {
+        for (let x = Math.max(0, x0); x <= Math.min(this.width - 1, x1); x += 1) this.set(x, y, color);
+      }
+      text(x, y, value, color, clip) {
+        let cursor = x;
+        const limits = clip || [0, this.width - 1];
+        String(value).toUpperCase().split("").forEach(function(ch) {
+          const glyph = FONT[ch];
+          if (glyph) {
+            glyph.forEach(function(row, dy) {
+              row.split("").forEach(function(bit, dx) {
+                const gx = cursor + dx;
+                if (bit === "1" && gx >= limits[0] && gx <= limits[1]) this.set(gx, y + dy, color);
+              }, this);
+            }, this);
+          }
+          cursor += glyphWidth(ch) + 1;
+        }, this);
+      }
+    }
+
+    function glyphWidth(ch) {
+      const glyph = FONT[String(ch).toUpperCase()];
+      return glyph ? glyph[0].length : 4;
+    }
+
+    function textWidth(value) {
+      const chars = String(value).toUpperCase().split("");
+      if (!chars.length) return 0;
+      return chars.reduce(function(total, ch) { return total + glyphWidth(ch) + 1; }, 0) - 1;
+    }
+
+    function marquee(fb, value, x0, x1, y, color, phase) {
+      const width = x1 - x0 + 1;
+      const full = textWidth(value);
+      if (full <= width) {
+        fb.text(x0, y, value, color, [x0, x1]);
+        return;
+      }
+      const cycle = full + 8;
+      const offset = Math.floor(phase * cycle);
+      fb.text(x0 - offset, y, value, color, [x0, x1]);
+      fb.text(x0 - offset + cycle, y, value, color, [x0, x1]);
+    }
+
+    function contactsFor(site) {
+      return fixture.filter(function(contact) { return contact.site === site; });
+    }
+
+    function movingMark(fb, x0, x1, y, phase, color, outward, offset) {
+      const width = x1 - x0;
+      const fraction = (phase + (offset || 0) + 0.2) % 1;
+      const step = Math.max(0, Math.min(width, Math.round(fraction * (width + 2)) - 1));
+      fb.set(outward ? x0 + step : x1 - step, y, color);
+    }
+
+    function rfLanes(fb, contact, x0, x1, upY, downY, phase) {
+      if (contact.up) {
+        fb.hline(x0, x1, upY, C.upTether);
+        movingMark(fb, x0, x1, upY, phase, C.uplink, true, 0);
+      }
+      if (contact.down.length) {
+        fb.hline(x0, x1, downY, C.downTether);
+        contact.down.slice(0, 3).forEach(function(band, index) {
+          movingMark(
+            fb, x0, x1, downY, phase,
+            bandColor[band] || C.unknown, false,
+            index / Math.min(3, contact.down.length)
+          );
+        });
+      }
+    }
+
+    function freshness(fb, tick) {
+      // This moves only on the mock source cadence (10s), not every frame.
+      const acceptedSourceVersion = Math.floor(tick / 50);
+      const y = (3 + acceptedSourceVersion * 2) % 15;
+      fb.set(71, y, C.cyan);
+      fb.set(71, y + 1, C.cyan);
+    }
+
+    function renderCurrent(tick) {
+      const fb = new Framebuffer();
+      const local = tick % CONTACT_FRAMES;
+      const page = Math.floor(tick / CONTACT_FRAMES) % 4;
+      const phase = local / CONTACT_FRAMES;
+      siteRows.forEach(function(siteRow) {
+        const site = siteRow[0];
+        const y0 = siteRow[1];
+        const contacts = contactsFor(site);
+        fb.text(0, y0, site, C.antenna);
+        if (!contacts.length) {
+          fb.text(7, y0, "NO LINK", C.quiet, [7, 39]);
+          return;
+        }
+        const contact = contacts[page % contacts.length];
+        fb.text(6, y0, contact.dish, C.dish, [6, 15]);
+        marquee(fb, contact.craft, 17, 37, y0, C.name, phase);
+        rfLanes(fb, contact, 40, 62, y0 + 1, y0 + 3, phase);
+        fb.text(66, y0, String(Math.min(9, contact.down.length)), contact.down.length ? C.rate : C.quiet, [66, 69]);
+      });
+      freshness(fb, tick);
+      const cContact = contactsFor("C")[page];
+      return {
+        fb: fb,
+        meta: "Page " + (page + 1) + "/4 · C" + cContact.dish + " " + cContact.short
+      };
+    }
+
+    function renderSummary(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const contact = fixture[selected];
+      const phase = (tick % CONTACT_FRAMES) / CONTACT_FRAMES;
+      fb.text(0, 0, "G1 M0 C4", C.white, [0, 42]);
+      fb.text(56, 0, (selected + 1) + "/5", C.rate, [56, 69]);
+      fb.text(0, 6, contact.site + contact.dish, C.dish, [0, 14]);
+      marquee(fb, contact.craft, 16, 69, 6, C.name, phase);
+      rfLanes(fb, contact, 6, 64, 12, 14, phase);
+      freshness(fb, tick);
+      return {
+        fb: fb,
+        meta: (selected + 1) + "/5 · " + contact.site + contact.dish + " · " + contact.short
+      };
+    }
+
+    function renderMatrix(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const selectedContact = fixture[selected];
+      const slots = [6, 18, 30, 42, 54];
+      siteRows.forEach(function(siteRow) {
+        const site = siteRow[0];
+        const y0 = siteRow[1];
+        const contacts = contactsFor(site);
+        fb.text(0, y0, site, C.antenna);
+        if (!contacts.length) {
+          fb.text(7, y0, "NO LINK", C.quiet, [7, 39]);
+          return;
+        }
+        contacts.slice(0, 5).forEach(function(contact, index) {
+          const x0 = slots[index];
+          const isSelected = contact === selectedContact;
+          fb.text(x0, y0, contact.dish, isSelected ? C.white : C.dish, [x0, x0 + 8]);
+          if (contact.up) {
+            fb.set(x0 + 10, y0, C.uplink);
+            fb.set(x0 + 10, y0 + 1, C.uplink);
+          }
+          if (contact.down.length) {
+            const color = bandColor[contact.down[0]] || C.unknown;
+            fb.set(x0 + 10, y0 + 3, color);
+            fb.set(x0 + 10, y0 + 4, color);
+          }
+          if (isSelected) {
+            for (let y = y0; y < y0 + 5; y += 1) fb.set(x0 + 11, y, C.white);
+          }
+        });
+      });
+      freshness(fb, tick);
+      return {
+        fb: fb,
+        meta: "Selected: " + selectedContact.site + selectedContact.dish + " · " + selectedContact.short
+      };
+    }
+
+    function renderIndexed(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const global = fixture[selected];
+      const phase = (tick % CONTACT_FRAMES) / CONTACT_FRAMES;
+      siteRows.forEach(function(siteRow) {
+        const site = siteRow[0];
+        const y0 = siteRow[1];
+        const contacts = contactsFor(site);
+        fb.text(0, y0, site + contacts.length, C.antenna, [0, 9]);
+        if (!contacts.length) {
+          fb.text(15, y0, "NO LINK", C.quiet, [15, 47]);
+          return;
+        }
+        let localSelected = contacts[0];
+        if (global.site === site) localSelected = global;
+        contacts.slice(0, 6).forEach(function(contact, index) {
+          const x = 12 + index * 2;
+          const on = contact === localSelected;
+          fb.set(x, y0 + 2, on ? C.white : C.dish);
+          if (on) fb.set(x, y0 + 3, C.white);
+        });
+        marquee(fb, localSelected.short, 24, 45, y0, C.name, phase);
+        rfLanes(fb, localSelected, 48, 67, y0 + 1, y0 + 3, phase);
+      });
+      freshness(fb, tick);
+      const localIndex = contactsFor(global.site).indexOf(global);
+      const localCount = contactsFor(global.site).length;
+      return {
+        fb: fb,
+        meta: (global.site === "C" ? "Canberra" : "Goldstone") + ": contact " + (localIndex + 1) + " of " + localCount
+      };
+    }
+
+    function historyCount(site, index) {
+      if (site === "G") {
+        if (index < 9) return 0;
+        if (index < 24) return 1;
+        if (index < 40) return 2;
+        return 1;
+      }
+      if (site === "M") return index < 14 ? 1 : 0;
+      if (index < 12) return 2;
+      if (index < 31) return 3;
+      return 4;
+    }
+
+    function historyColors(site, count) {
+      if (site === "G") return count === 2 ? [C.s, C.uplink] : [C.s];
+      if (site === "M") return [C.x];
+      return [C.s, C.x, C.s, C.x];
+    }
+
+    function renderHistory(tick) {
+      const fb = new Framebuffer();
+      const sourceShift = Math.floor(tick / 50) % 4;
+      siteRows.forEach(function(siteRow) {
+        const site = siteRow[0];
+        const y0 = siteRow[1];
+        const current = site === "G" ? 1 : (site === "C" ? 4 : 0);
+        fb.text(0, y0, site + current, C.antenna, [0, 8]);
+        for (let column = 0; column < 59; column += 1) {
+          const historyIndex = Math.min(59, column + sourceShift);
+          const count = historyCount(site, historyIndex);
+          const colors = historyColors(site, count);
+          for (let n = 0; n < Math.min(4, count); n += 1) {
+            fb.set(11 + column, y0 + 4 - n, colors[n % colors.length]);
+          }
+        }
+        fb.set(69, y0, C.white);
+        fb.set(69, y0 + 4, C.white);
+      });
+      freshness(fb, tick);
+      return { fb: fb, meta: "" };
+    }
+
+    function linePoints(x0, y0, x1, y1) {
+      const points = [];
+      const dx = Math.abs(x1 - x0);
+      const sx = x0 < x1 ? 1 : -1;
+      const dy = -Math.abs(y1 - y0);
+      const sy = y0 < y1 ? 1 : -1;
+      let error = dx + dy;
+      let x = x0;
+      let y = y0;
+      while (true) {
+        points.push([x, y]);
+        if (x === x1 && y === y1) break;
+        const e2 = 2 * error;
+        if (e2 >= dy) { error += dy; x += sx; }
+        if (e2 <= dx) { error += dx; y += sy; }
+      }
+      return points;
+    }
+
+    function renderLoom(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const phase = (tick % CONTACT_FRAMES) / CONTACT_FRAMES;
+      const endpoints = [[64,1],[64,4],[64,7],[64,10],[64,13]];
+      const anchors = { G:[7,2], M:[7,7], C:[7,12] };
+      fb.text(0, 0, "G", C.antenna);
+      fb.text(0, 5, "M", C.antenna);
+      fb.text(0, 10, "C", C.antenna);
+      fixture.forEach(function(contact, index) {
+        const anchor = anchors[contact.site];
+        const end = endpoints[index];
+        const points = linePoints(anchor[0], anchor[1], end[0], end[1]);
+        points.forEach(function(point, pointIndex) {
+          if (pointIndex % 2 === 0) fb.set(point[0], point[1], C.dim);
+        });
+        fb.set(end[0], end[1], index === selected ? C.white : C.name);
+        fb.set(end[0] + 1, end[1], index === selected ? C.white : C.name);
+        if (contact.down.length) {
+          const downIndex = Math.floor((1 - phase) * (points.length - 1));
+          const point = points[Math.max(0, Math.min(points.length - 1, downIndex))];
+          fb.set(point[0], point[1], bandColor[contact.down[0]] || C.unknown);
+        }
+        if (contact.up) {
+          const upIndex = Math.floor(phase * (points.length - 1));
+          const point = points[Math.max(0, Math.min(points.length - 1, upIndex))];
+          fb.set(point[0], point[1], C.uplink);
+        }
+      });
+      freshness(fb, tick);
+      const contact = fixture[selected];
+      return { fb: fb, meta: "Focus: " + contact.site + contact.dish + " · " + contact.short };
+    }
+
+    function outline(fb, x0, y0, x1, y1, color) {
+      fb.hline(x0, x1, y0, color);
+      fb.hline(x0, x1, y1, color);
+      for (let y = y0; y <= y1; y += 1) {
+        fb.set(x0, y, color);
+        fb.set(x1, y, color);
+      }
+    }
+
+    function renderMosaic(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const selectedContact = fixture[selected];
+      const sections = [
+        { site:"G", x0:0, x1:11 },
+        { site:"M", x0:12, x1:21 },
+        { site:"C", x0:22, x1:69 }
+      ];
+      sections.forEach(function(section) {
+        const contacts = contactsFor(section.site);
+        fb.text(section.x0 + 1, 0, section.site + contacts.length, C.antenna, [section.x0, section.x1]);
+        if (!contacts.length) {
+          for (let y = 7; y <= 13; y += 2) fb.set(section.x0 + 4, y, C.quiet);
+          return;
+        }
+        const width = section.x1 - section.x0 + 1;
+        contacts.forEach(function(contact, index) {
+          const tile0 = section.x0 + Math.floor(index * width / contacts.length);
+          const tile1 = section.x0 + Math.floor((index + 1) * width / contacts.length) - 1;
+          fb.text(tile0 + 1, 6, contact.dish, C.dish, [tile0 + 1, Math.max(tile0 + 1, tile1 - 1)]);
+          if (contact.up) fb.hline(tile0 + 1, Math.max(tile0 + 1, tile1 - 1), 12, C.uplink);
+          if (contact.down.length) fb.hline(tile0 + 1, Math.max(tile0 + 1, tile1 - 1), 14, bandColor[contact.down[0]] || C.unknown);
+          if (contact === selectedContact) {
+            fb.set(tile0, 5, C.white);
+            fb.set(tile1, 5, C.white);
+            fb.set(tile0, 15, C.white);
+            fb.set(tile1, 15, C.white);
+          }
+          if (index > 0) for (let y = 5; y <= 15; y += 2) fb.set(tile0, y, C.dim);
+        });
+      });
+      fb.hline(0, 69, 5, C.dim);
+      freshness(fb, tick);
+      return { fb:fb, meta:"Selected: " + selectedContact.site + selectedContact.dish + " · " + selectedContact.short };
+    }
+
+    const handoffHistories = [
+      ["G"], ["M","C"], ["C"], ["C"], ["G","C"]
+    ];
+
+    function renderLifelines(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const phase = (tick % CONTACT_FRAMES) / CONTACT_FRAMES;
+      const selectedContact = fixture[selected];
+      marquee(fb, selectedContact.site + selectedContact.dish + " " + selectedContact.craft, 0, 69, 0, C.name, phase);
+      const starts = [13, 27, 35, 20, 10];
+      fixture.forEach(function(contact, index) {
+        const y = 6 + index * 2;
+        const x0 = starts[index];
+        const history = handoffHistories[index];
+        const span = 69 - x0;
+        history.forEach(function(site, part) {
+          const part0 = x0 + Math.floor(part * span / history.length);
+          const part1 = x0 + Math.floor((part + 1) * span / history.length);
+          fb.hline(part0, part1, y, siteColor[site]);
+          if (part > 0) {
+            fb.set(part0, y - 1, C.white);
+            fb.set(part0, y + 1, C.white);
+          }
+        });
+        if (contact.up) fb.set(68, y, C.uplink);
+        if (contact.down.length) fb.set(69, y + 1, bandColor[contact.down[0]] || C.unknown);
+        if (index === selected) {
+          fb.set(7, y, C.white);
+          fb.set(8, y, C.white);
+        } else {
+          fb.set(8, y, siteColor[contact.site]);
+        }
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:(selected + 1) + "/5 · " + selectedContact.site + selectedContact.dish + " · " + selectedContact.short };
+    }
+
+    const representativeEvents = [
+      { label:"MMS 2 ACQUIRED", type:"acquire", meta:"Representative: acquisition" },
+      { label:"VGR 1 HANDOFF", type:"handoff", meta:"Representative: observed handoff" },
+      { label:"LUCY LANE SPLIT", type:"split", meta:"Representative: lane split" },
+      { label:"ARRAY START", type:"array", meta:"Representative: arraying" },
+      { label:"XMM RELEASED", type:"loss", meta:"Representative: loss" }
+    ];
+
+    function eventNode(fb, x, y, color) {
+      fb.set(x, y - 1, color);
+      fb.set(x - 1, y, color);
+      fb.set(x, y, color);
+      fb.set(x + 1, y, color);
+      fb.set(x, y + 1, color);
+    }
+
+    function renderEventRadar(tick) {
+      const fb = new Framebuffer();
+      const index = Math.floor(tick / CONTACT_FRAMES) % representativeEvents.length;
+      const event = representativeEvents[index];
+      const phase = (tick % CONTACT_FRAMES) / CONTACT_FRAMES;
+      fb.text(0, 0, "G1 M0 C4", C.white, [0, 42]);
+      marquee(fb, event.label, 0, 39, 7, C.name, phase);
+      if (event.type === "acquire" || event.type === "loss") {
+        eventNode(fb, 45, 12, C.antenna);
+        eventNode(fb, 68, 12, C.name);
+        fb.hline(48, 65, 12, C.dim);
+        const x = 48 + Math.round(17 * (event.type === "loss" ? 1 - phase : phase));
+        fb.set(x, 12, C.neutral);
+      } else if (event.type === "handoff") {
+        eventNode(fb, 45, 9, C.antenna);
+        eventNode(fb, 45, 15, C.antenna);
+        eventNode(fb, 68, 12, C.name);
+        linePoints(48, 9, 65, 12).forEach(function(point, i) { if (i % 2 === 0) fb.set(point[0], point[1], C.dim); });
+        linePoints(48, 15, 65, 12).forEach(function(point, i) { if (i % 2 === 0) fb.set(point[0], point[1], C.dim); });
+        fb.set(49 + Math.round(15 * phase), phase < 0.5 ? 9 + Math.round(6 * phase) : 15 - Math.round(6 * (phase - 0.5)), C.neutral);
+      } else if (event.type === "split") {
+        eventNode(fb, 45, 12, C.antenna);
+        eventNode(fb, 68, 9, C.name);
+        eventNode(fb, 68, 15, C.name);
+        linePoints(48, 12, 65, 9).forEach(function(point, i) { if (i % 2 === 0) fb.set(point[0], point[1], C.neutral); });
+        linePoints(48, 12, 65, 15).forEach(function(point, i) { if (i % 2 === 0) fb.set(point[0], point[1], C.neutral); });
+      } else {
+        [8,12,15].forEach(function(y) {
+          eventNode(fb, 45, y, C.antenna);
+          linePoints(48, y, 65, 12).forEach(function(point, i) { if (i % 2 === 0) fb.set(point[0], point[1], C.neutral); });
+        });
+        eventNode(fb, 68, 12, C.name);
+      }
+      freshness(fb, tick);
+      return { fb:fb, meta:event.meta };
+    }
+
+    function renderInterleave(tick) {
+      const local = tick % CONTACT_FRAMES;
+      if (local < 10) {
+        const overview = renderMatrix(tick);
+        return { fb:overview.fb, meta:"Overview · all five contacts" };
+      }
+      const detail = renderCurrent(tick);
+      return { fb:detail.fb, meta:"Detail · " + detail.meta };
+    }
+
+    function renderMultiples(tick) {
+      const fb = new Framebuffer();
+      const sourceShift = Math.floor(tick / 50) % 4;
+      const columns = [
+        { site:"G", count:1, x0:0 },
+        { site:"M", count:0, x0:24 },
+        { site:"C", count:4, x0:48 }
+      ];
+      columns.forEach(function(column) {
+        fb.text(column.x0, 0, column.site + column.count, C.antenna, [column.x0, column.x0 + 9]);
+        fb.hline(column.x0 + 1, column.x0 + 21, 15, C.dim);
+        for (let sample = 0; sample < 20; sample += 1) {
+          const historyIndex = Math.min(59, sample * 3 + sourceShift);
+          const count = historyCount(column.site, historyIndex);
+          for (let level = 0; level < count * 2; level += 1) {
+            fb.set(column.x0 + 1 + sample, 14 - level, siteColor[column.site]);
+          }
+        }
+        fb.set(column.x0 + 21, 14, C.white);
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:"20 accepted samples · same 0–4 scale" };
+    }
+
+    function renderSkyScopes(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const scopes = [
+        { site:"G", count:1, cx:16 },
+        { site:"M", count:0, cx:40 },
+        { site:"C", count:4, cx:64 }
+      ];
+      scopes.forEach(function(scope) {
+        fb.text(scope.cx - 16, 0, scope.site + scope.count, C.antenna, [scope.cx - 16, scope.cx - 7]);
+        [[0,-6],[4,-4],[6,0],[4,4],[0,6],[-4,4],[-6,0],[-4,-4]].forEach(function(point) {
+          fb.set(scope.cx + point[0], 9 + point[1], C.dim);
+        });
+        fb.set(scope.cx, 9, C.quiet);
+        contactsFor(scope.site).forEach(function(contact) {
+          const radius = (90 - contact.el) / 90 * 5;
+          const angle = contact.az * Math.PI / 180;
+          const x = Math.round(scope.cx + Math.sin(angle) * radius);
+          const y = Math.round(9 - Math.cos(angle) * radius);
+          const color = contact.down.length ? (bandColor[contact.down[0]] || C.unknown) : C.uplink;
+          fb.set(x, y, color);
+          if (contact.up) fb.set(x, Math.max(2, y - 1), C.uplink);
+          if (fixture.indexOf(contact) === selected) fb.set(Math.max(scope.cx - 6, x - 1), y, C.white);
+        });
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:"G1 · M0 · C4 pointing nodes" };
+    }
+
+    function renderBandCensus(tick) {
+      const fb = new Framebuffer();
+      siteRows.forEach(function(siteRow) {
+        const site = siteRow[0];
+        const y = siteRow[1];
+        const contacts = contactsFor(site);
+        const upCount = contacts.reduce(function(total, contact) { return total + (contact.up ? 1 : 0); }, 0);
+        const bands = {};
+        contacts.forEach(function(contact) {
+          contact.down.forEach(function(band) { bands[band] = (bands[band] || 0) + 1; });
+        });
+        fb.text(0, y, site + contacts.length, C.antenna, [0, 9]);
+        let x = 13;
+        if (upCount) {
+          const label = "TX" + upCount;
+          fb.text(x, y, label, C.uplink, [x, x + textWidth(label) - 1]);
+          x += textWidth(label) + 3;
+        }
+        ["S","X","K","KA"].forEach(function(band) {
+          if (!bands[band]) return;
+          const label = band + bands[band];
+          fb.text(x, y, label, bandColor[band], [x, Math.min(69, x + textWidth(label) - 1)]);
+          x += textWidth(label) + 3;
+        });
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:"G: 1 contact · TX1 · S1" };
+    }
+
+    function renderFocusLens(tick) {
+      const fb = new Framebuffer();
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      const contact = fixture[selected];
+      const phase = (tick % CONTACT_FRAMES) / CONTACT_FRAMES;
+      marquee(fb, contact.site + contact.dish + " " + contact.craft, 0, 69, 0, C.name, phase);
+      rfLanes(fb, contact, 6, 64, 6, 8, phase);
+      const groups = [
+        { site:"G", labelX:0, beadX:6, max:5 },
+        { site:"M", labelX:22, beadX:28, max:5 },
+        { site:"C", labelX:45, beadX:51, max:6 }
+      ];
+      groups.forEach(function(group) {
+        fb.text(group.labelX, 11, group.site, C.antenna, [group.labelX, group.labelX + 4]);
+        contactsFor(group.site).slice(0, group.max).forEach(function(item, index) {
+          const x = group.beadX + index * 3;
+          if (item.up && item.down.length) {
+            fb.set(x, 12, C.uplink); fb.set(x + 1, 12, C.uplink);
+            const down = bandColor[item.down[0]] || C.unknown;
+            fb.set(x, 13, down); fb.set(x + 1, 13, down);
+          } else if (item.up) {
+            fb.set(x, 12, C.uplink); fb.set(x + 1, 12, C.uplink);
+            fb.set(x, 13, C.uplink); fb.set(x + 1, 13, C.uplink);
+          } else if (item.down.length) {
+            const down = bandColor[item.down[0]] || C.unknown;
+            fb.set(x, 12, down); fb.set(x + 1, 12, down);
+            fb.set(x, 13, down); fb.set(x + 1, 13, down);
+          }
+          if (item === contact) {
+            fb.set(x, 15, C.white);
+            fb.set(x + 1, 15, C.white);
+          }
+        });
+      });
+      freshness(fb, tick);
+      return { fb:fb, meta:(selected + 1) + "/5 · " + contact.site + contact.dish + " · " + contact.short };
+    }
+
+    function renderDualRear(tick) {
+      const fb = new RearFramebuffer();
+      const phase = (tick % CONTACT_FRAMES) / CONTACT_FRAMES;
+      fb.text(0, 1, "DSN LIVE", C.cyan, [0, 38]);
+      fb.text(55, 1, "G1 M0 C4", C.white, [55, 97]);
+      fb.text(0, 9, "DISH", C.quiet, [0, 20]);
+      fb.text(23, 9, "SPACECRAFT", C.quiet, [23, 82]);
+      fb.text(105, 9, "RF", C.quiet, [105, 117]);
+      fb.text(144, 9, "RX", C.quiet, [144, 157]);
+      fixture.forEach(function(contact, index) {
+        const y = 18 + index * 12;
+        fb.text(0, y, contact.site + contact.dish, C.dish, [0, 20]);
+        marquee(fb, contact.craft, 23, 94, y, C.name, phase);
+        rfLanes(fb, contact, 104, 139, y + 1, y + 3, phase);
+        fb.text(148, y, String(contact.down.length), contact.down.length ? C.rate : C.quiet, [148, 157]);
+      });
+      const sourceStep = Math.floor(tick / 50);
+      const y = 2 + (sourceStep * 5) % 74;
+      fb.set(159, y, C.cyan);
+      fb.set(159, y + 1, C.cyan);
+      return fb;
+    }
+
+    function paint(canvas, fb, showGaps) {
+      const ctx = canvas.getContext("2d");
+      const square = showGaps ? LED : PITCH;
+      const offset = showGaps ? PAD : 0;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#020305";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < H; y += 1) {
+        for (let x = 0; x < W; x += 1) {
+          const color = fb.get(x, y);
+          ctx.fillStyle = color === C.off ? "#080a0e" : color;
+          ctx.fillRect(x * PITCH + offset, y * PITCH + offset, square, square);
+        }
+      }
+    }
+
+    function paintRear(canvas, fb, showGaps) {
+      const ctx = canvas.getContext("2d");
+      const pitch = 8;
+      const square = showGaps ? 4 : pitch;
+      const offset = showGaps ? 2 : 0;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#020305";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < fb.height; y += 1) {
+        for (let x = 0; x < fb.width; x += 1) {
+          const color = fb.get(x, y);
+          ctx.fillStyle = color === C.off ? "#080a0e" : color;
+          ctx.fillRect(x * pitch + offset, y * pitch + offset, square, square);
+        }
+      }
+    }
+
+    const canvases = {
+      current: document.getElementById("current"),
+      summary: document.getElementById("summary"),
+      matrix: document.getElementById("matrix"),
+      indexed: document.getElementById("indexed"),
+      history: document.getElementById("history"),
+      loom: document.getElementById("loom"),
+      mosaic: document.getElementById("mosaic"),
+      lifelines: document.getElementById("lifelines"),
+      eventradar: document.getElementById("eventradar"),
+      interleave: document.getElementById("interleave"),
+      multiples: document.getElementById("multiples"),
+      skyscopes: document.getElementById("skyscopes"),
+      bandcensus: document.getElementById("bandcensus"),
+      focuslens: document.getElementById("focuslens"),
+      dualFront: document.getElementById("dual-front"),
+      dualRear: document.getElementById("dual-rear")
+    };
+    const play = document.getElementById("play");
+    const next = document.getElementById("next");
+    const gaps = document.getElementById("gaps");
+    const scrub = document.getElementById("scrub");
+    const clock = document.getElementById("clock");
+    let running = true;
+    let tick = 0;
+    let last = performance.now();
+    let accumulator = 0;
+
+    function render() {
+      const gapMode = gaps.checked;
+      const current = renderCurrent(tick);
+      const summary = renderSummary(tick);
+      const matrix = renderMatrix(tick);
+      const indexed = renderIndexed(tick);
+      const history = renderHistory(tick);
+      const loom = renderLoom(tick);
+      const mosaic = renderMosaic(tick);
+      const lifelines = renderLifelines(tick);
+      const eventradar = renderEventRadar(tick);
+      const interleave = renderInterleave(tick);
+      const multiples = renderMultiples(tick);
+      const skyscopes = renderSkyScopes(tick);
+      const bandcensus = renderBandCensus(tick);
+      const focuslens = renderFocusLens(tick);
+      const dualFront = renderSummary(tick);
+      const dualRear = renderDualRear(tick);
+      paint(canvases.current, current.fb, gapMode);
+      paint(canvases.summary, summary.fb, gapMode);
+      paint(canvases.matrix, matrix.fb, gapMode);
+      paint(canvases.indexed, indexed.fb, gapMode);
+      paint(canvases.history, history.fb, gapMode);
+      paint(canvases.loom, loom.fb, gapMode);
+      paint(canvases.mosaic, mosaic.fb, gapMode);
+      paint(canvases.lifelines, lifelines.fb, gapMode);
+      paint(canvases.eventradar, eventradar.fb, gapMode);
+      paint(canvases.interleave, interleave.fb, gapMode);
+      paint(canvases.multiples, multiples.fb, gapMode);
+      paint(canvases.skyscopes, skyscopes.fb, gapMode);
+      paint(canvases.bandcensus, bandcensus.fb, gapMode);
+      paint(canvases.focuslens, focuslens.fb, gapMode);
+      paint(canvases.dualFront, dualFront.fb, gapMode);
+      paintRear(canvases.dualRear, dualRear, gapMode);
+      document.getElementById("current-meta").textContent = current.meta;
+      document.getElementById("summary-meta").textContent = summary.meta;
+      document.getElementById("matrix-meta").textContent = matrix.meta;
+      document.getElementById("indexed-meta").textContent = indexed.meta;
+      document.getElementById("loom-meta").textContent = loom.meta;
+      document.getElementById("mosaic-meta").textContent = mosaic.meta;
+      document.getElementById("lifelines-meta").textContent = lifelines.meta;
+      document.getElementById("event-meta").textContent = eventradar.meta;
+      document.getElementById("interleave-meta").textContent = interleave.meta;
+      document.getElementById("multiples-meta").textContent = multiples.meta;
+      document.getElementById("skyscopes-meta").textContent = skyscopes.meta;
+      document.getElementById("bandcensus-meta").textContent = bandcensus.meta;
+      document.getElementById("focuslens-meta").textContent = focuslens.meta;
+      document.getElementById("dual-meta").textContent = dualFront.meta;
+      const selected = Math.floor(tick / CONTACT_FRAMES) % fixture.length;
+      clock.textContent = "CONTACT " + (selected + 1) + "/5 · FRAME " + String(tick % CONTACT_FRAMES).padStart(2, "0");
+      scrub.value = String(tick);
+    }
+
+    function animate(now) {
+      const delta = Math.min(250, now - last);
+      last = now;
+      let changed = false;
+      if (running) {
+        accumulator += delta;
+        while (accumulator >= 1000 / FPS) {
+          tick = (tick + 1) % 200;
+          accumulator -= 1000 / FPS;
+          changed = true;
+        }
+      }
+      if (changed) render();
+      requestAnimationFrame(animate);
+    }
+
+    play.addEventListener("click", function() {
+      running = !running;
+      play.textContent = running ? "Pause motion" : "Play motion";
+    });
+    next.addEventListener("click", function() {
+      tick = ((Math.floor(tick / CONTACT_FRAMES) + 1) % fixture.length) * CONTACT_FRAMES;
+      accumulator = 0;
+      render();
+    });
+    gaps.addEventListener("change", render);
+    scrub.addEventListener("input", function(event) {
+      tick = Number(event.target.value);
+      running = false;
+      play.textContent = "Play motion";
+      accumulator = 0;
+      render();
+    });
+
+    render();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

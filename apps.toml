@@ -1,0 +1,187 @@
+# apps.toml — the catalog of bar apps barkeep can run.
+# kind: "foreground" (owns the display) or "background" (dark until an event,
+# then takes the display briefly and hands it back — apps cannot overlay).
+# config.* entries drive the web UI's per-app config editor; defaults must be
+# public-safe (mirror .env.example, never a machine's real .env). Blank input
+# normally means inherit; set blank_is_value=true only when KEY= is meaningful.
+#
+# An optional [<app>.viz] table registers the app's default visualizer
+# scenario as data — no adapter module needed. `renderer` names a pure
+# zero-argument seam inside the apps package returning
+# {display: (PIL frames, fps)}; it must be deterministic (fixed time, fixed
+# fixture state, no I/O). Optional [<app>.viz.regions.<name>] tables declare
+# rect = [x0, y0, x1, y1] (half-open), optional ink = ["#RRGGBB", ...] and
+# max_isolated, and run the device-law checks there on every render.
+# Additional fixed views are [<app>.viz.scenarios.<name>] tables with the
+# same keys, registering <app>/<name>. Registered pixels are pinned in
+# viz-baselines.toml (CI-enforced); after changing a visual deliberately, run
+# `uv run busybar-viz baseline update` in the same change. Promote to a
+# hand-written adapter (busybar-viz scaffold) when the app needs typed
+# controls, semantic inputs, fault injection, or ink-reference proofs.
+#
+# Section order controls the foreground-card order. A first boot with no saved
+# state starts in STANDBY so the operator can review Skystrip's provider limits
+# and linked credits before selecting it; saved foreground choices still
+# restore on later starts.
+
+[skystrip]
+kind = "foreground"
+entrypoint = "apps/skystrip.py"
+description = "Global model sky; NWS observations and alerts where its point API covers the location"
+
+[skystrip.config.SKYSTRIP_LAT]
+description = "Latitude (decimal degrees) — required with longitude; zero is valid"
+type = "number"
+default = ""
+minimum = -90
+maximum = 90
+requires = ["SKYSTRIP_LON"]
+
+[skystrip.config.SKYSTRIP_LON]
+description = "Longitude (decimal degrees) — required with latitude; zero is valid"
+type = "number"
+default = ""
+minimum = -180
+maximum = 180
+requires = ["SKYSTRIP_LAT"]
+
+[skystrip.config.SKYSTRIP_TZ]
+description = "IANA timezone matching the coordinates; not inferred yet"
+default = "UTC"
+format = "timezone"
+
+[skystrip.config.SKYSTRIP_UNITS]
+description = "f = Fahrenheit/mph, c = Celsius/kmh"
+choices = ["f", "c"]
+default = "f"
+
+[skystrip.config.SKYSTRIP_CLOCK_INK]
+description = "clock/temp colour; every choice is contrast-proven, orange matches the bar's own accents, red doubles as the alarm colour"
+choices = ["orange", "pink", "red"]
+default = "orange"
+
+[skystrip.config.SKYSTRIP_CONTACT]
+description = "Email or URL for the NWS User-Agent in NWS point coverage (blank = anonymous)"
+type = "text"
+default = ""
+blank_is_value = true
+
+[skystrip.config.SKYSTRIP_STATION]
+description = "Inside NWS coverage, pin a four-character station; blank = discover"
+default = ""
+blank_is_value = true
+
+[skystrip.config.SKYSTRIP_VOICE]
+description = "Kokoro TTS voice on supported Linux (af_*/am_*/bf_*/bm_*); espeak-ng is runtime resilience, while macOS can use a say voice"
+default = "am_michael"
+
+[skystrip.config.SKYSTRIP_SCENES]
+description = "Scenes the START button cycles through"
+type = "multiselect"
+choices = ["house", "skyline", "lakefront", "forest", "grove", "backroads"]
+default = "house,skyline,lakefront,forest,grove,backroads"
+
+[skystrip.config.SKYSTRIP_STYLE]
+description = "Spoken report style: plain, chicago, or genz"
+choices = ["plain", "chicago", "genz"]
+default = "plain"
+
+[skystrip.config.SKYSTRIP_CHRISTMAS]
+description = "When the Christmas decorations appear (off to disable)"
+choices = ["off", "dec25", "dec24-26", "dec20-jan1", "dec1-26"]
+default = "dec24-26"
+
+[dsn]
+kind = "foreground"
+entrypoint = "apps/dsn.py"
+description = "NASA's DSN live: ground-dish network, selected contact, and light-time distance"
+
+[dsn.viz]
+renderer = "apps.dsn:render_visual"
+displays = ["front"]
+description = "Dish/link Network board over a fixed representative snapshot: three Goldstone contacts, a Canberra uplink, and a Madrid contact"
+
+# max_isolated pins this fixture's expected count: the 3x5 digit glyphs carry
+# 18 diagonal-joint pixels. More means a new speck crept in.
+[dsn.viz.regions.roster]
+rect = [0, 0, 70, 16]
+ink = ["#C8AA6E", "#6E91BE"]
+max_isolated = 18
+
+[dsn.viz.scenarios.instrument]
+renderer = "apps.dsn:render_instrument_visual"
+displays = ["front"]
+description = "One fixed antenna/RF contact in detail: receive rows, uplink lane, and band labels"
+
+[dsn.viz.scenarios.instrument.regions.identity]
+rect = [16, 0, 72, 5]
+ink = ["#6E91BE", "#D7E1F0"]
+max_isolated = 5
+
+# Carrier hue is source data, so this boundary explicitly uses the panel's
+# measured channel-separation alternative to luminance contrast. The metric
+# body below remains on the stricter luminance-only default.
+[dsn.viz.scenarios.instrument.regions.carriers]
+rect = [15, 5, 61, 11]
+ink = ["#78BEFF", "#B4FF50", "#FFA03C"]
+max_isolated = 0
+contrast_mode = "luminance_or_channel"
+
+[dsn.viz.scenarios.instrument.regions.metric-body]
+rect = [16, 12, 70, 16]
+ink = ["#96BE78", "#D7E1F0", "#78BEFF"]
+max_isolated = 14
+
+[dsn.viz.scenarios.distance]
+renderer = "apps.dsn:render_distance_visual"
+displays = ["front"]
+description = "The Earth-to-spacecraft light-time journey for the fixed contact, at a pinned instant"
+
+[dsn.viz.scenarios.distance.regions.identity]
+rect = [16, 0, 72, 5]
+ink = ["#6E91BE", "#D7E1F0"]
+max_isolated = 7
+
+# The endpoints intentionally join the antenna and craft. Audit the complete
+# free-flight corridor, where uplink/downlink hue carries direction and band.
+[dsn.viz.scenarios.distance.regions.carrier-corridor]
+rect = [20, 5, 57, 10]
+ink = ["#78BEFF", "#FFA03C"]
+max_isolated = 0
+contrast_mode = "luminance_or_channel"
+
+[dsn.viz.scenarios.distance.regions.metrics]
+rect = [16, 11, 72, 16]
+ink = ["#E0A046", "#96BE78"]
+max_isolated = 12
+
+[dsn.config.DSN_POLL_S]
+description = "Seconds between feed polls (the feed itself updates every 5s)"
+type = "number"
+default = "10"
+minimum = 1
+
+[dsn.config.DSN_ROTATE_S]
+description = "Seconds per automatic Instrument/Distance target; Network action target is not timer-rotated"
+type = "number"
+default = "20"
+minimum = 1
+
+[dsn.config.DSN_VIEW]
+description = "Default view: global network, selected antenna/RF instrument, or distance journey"
+choices = ["network", "instrument", "distance"]
+default = "network"
+
+[dsn.config.DSN_NETWORK_STYLE]
+description = "Network layout: dish/link roster, Three Skies pointing scopes, or legacy contact rows"
+choices = ["dishes", "skies", "rows"]
+default = "dishes"
+
+[dsn.config.DSN_VOICE]
+description = "Kokoro narrator on supported Linux (af_*/am_*/bf_*/bm_*); espeak-ng is runtime resilience, while macOS can use a say voice"
+default = "af_nova"
+
+[dsn.config.DSN_CACHE_DIR]
+description = "Optional subdirectory of the service-managed cache root; blank uses cache/dsn. Move that root by rerunning install.sh with BUSYBAR_CACHE_DIR."
+default = ""
+blank_is_value = true

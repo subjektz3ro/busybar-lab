@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>barkeep</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="reveal" style="--i:0">
+  <div class="wordmark" aria-label="barkeep">BARKEEP</div>
+  <div class="head-meta">
+    <span id="bar-host" class="chip" title="bar address">—</span>
+    <span class="lamp-wrap"><span id="conn-lamp" class="lamp lamp--off"></span>
+      <span id="conn-label" class="lamp-label">LINK</span></span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= the device ================= -->
+  <section id="device" class="panel reveal" style="--i:1">
+    <h2 class="section-label">ON THE BAR</h2>
+    <div class="screens">
+      <figure class="shell shell--front">
+        <div class="led-slit" title="top LED strip"></div>
+        <div class="glass glass--front">
+          <img id="preview-front" alt="front display, 72 by 16 pixels" width="72" height="16">
+          <div class="nosignal">NO SIGNAL</div>
+        </div>
+        <figcaption><span class="pix">FRONT</span> 72×16</figcaption>
+      </figure>
+      <figure class="shell shell--back">
+        <div class="glass glass--back">
+          <img id="preview-back" alt="back display, 160 by 80 pixels" width="160" height="80">
+          <div class="nosignal">NO SIGNAL</div>
+        </div>
+        <figcaption><span class="pix">BACK</span> 160×80</figcaption>
+      </figure>
+    </div>
+    <div class="device-foot">
+      <span class="lamp-wrap"><span id="live-lamp" class="lamp lamp--off"></span>
+        <span class="lamp-label" id="live-label">FEED</span></span>
+      <span class="muted" id="device-note"></span>
+    </div>
+    <div class="provider-credits" aria-label="Skystrip data providers and use limits">
+      <strong>SKYSTRIP DATA</strong> Skystrip adapts
+      <a href="https://open-meteo.com/en/terms" target="_blank" rel="noopener noreferrer">Weather data by Open-Meteo.com</a>
+      (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>)
+      and
+      <a href="https://www.rainviewer.com/api.html" target="_blank" rel="noopener noreferrer">Weather radar data by RainViewer</a>
+      into pixel scenes.
+      <span class="provider-use">Open-Meteo's free API is non-commercial;
+        RainViewer's public API is for personal, educational, and small-scale
+        community use. Review those linked terms before selecting Skystrip.</span>
+    </div>
+  </section>
+
+  <!-- ================= foreground ================= -->
+  <section class="panel reveal" style="--i:2">
+    <h2 class="section-label">FOREGROUND <span class="section-sub">one app owns the display</span></h2>
+    <div id="foreground-cards" class="cards" role="radiogroup" aria-label="foreground app"></div>
+  </section>
+
+  <!-- ================= background ================= -->
+  <section class="panel reveal" style="--i:3">
+    <h2 class="section-label">BACKGROUND <span class="section-sub">dark until an event, then briefly take the display</span></h2>
+    <div id="background-list"></div>
+  </section>
+
+  <!-- ================= inspector ================= -->
+  <section id="inspector" class="panel reveal" style="--i:4" hidden>
+    <div class="inspector-head">
+      <div>
+        <h2 class="inspector-title"><span id="insp-name" class="pix">—</span>
+          <span id="insp-status" class="status-chip"></span></h2>
+        <div id="insp-meta" class="muted"></div>
+      </div>
+      <button id="insp-restart" class="btn">Restart</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="logs" role="tab" aria-selected="true">LOGS</button>
+      <button class="tab" data-tab="config" role="tab" aria-selected="false">CONFIG</button>
+    </div>
+    <div id="tab-logs" class="tabpane">
+      <pre id="log-pane" class="crt">waiting for output…</pre>
+    </div>
+    <div id="tab-config" class="tabpane" hidden>
+      <form id="config-form" onsubmit="return false"></form>
+      <div class="config-actions">
+        <span id="config-status" class="muted"></span>
+        <button id="config-save" class="btn">Save</button>
+        <button id="config-save-restart" class="btn btn--primary">Save &amp; restart</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= https ================= -->
+  <section id="tls-panel" class="panel reveal" style="--i:5">
+    <h2 class="section-label">HTTPS <span class="section-sub">the certificate this UI is served with</span></h2>
+    <div id="tls-summary" class="muted">checking…</div>
+    <div id="tls-editor" hidden>
+      <div class="cfg-field">
+        <label for="tls-cert">certificate (PEM)
+          <span class="hint">include the chain if you have one</span></label>
+        <textarea id="tls-cert" rows="5" spellcheck="false"
+                  placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+      </div>
+      <div class="cfg-field">
+        <label for="tls-key">private key (PEM)
+          <span class="hint">stays on this host, stored owner-only under config/tls/</span></label>
+        <textarea id="tls-key" rows="5" spellcheck="false"
+                  placeholder="paste the PEM private key"></textarea>
+      </div>
+      <div class="config-actions">
+        <span id="tls-note" class="muted"></span>
+        <button id="tls-revert" class="btn" hidden>Remove uploaded pair</button>
+        <button id="tls-install" class="btn btn--primary">Install certificate</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="reveal" style="--i:6">
+  <span class="muted">barkeep · the bar keeps what you set</span>
+</footer>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

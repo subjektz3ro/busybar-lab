@@ -1,0 +1,128 @@
+name: Bug report
+description: Report reproducible incorrect behavior in an app, Barkeep, deployment, or busybar-viz.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve BUSY Bar Lab. Do not include tokens, private URLs, personal coordinates, hostnames, or unredacted logs. Security vulnerabilities belong in a private security advisory, not this form.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Choose the closest affected part.
+      options:
+        - DSN app
+        - Skystrip app
+        - Hello app or app template
+        - Barkeep control plane or web UI
+        - busybar-viz
+        - Installation or deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or revision
+      description: Provide the release tag or commit SHA where you observed the problem.
+      placeholder: v0.3.0 or a full commit SHA
+    validations:
+      required: true
+
+  - type: input
+    id: operating_system
+    attributes:
+      label: Operating system
+      description: Include the distribution and version when applicable.
+      placeholder: Ubuntu 24.04, Raspberry Pi OS Bookworm, macOS 15
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      placeholder: Output of uv run python --version
+    validations:
+      required: true
+
+  - type: input
+    id: firmware_version
+    attributes:
+      label: BUSY Bar firmware version
+      description: Required only when a physical device is involved; otherwise write "not applicable."
+      placeholder: 1.1.1 or not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest deterministic sequence that reproduces the problem, including the command or control input.
+      placeholder: |
+        1. Run ...
+        2. Turn or press ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include timing and whether it recovers on its own.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: evidence_level
+    attributes:
+      label: Visual evidence level
+      description: Choose the strongest evidence actually collected; a preview is not a physical-panel observation.
+      options:
+        - Not a display issue or no visual evidence collected
+        - Renderer-verified
+        - Gap-previewed
+        - Framebuffer-captured
+        - Hardware-observed
+    validations:
+      required: true
+
+  - type: textarea
+    id: visual_evidence
+    attributes:
+      label: Visual evidence
+      description: Provide a busybar-viz artifact SHA, before/after comparison, screenshot, or concise physical observation when available.
+      placeholder: Scenario, artifact SHA, comparison SHA, and the exact frame/state affected
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: Paste only the smallest relevant excerpt after removing secrets, personal coordinates, hostnames, private URLs, and addresses. Write "none available" when appropriate.
+      render: shell
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed tokens, private URLs, personal coordinates, hostnames, addresses, and other identifying data from this report and its attachments.
+          required: true

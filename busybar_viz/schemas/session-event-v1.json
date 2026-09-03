@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "busybar.session-event/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "session_id", "revision", "kind", "actor", "body", "artifact_id", "created_at"],
+  "properties": {
+    "schema": {"const": "busybar.session-event/v1"},
+    "id": {"type": "string", "pattern": "^evt_[0-9a-f]{32}$"},
+    "session_id": {"type": "string", "pattern": "^ses_[0-9a-f]{32}$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "kind": {"type": "string", "minLength": 1, "maxLength": 64},
+    "actor": {"enum": ["user", "agent", "runner", "system"]},
+    "body": {"type": "object"},
+    "artifact_id": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

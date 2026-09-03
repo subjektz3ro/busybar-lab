@@ -1,0 +1,81 @@
+name: Feature or design request
+description: Propose an app, interaction, visualization, data behavior, or project improvement.
+title: "[Idea] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the user-facing problem. For display ideas, remember that the front panel is only 72×16 LEDs and that a preview cannot establish physical-panel legibility.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New app
+        - Existing app behavior or data
+        - Display or animation design
+        - Controls or accessibility
+        - Barkeep control plane or web UI
+        - busybar-viz or developer workflow
+        - Installation, deployment, or documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What is difficult, unclear, missing, or worth making possible, and for whom?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the result from an end user's perspective, including controls and important states where relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: visual_contract
+    attributes:
+      label: Display and animation contract
+      description: For pixel changes, say what must remain legible, what each color or motion means, and the states or frames that need validation. Write "not applicable" otherwise.
+      placeholder: Labels, states, timing, transitions, error conditions, and 72×16 fit constraints
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_contract
+    attributes:
+      label: Data meaning and sources
+      description: For live-data ideas, define what the displayed values mean, their source, update cadence, stale/offline behavior, and any usage terms. Write "not applicable" otherwise.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What simpler presentation or workflow did you consider?
+
+  - type: textarea
+    id: references
+    attributes:
+      label: Mockups or public references
+      description: Attach sketches or link only to material that is safe to share publicly. Do not include private device URLs, personal coordinates, or secrets.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and documentation for the same request.
+          required: true
+        - label: This request and its attachments contain no tokens, private URLs, personal coordinates, hostnames, addresses, or other identifying data.
+          required: true

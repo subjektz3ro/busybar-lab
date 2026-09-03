@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "busybar.render-request/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "scenario_id", "parameters", "inputs"],
+  "properties": {
+    "schema": {"const": "busybar.render-request/v1"},
+    "scenario_id": {"type": "string", "minLength": 1},
+    "parameters": {"type": "object", "maxProperties": 64},
+    "inputs": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["t_us", "kind", "control", "value"],
+        "properties": {
+          "t_us": {"type": "integer", "minimum": 0, "maximum": 60000000},
+          "kind": {"type": "string", "minLength": 1, "maxLength": 64},
+          "control": {"type": "string", "minLength": 1, "maxLength": 64},
+          "value": {}
+        }
+      }
+    }
+  }
+}

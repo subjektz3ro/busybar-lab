@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "busybar.comparison/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "comparison_id", "before", "after", "changed", "displays"],
+  "properties": {
+    "schema": {"const": "busybar.comparison/v1"},
+    "comparison_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "before": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "after": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "changed": {"type": "boolean"},
+    "displays": {"type": "object"},
+    "same_artifact": {"type": "boolean"},
+    "same_frames": {
+      "type": "object",
+      "propertyNames": {"enum": ["front", "back"]},
+      "additionalProperties": {"type": "boolean"}
+    },
+    "comparison_path": {"type": "string", "minLength": 1},
+    "diff_contact_sheets": {
+      "type": "object",
+      "propertyNames": {"enum": ["front", "back"]},
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  }
+}

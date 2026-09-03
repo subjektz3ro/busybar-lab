@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>busybar-viz</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">OFFLINE VISUAL WORKBENCH</p>
+      <h1>busybar-viz</h1>
+    </div>
+    <div id="health" class="health" role="status" aria-live="polite">Starting…</div>
+  </header>
+
+  <main>
+    <section class="panel session-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">DRAFT SESSION</p>
+          <h2 id="session-title">No session selected</h2>
+        </div>
+        <div class="session-actions">
+          <select id="session-select" aria-label="Open draft session">
+            <option value="">No saved sessions</option>
+          </select>
+          <button id="new-session" class="secondary">New session</button>
+        </div>
+      </div>
+      <p id="session-meta" class="muted">Create a session to keep render requests, feedback, and approvals in one durable event stream.</p>
+    </section>
+
+    <section class="workspace">
+      <aside class="panel controls-panel">
+        <p class="eyebrow">SCENARIO</p>
+        <label>
+          Registered scenario
+          <select id="scenario"></select>
+        </label>
+        <p id="scenario-description" class="muted"></p>
+        <div id="controls"></div>
+        <section id="semantic-inputs" class="semantic-inputs hidden">
+          <div class="subheading">SIMULATED INPUTS</div>
+          <label>
+            Virtual timestamp (microseconds)
+            <input id="input-time" type="number" min="0" max="60000000" step="250000" value="0">
+          </label>
+          <div id="input-actions" class="input-actions"></div>
+        </section>
+        <label>
+          Advanced input timeline <span class="muted">(canonical JSON array)</span>
+          <textarea id="inputs" rows="5" spellcheck="false">[]</textarea>
+        </label>
+        <button id="render" class="primary" disabled>Render evidence</button>
+        <div id="job-state" class="job-state muted" role="status" aria-live="polite">Waiting for a session.</div>
+      </aside>
+
+      <section class="panel preview-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">EVIDENCE</p>
+            <h2>Display preview</h2>
+          </div>
+          <select id="preview-mode" aria-label="Preview mode" aria-describedby="evidence-note">
+            <option value="gap">LED-gap animation</option>
+            <option value="native">Native-pixel animation</option>
+            <option value="contact">Contact sheet</option>
+            <option value="gap-contact" selected>LED-gap contact sheet</option>
+            <option value="heatmap">Change heatmap</option>
+          </select>
+        </div>
+        <div id="previews" class="previews empty">
+          <p>Render a scenario to create deterministic, inspectable evidence.</p>
+        </div>
+        <div id="audit" class="audit"><p class="muted">Automated checks appear here with the evidence.</p></div>
+        <p id="evidence-note" class="evidence-note">A simulated gap preview is not a physical-panel observation.</p>
+      </section>
+    </section>
+
+    <section class="review-grid">
+      <section class="panel review-panel">
+        <p class="eyebrow">HUMAN REVIEW</p>
+        <h2>Feedback and decision</h2>
+        <label>
+          What should change?
+          <textarea id="feedback" rows="4" placeholder="Describe the visual issue or design goal…"></textarea>
+        </label>
+        <label class="evidence-confirmation">
+          <input id="gap-reviewed" type="checkbox">
+          <span>I inspected the LED-gap preview. Record this review as <code>gap-previewed</code>.</span>
+        </label>
+        <div class="button-row">
+          <button id="send-feedback" class="secondary" disabled>Record feedback</button>
+          <button id="request-changes" class="danger" disabled>Request changes</button>
+          <button id="approve" class="approve" disabled>Approve artifact</button>
+        </div>
+      </section>
+
+      <section class="panel events-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">SHARED CONTEXT</p>
+            <h2>Session events</h2>
+          </div>
+          <a id="export" class="text-link hidden" href="#">Export JSONL</a>
+        </div>
+        <ol id="events" class="events"><li class="muted">No events yet.</li></ol>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="session-dialog">
+    <form method="dialog" id="session-form">
+      <p class="eyebrow">NEW DRAFT</p>
+      <h2>Name this session</h2>
+      <label>
+        Session title
+        <input id="new-title" maxlength="160" required placeholder="Status layout iteration">
+      </label>
+      <div class="button-row">
+        <button type="button" id="cancel-session" class="secondary">Cancel</button>
+        <button value="default" class="primary" id="create-session">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

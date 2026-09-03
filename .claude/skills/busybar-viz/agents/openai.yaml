@@ -1,0 +1,4 @@
+interface:
+  display_name: "BUSY Bar Visualizer"
+  short_description: "Audit BUSY Bar visual output safely"
+  default_prompt: "Use $busybar-viz to inspect this BUSY Bar visual artifact and report what the available evidence can prove."

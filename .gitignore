@@ -1,0 +1,44 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.playwright-cli/
+.superpowers/
+docs/superpowers/
+.tox/
+.coverage*
+coverage.json
+coverage.xml
+htmlcov/
+build/
+dist/
+scratch/
+.skystrip_scene
+*.aiff
+*.wav
+*.snd
+*.egg
+*.whl
+*.egg-info/
+.DS_Store
+.env
+.env.*
+*.env
+!.env.example
+voices/
+logs/
+cache/
+state/
+.claude/worktrees/
+config/
+
+# Local vendor references. BUSY's site documentation and the API schema read
+# from a user's device do not have a redistribution grant, so refreshes stay
+# useful to the owner without entering a public source snapshot.
+docs/mirror/
+docs/api/openapi.yaml
+
+# Working handoff notes — current state, not project docs. Never ships.
+HANDOFF.md

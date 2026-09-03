@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "busybar.trace/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "seq", "t_us", "kind", "actor", "body"],
+  "properties": {
+    "schema": {"const": "busybar.trace/v1"},
+    "seq": {"type": "integer", "minimum": 1},
+    "t_us": {"type": "integer", "minimum": 0},
+    "kind": {"type": "string", "minLength": 1},
+    "actor": {"type": "string", "minLength": 1},
+    "body": {"type": "object"}
+  }
+}

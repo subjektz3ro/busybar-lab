@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "busybar.session/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "title", "revision", "current_artifact_id", "latest_render_job_id", "created_at", "updated_at"],
+  "properties": {
+    "schema": {"const": "busybar.session/v1"},
+    "id": {"type": "string", "pattern": "^ses_[0-9a-f]{32}$"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 160},
+    "revision": {"type": "integer", "minimum": 1},
+    "current_artifact_id": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "latest_render_job_id": {"type": ["string", "null"], "pattern": "^job_[0-9a-f]{32}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

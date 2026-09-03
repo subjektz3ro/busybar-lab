@@ -1,0 +1,40 @@
+[Unit]
+Description=barkeep — control plane for bar apps
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=@WORKING_DIRECTORY@
+Environment=@CACHE_ENVIRONMENT@
+Environment=@STATE_ENVIRONMENT@
+# install.sh resolves the exact executable it used. `--no-sync` is deliberate:
+# install.sh/ship.sh finish a locked sync before restart, so service startup
+# never mutates the environment or races a deploy-time resolver.
+ExecStart=@UV_EXECUTABLE@ run --no-sync -m barkeep
+Restart=on-failure
+RestartSec=5
+
+# This daemon serves the control plane and spawns child processes. The account
+# it runs as is also the deploy account, which needs narrowly scoped sudo for
+# `systemctl stop` and `systemctl start`
+# — so anything that gets code execution here should not also be able to
+# escalate. NoNewPrivileges is the one that closes that, and it costs nothing.
+#
+# ProtectHome=read-only plus an explicit ReadWritePaths is the pairing that
+# matters: the checkout stays readable while only the installer-created
+# runtime directories, uv cache, and environment remain writable.
+# deploy/ship.sh is unaffected — it runs over SSH as the user, not under this
+# unit, so its `git reset --hard` still works.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ReadWritePaths=@CONFIG_DIRECTORY@ @LOGS_DIRECTORY@ @CACHE_DIRECTORY@ @STATE_DIRECTORY@ @UV_CACHE_DIRECTORY@ @VENV_DIRECTORY@
+# barkeep supervises the apps (skystrip etc.) as child processes; desired
+# state persists in config/barkeep-state.json. Bar topology comes from the
+# repo-root .env (BUSYBAR_HOST/BUSYBAR_TOKEN), same as before.
+
+[Install]
+WantedBy=multi-user.target
