@@ -5,34 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 
 from busylib import BusyBar
-from busylib.display import unpack_l4_to_l8
 from PIL import Image
 
 FRONT_SIZE = (72, 16)  # RGB888
-BACK_SIZE = (160, 80)  # L4-packed grayscale, two pixels per byte
+BACK_SIZE = (160, 80)  # RGB888
 
 
 def front_image(bb: BusyBar) -> Image.Image:
-    raw = bb.screen(0)
-    img = Image.frombytes("RGB", FRONT_SIZE, raw)
-    # Firmware 1.1.1 streams the front framebuffer as BGR; relabel to RGB
-    # (verified against a known-amber pixel that read back blue).
-    return Image.merge("RGB", img.split()[::-1])
+    # Busylib 2 normalizes the device's wire format to canonical row-major
+    # RGB888.  Swapping channels here would turn every red pixel blue again.
+    return Image.frombytes("RGB", FRONT_SIZE, bb.screen(0))
 
 
 def back_image(bb: BusyBar) -> Image.Image:
-    raw = bb.screen(1)
-    w, h = BACK_SIZE
-    if len(raw) == w * h * 3:
-        # Firmware 1.1.1 streams the back framebuffer as full RGB888 (same
-        # BGR byte order as the front — relabel). busylib's L4 helper
-        # predates this; keep the old formats as fallbacks.
-        img = Image.frombytes("RGB", BACK_SIZE, raw)
-        return Image.merge("RGB", img.split()[::-1])
-    if len(raw) == w * h:
-        return Image.frombytes("L", BACK_SIZE, raw)
-    l8 = bytes(v * 17 for v in unpack_l4_to_l8(raw))
-    return Image.frombytes("L", BACK_SIZE, l8)
+    # The same public contract applies to the back display even when older
+    # firmware supplied packed greyscale on the wire: Busylib expands it to
+    # RGB before returning from screen().
+    return Image.frombytes("RGB", BACK_SIZE, bb.screen(1))
 
 
 def save_screens(bb: BusyBar, directory: str | Path = ".", scale: int = 8) -> tuple[Path, Path]:

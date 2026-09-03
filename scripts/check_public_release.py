@@ -93,6 +93,11 @@ PUBLIC_CONTENT_MATCHES: dict[tuple[str, str, bytes], str] = {
     ): "verbatim upstream busylib connection example",
     (
         PRIVATE_IP_RULE_NAME,
+        "docs/busylib/api/discovery.md",
+        b"192.168." + b"1.20",
+    ): "verbatim upstream busylib discovery example",
+    (
+        PRIVATE_IP_RULE_NAME,
         "tests/test_server.py",
         b"fe80" + b"::1",
     ): "synthetic IPv6 host-and-port parsing fixture",

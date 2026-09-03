@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Busylib 2 framebuffer contract
+
+- Upgrade the locked official client to Busylib 2.0.2. Barkeep preview,
+  screenshot helpers, and `busybar-viz capture` now consume the client's
+  canonical RGB888 framebuffer bytes directly; asymmetric red/blue fixtures
+  guard both displays against a second channel swap. The installed client's
+  private USB-controller seam and transparent notification-only payloads are
+  pinned by offline regressions.
+
 ### BUSY Bar Lab project identity
 
 - Rename the repository and Python distribution to **BUSY Bar Lab**

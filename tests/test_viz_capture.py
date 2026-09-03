@@ -23,6 +23,8 @@ from busybar_viz.models import (
 )
 
 REPO = Path(__file__).resolve().parents[1]
+FRONT_RGB = (241, 37, 11)
+BACK_RGB = (17, 83, 199)
 
 
 class _FakeBar:
@@ -37,19 +39,18 @@ class _FakeBar:
     def __exit__(self, _exc_type, _exc, _traceback):
         self.closed = True
 
+    def screen(self, display: int) -> bytes:
+        if display == 0:
+            return bytes(FRONT_RGB) * (72 * 16)
+        if display == 1:
+            return bytes(BACK_RGB) * (160 * 80)
+        raise AssertionError(f"unexpected display {display}")
+
 
 @pytest.fixture
 def fake_device(monkeypatch):
     bar = _FakeBar()
     monkeypatch.setattr(busybar_dev, "connect", lambda: bar)
-    monkeypatch.setattr(
-        screen, "front_image",
-        lambda _bb: Image.new("RGB", (72, 16), (200, 120, 0)),
-    )
-    monkeypatch.setattr(
-        screen, "back_image",
-        lambda _bb: Image.new("L", (160, 80), 40),
-    )
     return bar
 
 
@@ -62,6 +63,8 @@ def test_capture_wraps_framebuffers_with_honest_provenance(fake_device):
         for track in segment.displays
     )
     assert segment.displays[1].frames[0].mode == "RGB"
+    assert segment.displays[0].frames[0].getpixel((0, 0)) == FRONT_RGB
+    assert segment.displays[1].frames[0].getpixel((0, 0)) == BACK_RGB
     assert segment.evidence_level is EvidenceLevel.FRAMEBUFFER_CAPTURED
     assert request.parameters == {"displays": ["front", "back"]}
     assert any(".anim" in note for note in segment.notes)
@@ -117,6 +120,11 @@ def test_capture_cli_publishes_deterministic_artifacts(
     assert result["evidence_level"] == "framebuffer-captured"
     assert result["passed"] is True
     assert Path(result["previews"]["front"]["gap_contact_sheet"]).is_file()
+    artifact = Path(result["artifact_path"])
+    assert Image.open(artifact / "frames/front/frame-000.png").getpixel((0, 0)) \
+        == FRONT_RGB
+    assert Image.open(artifact / "frames/back/frame-000.png").getpixel((0, 0)) \
+        == BACK_RGB
 
     assert cli.main(argv) == 0
     rerun = json.loads(capsys.readouterr().out)

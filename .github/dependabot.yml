@@ -8,8 +8,8 @@ updates:
       time: "09:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
-    # busylib 2 changes framebuffer reads from device BGR to RGB. Upgrade it
-    # deliberately alongside the screen conversion and colored-pixel tests.
+    # Busylib majors can change normalized framebuffer semantics or the
+    # private `_usb` seam. Upgrade them deliberately with their contract tests.
     ignore:
       - dependency-name: "busylib"
         update-types:

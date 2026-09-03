@@ -80,7 +80,7 @@ The core packages are declared in `pyproject.toml` and installed by a plain
 | `websockets` | Optional Skystrip client for an authorized secure lightning relay/source configured only in gitignored `.env`; the repo ships no raw provider endpoint and leaves the feature off by default |
 | `tzdata` | IANA timezone database fallback for slim hosts that do not ship `/usr/share/zoneinfo`; Skystrip still requires an explicit zone matching its coordinates |
 | `fastapi`, `uvicorn` | barkeep's web UI and JSON API on :8080 |
-| `pillow` | Frame rendering — every scene is a PIL image before it becomes an `.anim`. Declared here even though busylib also requires it, because first-party modules import PIL directly and a transitive dependency is one busylib release away from breaking them |
+| `pillow` | Frame rendering — every scene is a PIL image before it becomes an `.anim`. Busylib 2 makes Pillow an optional media extra, while first-party modules import PIL directly, so it remains a required direct dependency here |
 
 On Linux, `kokoro-onnx` is part of the default locked dependency set and pulls
 `onnxruntime` plus `numpy`, which make up most of the neural Python environment.

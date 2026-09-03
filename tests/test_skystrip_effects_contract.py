@@ -172,6 +172,15 @@ def test_lightning_segment_is_deterministic_and_owns_near_led_policy(
         < first.frames[1].getpixel((0, 0))[0]
 
 
+def test_led_ping_draw_is_transparent_after_busylib_serialization():
+    payload = skystrip._led_ping_payload("#3377EEFF")
+    rectangle = payload.elements[0]
+
+    assert rectangle.fill_colors == ["#00000000"]
+    wire = payload.model_dump(mode="json", exclude_none=True)
+    assert wire["elements"][0]["fill_colors"] == ["#00000000"]
+
+
 def test_lightning_segment_fills_lease_with_original_pulse_and_moving_tail(
     monkeypatch,
 ):
