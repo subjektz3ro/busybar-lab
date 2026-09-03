@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,9 @@ KINDS = ("foreground", "background")
 CONFIG_TYPES = ("text", "number", "email", "enum", "multiselect")
 CHOICE_TYPES = ("enum", "multiselect")
 CONFIG_FORMATS = ("timezone",)
+# App names become Python module names, config filenames, and URL path
+# segments.  Keep one deliberately narrow grammar for all three surfaces.
+APP_NAME_RE = re.compile(r"[a-z][a-z0-9_]{0,31}\Z")
 
 
 class RegistryError(Exception):
@@ -57,6 +61,11 @@ def load_registry(path: Path) -> dict[str, AppSpec]:
 
     registry: dict[str, AppSpec] = {}
     for name, entry in data.items():
+        if not APP_NAME_RE.fullmatch(name):
+            raise RegistryError(
+                f"{name!r}: app names must match [a-z][a-z0-9_]* "
+                "and be at most 32 characters"
+            )
         if not isinstance(entry, dict):
             raise RegistryError(f"{name}: expected a table, got {type(entry).__name__}")
         for req in ("kind", "entrypoint", "description"):

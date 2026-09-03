@@ -418,5 +418,5 @@ def test_report_notice_names_only_the_provider_that_mode_calls():
         ["--report", "--enable-network-providers"]
     )
     notice = skystrip._provider_notice(args)
-    assert "Open-Meteo.com" in notice
+    assert notice == f"Skystrip data: {skystrip.OPEN_METEO_NOTICE}"
     assert "RainViewer" not in notice

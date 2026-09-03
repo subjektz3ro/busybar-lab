@@ -140,6 +140,30 @@ def test_missing_required_field_fails_loud(tmp_path):
         load_registry(write(tmp_path, bad))
 
 
+@pytest.mark.parametrize(
+    "name",
+    (
+        "../escape",
+        "sky/escape",
+        r"sky\escape",
+        "%2e%2e",
+        "%252e%252e",
+        ".hidden",
+        "Sky",
+        "sk\N{CYRILLIC SMALL LETTER U}strip",
+        "a" * 33,
+    ),
+)
+def test_unsafe_app_names_fail_before_becoming_paths_or_modules(tmp_path, name):
+    bad = (
+        f'[{name!r}]\nkind = "foreground"\nentrypoint = "a.py"\n'
+        'description = "x"\n'
+    )
+
+    with pytest.raises(RegistryError, match="app names must match"):
+        load_registry(write(tmp_path, bad))
+
+
 def test_bad_kind_fails_loud(tmp_path):
     bad = '[sky]\nkind = "sideways"\nentrypoint = "a.py"\ndescription = "x"\n'
     with pytest.raises(RegistryError, match="sky.*kind"):

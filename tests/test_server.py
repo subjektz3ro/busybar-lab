@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from barkeep import tls as barkeep_tls
+from barkeep import server as barkeep_server
 from barkeep.preview import BarOffline
 from barkeep.registry import AppSpec, ConfigKey
 from barkeep.server import MAX_JSON_BYTES, create_app, tls_upload_allowed
@@ -142,6 +143,26 @@ def test_foreground_wrong_kind_409_unknown_404(tmp_path):
     assert client.post("/api/foreground", json={"app": "nope"}).status_code == 404
 
 
+def test_operation_exception_details_are_logged_not_returned(
+    tmp_path, monkeypatch, caplog,
+):
+    client, sup, _ = make_client(tmp_path)
+    sentinel = "SECRET_TOKEN /private/operator/path Traceback: internal frame"
+
+    async def reject(_name):
+        raise ValueError(sentinel)
+
+    monkeypatch.setattr(sup, "enable", reject)
+
+    with caplog.at_level("WARNING", logger="barkeep.server"):
+        response = client.post("/api/apps/pinger/enable", headers=JSON)
+
+    assert response.status_code == 409
+    assert response.json() == {"error": "operation is not valid for this app"}
+    assert all(part not in response.text for part in ("SECRET_TOKEN", "/private", "Traceback"))
+    assert sentinel in caplog.text
+
+
 def test_background_toggle(tmp_path):
     client, sup, _ = make_client(tmp_path)
     assert client.post("/api/apps/pinger/enable", headers=JSON).status_code == 200
@@ -170,6 +191,58 @@ def test_config_get_put(tmp_path):
 
     bad = client.put("/api/apps/sky/config", json={"values": {"HACK": "x"}})
     assert bad.status_code == 422
+
+
+def test_config_file_uses_the_canonical_registry_spec_name(tmp_path):
+    spec = REGISTRY["sky"]
+    registry = {"route_alias": spec}
+    sup = FakeSupervisor(registry)
+    config_dir = tmp_path / "config"
+    app = create_app(
+        sup,
+        registry,
+        FakePreview(),
+        config_dir,
+        config_dir / "barkeep-state.json",
+    )
+    client = TestClient(app, base_url="http://127.0.0.1:8080")
+
+    response = client.put(
+        "/api/apps/route_alias/config",
+        json={"values": {"SKY_VOICE": "am_michael"}},
+    )
+
+    assert response.status_code == 200
+    assert (config_dir / "sky.env").is_file()
+    assert not (config_dir / "route_alias.env").exists()
+
+
+@pytest.mark.parametrize(
+    "encoded_name",
+    (
+        "%2e%2e",
+        "%252e%252e",
+        "sky%2F..%2F..%2Fescape",
+        "sky%5C..%5Cescape",
+        ".hidden",
+    ),
+)
+def test_malicious_route_names_cannot_select_config_paths(
+    tmp_path, encoded_name,
+):
+    client, _, config_dir = make_client(tmp_path)
+    outside = tmp_path / "escape.env"
+    outside.write_text("SECRET=must-survive\n")
+
+    response = client.put(
+        f"/api/apps/{encoded_name}/config",
+        json={"values": {"SKY_VOICE": "attacker"}},
+    )
+
+    assert response.status_code in {404, 405}
+    assert outside.read_text() == "SECRET=must-survive\n"
+    assert not any(path.name != "escape.env" for path in tmp_path.glob("*.env"))
+    assert not config_dir.exists() or not list(config_dir.glob("*.env"))
 
 
 def test_put_config_rejects_multiline_values(tmp_path):
@@ -837,6 +910,55 @@ def test_tls_admin_rejects_a_mismatched_pair_without_staging(
     assert resp.status_code == 422
     assert not (config_dir / "tls" / "barkeep-operator.crt").exists()
     assert client.get("/api/tls").json()["source"] == "off"
+
+
+def test_tls_upload_exception_details_are_logged_not_returned(
+    tmp_path, monkeypatch, caplog,
+):
+    _tls_env_clear(monkeypatch)
+    client, _, _ = make_client(tmp_path)
+    sentinel = "SECRET_KEY /private/operator/key.pem Traceback: ssl frame"
+
+    def reject(*_args, **_kwargs):
+        raise ValueError(sentinel)
+
+    monkeypatch.setattr(barkeep_server, "stage_operator_pair", reject)
+
+    with caplog.at_level("WARNING", logger="barkeep.server"):
+        response = _https(client).put(
+            "/api/tls",
+            json={"certificate_pem": "certificate", "key_pem": "key"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": "certificate and key must be usable PEM and match"
+    }
+    assert all(part not in response.text for part in ("SECRET_KEY", "/private", "Traceback"))
+    assert sentinel in caplog.text
+
+
+def test_tls_status_exception_details_are_logged_not_returned(
+    tmp_path, monkeypatch, caplog,
+):
+    _tls_env_clear(monkeypatch)
+    client, _, _ = make_client(tmp_path)
+    sentinel = "SECRET_CERT /private/operator/cert.pem Traceback: tls frame"
+
+    def reject(_tls_dir):
+        raise ValueError(sentinel)
+
+    monkeypatch.setattr(barkeep_tls, "resolve_tls", reject)
+
+    with caplog.at_level("WARNING", logger="barkeep.tls"):
+        response = client.get("/api/tls")
+
+    assert response.status_code == 200
+    assert response.json()["detail"] == (
+        "TLS configuration is invalid; inspect the Barkeep service logs"
+    )
+    assert all(part not in response.text for part in ("SECRET_CERT", "/private", "Traceback"))
+    assert sentinel in caplog.text
 
 
 def test_tls_admin_defers_to_an_environment_pinned_pair(tmp_path, monkeypatch):

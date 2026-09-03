@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
+import logging
 import os
 import socket
 from pathlib import Path
@@ -29,6 +30,7 @@ from .statestore import DesiredState, save_state
 from .tls import remove_operator_pair, stage_operator_pair, tls_status
 
 STATIC_DIR = Path(__file__).parent / "static"
+log = logging.getLogger(__name__)
 MAX_JSON_BYTES = 256 * 1024
 _MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _SECURITY_HEADERS = {
@@ -311,8 +313,9 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
             await op(name)
         except KeyError:
             return error(404, f"unknown app: {name}")
-        except ValueError as exc:
-            return error(409, str(exc))
+        except ValueError:
+            log.warning("app operation rejected for %r", name, exc_info=True)
+            return error(409, "operation is not valid for this app")
         persist()
         return state_blob()
 
@@ -343,24 +346,27 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
         except KeyError:
             return error(404, f"unknown app: {name}")
 
-    def _config_rows(name: str) -> list[dict]:
+    def _config_rows(spec: AppSpec) -> list[dict]:
         return effective_config(
-            registry[name], read_env_file(app_env_path(config_dir, name)), os.environ)
+            spec, read_env_file(app_env_path(config_dir, spec)), os.environ
+        )
 
     @app.get("/api/apps/{name}/config")
     def get_config(name: str):
-        if name not in registry:
+        spec = registry.get(name)
+        if spec is None:
             return error(404, f"unknown app: {name}")
-        return {"keys": _config_rows(name)}
+        return {"keys": _config_rows(spec)}
 
     @app.put("/api/apps/{name}/config")
     def put_config(name: str, body: dict):
-        if name not in registry:
+        spec = registry.get(name)
+        if spec is None:
             return error(404, f"unknown app: {name}")
         values = body.get("values", {})
         if not isinstance(values, dict):
             return error(422, "values must be an object")
-        declared = {k.name for k in registry[name].config}
+        declared = {k.name for k in spec.config}
         unknown = sorted(set(values) - declared)
         if unknown:
             return error(422, f"undeclared config keys: {', '.join(unknown)}")
@@ -376,7 +382,7 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
         # and canonicalize here rather than only in the UI — the API is
         # curl-able, and an app reading a bogus scene name would just ignore
         # it silently.
-        for key in registry[name].config:
+        for key in spec.config:
             if key.type != "multiselect" or key.name not in coerced:
                 continue
             selected, unknown = normalize_multiselect(coerced[key.name], key.choices)
@@ -387,7 +393,7 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
                 return error(422, f"{key.name}: select at least one")
             coerced[key.name] = ",".join(selected)
 
-        validation_error = validate_submitted_values(registry[name], coerced)
+        validation_error = validate_submitted_values(spec, coerced)
         if validation_error:
             return error(422, validation_error)
 
@@ -396,9 +402,9 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
         # value (anonymous contact, automatic station); only those persist
         # ``KEY=``. A blank registry default alone cannot encode both meanings.
         blankable = {
-            k.name for k in registry[name].config if k.blank_is_value
+            k.name for k in spec.config if k.blank_is_value
         }
-        path = app_env_path(config_dir, name)
+        path = app_env_path(config_dir, spec)
         merged = read_env_file(path)
         for key, value in coerced.items():
             if value == "" and key not in blankable:
@@ -406,11 +412,11 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
             else:
                 merged[key] = value
         validation_error = validate_effective_config(
-            registry[name], merged, os.environ)
+            spec, merged, os.environ)
         if validation_error:
             return error(422, validation_error)
         write_env_file(path, merged)
-        return {"keys": _config_rows(name)}
+        return {"keys": _config_rows(spec)}
 
     # --- TLS admin: replacing the certificate is a paste, not an ssh session.
     # Uploads stage to config/tls/ after validation; nothing here restarts the
@@ -452,8 +458,9 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
             stage_operator_pair(tls_dir,
                                 str(body.get("certificate_pem", "")),
                                 str(body.get("key_pem", "")))
-        except ValueError as exc:
-            return error(422, str(exc))
+        except ValueError:
+            log.warning("uploaded TLS certificate/key rejected", exc_info=True)
+            return error(422, "certificate and key must be usable PEM and match")
         tls_pending["restart"] = True
         return tls_blob(request)
 
