@@ -121,6 +121,7 @@ files = [
     "busybar_viz",
     "apps/dsn.py",
     "apps/dsn_config.py",
+    "apps/dsn_ranges.py",
     "apps/dsn_source.py",
     "apps/hello.py",
     "apps/skystrip.py",

@@ -333,7 +333,9 @@ def test_range_cache_is_versioned_validated_and_range_sensitive(
     }))
     state = dsn.State()
     dsn.load_ranges(state)
-    assert state.ranges == {-32: (21_000_000_000.0, now - 3600)}
+    assert state.range_state.values == {
+        -32: (21_000_000_000.0, now - 3600),
+    }
 
     dsn.save_ranges(state)
     saved = json.loads(cache.read_text())
@@ -356,11 +358,11 @@ def test_malformed_valid_json_cache_is_ignored_atomically(
     cache.write_text(json.dumps(payload))
     monkeypatch.setattr(dsn, "RANGE_CACHE", cache)
     original = {-32: (21_000_000_000.0, 1_800_000_000.0)}
-    state = dsn.State(ranges=original.copy())
+    state = dsn.State(range_state=dsn.RangeState(values=original.copy()))
 
     dsn.load_ranges(state)
 
-    assert state.ranges == original
+    assert state.range_state.values == original
 
 
 def test_one_horizons_query_fills_every_link_with_the_same_naif(monkeypatch):

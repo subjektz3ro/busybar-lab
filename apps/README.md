@@ -42,11 +42,12 @@ its offline preview and device-only `--once` path do not.
 
 The entry-point modules keep rendering, device ownership, and interaction
 sequencing together, because those paths share generation counters and scene
-state. Pure boundaries live beside them:
+state. Separated support boundaries live beside them:
 
 | Module | Owns |
 |---|---|
 | `dsn_config.py` | Immutable runtime configuration and managed cache paths |
+| `dsn_ranges.py` | Horizons parsing, range state/cache ownership, and the injected enrichment worker |
 | `dsn_source.py` | Bounded NASA XML ingestion and the remote-source domain models |
 | `skystrip_config.py` | Immutable runtime configuration, paths, and endpoint validation |
 | `skystrip_lightning.py` | Bounded decoding of the optional lightning wire format |

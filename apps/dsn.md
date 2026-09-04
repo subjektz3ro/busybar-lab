@@ -682,9 +682,15 @@ mission-private and, for commanding, authenticated.
   so explicitly instead of animating the last-known carrier as current.
 - **Remote XML has one pure trust boundary.** [`dsn_source.py`](dsn_source.py)
   owns the bounded source vocabulary, domain records and snapshot parsers. It
-  performs no network, filesystem, device or rendering work; `dsn.py` owns
-  those runtime concerns and re-exports the established model/parser names for
+  performs no network, filesystem, device or rendering work; `dsn.py` adapts
+  it to the live feed and re-exports the established model/parser names for
   callers that already use them.
+- **Horizons enrichment has one state/service owner.**
+  [`dsn_ranges.py`](dsn_ranges.py) owns the three range stores, versioned cache
+  I/O, response parser and dependency-injected worker. `dsn.py` supplies the
+  current links, transport, clock and cache path through compatibility facades;
+  a replacement range source belongs at that explicit worker boundary rather
+  than in rendering or the feed parser.
 - **Source validation is snapshot-atomic.** A missing/oversized active identity,
   contradictory duplicate, unknown complex, or collection beyond the bounded
   display model rejects that whole poll. The last accepted snapshot ages into

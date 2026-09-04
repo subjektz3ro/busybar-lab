@@ -1909,26 +1909,28 @@ def test_distances_survive_a_restart(tmp_path, monkeypatch):
     meant no narration until JPL answered."""
     monkeypatch.setattr(dsn, "RANGE_CACHE", tmp_path / "r.json")
     state = dsn.State()
-    state.ranges = {-32: (2.1e10, time.time())}
+    state.range_state.values = {-32: (2.1e10, time.time())}
     dsn.save_ranges(state)
 
     fresh = dsn.State()
     dsn.load_ranges(fresh)
-    assert fresh.ranges[-32][0] == 2.1e10
+    assert fresh.range_state.values[-32][0] == 2.1e10
 
     # anything past the TTL is dropped rather than served stale
     stale = dsn.State()
-    stale.ranges = {-61: (8.2e8, time.time() - dsn.RANGE_TTL_S - 1)}
+    stale.range_state.values = {
+        -61: (8.2e8, time.time() - dsn.RANGE_TTL_S - 1),
+    }
     dsn.save_ranges(stale)
     reloaded = dsn.State()
     dsn.load_ranges(reloaded)
-    assert -61 not in reloaded.ranges
+    assert -61 not in reloaded.range_state.values
 
     # a missing or corrupt cache is a cold start, never a crash
     (tmp_path / "r.json").write_text("{not json")
     empty = dsn.State()
     dsn.load_ranges(empty)
-    assert empty.ranges == {}
+    assert empty.range_state.values == {}
 
 
 def test_the_name_map_keeps_trying(monkeypatch):

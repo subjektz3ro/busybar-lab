@@ -289,7 +289,7 @@ def test_horizons_failure_does_not_enter_the_success_range_cache(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(dsn.poll_ranges(state))
 
-    assert unresolved.naif not in state.ranges
+    assert unresolved.naif not in state.range_state.values
 
 
 def test_horizons_unavailable_target_gets_a_long_negative_backoff(monkeypatch):
@@ -326,10 +326,10 @@ def test_horizons_unavailable_target_gets_a_long_negative_backoff(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(dsn.poll_ranges(state))
 
-    assert unresolved.naif not in state.ranges
-    assert state.range_retry_at[unresolved.naif] >= (
+    assert unresolved.naif not in state.range_state.values
+    assert state.range_state.retry_at[unresolved.naif] >= (
         before + dsn.RANGE_UNAVAILABLE_RETRY_S)
-    assert unresolved.naif in state.range_unavailable
+    assert unresolved.naif in state.range_state.unavailable
     with pytest.raises(dsn.HorizonsUnavailable,
                        match="No such record, positive values only"):
         dsn.horizons_au(Response.text)
@@ -374,10 +374,13 @@ def test_malformed_horizons_success_keeps_the_short_transient_retry(monkeypatch)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(dsn.poll_ranges(state))
 
-    assert unresolved.naif not in state.ranges
-    assert unresolved.naif not in state.range_unavailable
-    assert before + dsn.RANGE_RETRY_S <= state.range_retry_at[unresolved.naif]
-    assert state.range_retry_at[unresolved.naif] < (
+    assert unresolved.naif not in state.range_state.values
+    assert unresolved.naif not in state.range_state.unavailable
+    assert (
+        before + dsn.RANGE_RETRY_S
+        <= state.range_state.retry_at[unresolved.naif]
+    )
+    assert state.range_state.retry_at[unresolved.naif] < (
         before + dsn.RANGE_UNAVAILABLE_RETRY_S)
     with pytest.raises(ValueError, match="missing Horizons ephemeris table"):
         dsn.horizons_au(Response.text)

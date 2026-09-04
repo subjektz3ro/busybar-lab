@@ -67,12 +67,15 @@ from busybar_dev.tts import synth_snd
 
 if TYPE_CHECKING:
     import dsn_config as _dsn_config
+    import dsn_ranges as _dsn_ranges
     import dsn_source as _dsn_source
 elif __package__:
     _dsn_config = importlib.import_module(".dsn_config", __package__)
+    _dsn_ranges = importlib.import_module(".dsn_ranges", __package__)
     _dsn_source = importlib.import_module(".dsn_source", __package__)
 else:
     _dsn_config = importlib.import_module("dsn_config")
+    _dsn_ranges = importlib.import_module("dsn_ranges")
     _dsn_source = importlib.import_module("dsn_source")
 
 DsnConfig = _dsn_config.DsnConfig
@@ -132,6 +135,23 @@ parse_feed = _dsn_source.parse_feed
 parse_config = _dsn_source.parse_config
 band_key = _dsn_source.band_key
 
+# Range enrichment has its own cohesive state/service boundary. Keep these
+# established entry-point names as aliases so package and direct-script callers
+# continue to share the same parser, constants and state type.
+RangeState = _dsn_ranges.RangeState
+HorizonsUnavailable = _dsn_ranges.HorizonsUnavailable
+horizons_au = _dsn_ranges.horizons_au
+range_ttl_s = _dsn_ranges.range_ttl_s
+range_cache_fresh = _dsn_ranges.range_cache_fresh
+HORIZONS = _dsn_ranges.HORIZONS
+AU_LIGHT_S = _dsn_ranges.AU_LIGHT_S
+RANGE_NEAR_EARTH_TTL_S = _dsn_ranges.RANGE_NEAR_EARTH_TTL_S
+RANGE_INTERMEDIATE_TTL_S = _dsn_ranges.RANGE_INTERMEDIATE_TTL_S
+RANGE_TTL_S = _dsn_ranges.RANGE_TTL_S
+RANGE_RETRY_S = _dsn_ranges.RANGE_RETRY_S
+RANGE_UNAVAILABLE_RETRY_S = _dsn_ranges.RANGE_UNAVAILABLE_RETRY_S
+RANGE_CACHE_VERSION = _dsn_ranges.RANGE_CACHE_VERSION
+
 
 class PixelBuffer(Protocol):
     """The RGB pixel-access operations used by the pure renderers."""
@@ -158,8 +178,6 @@ UA = {"User-Agent": "dsn (busybar hobby project)"}
 
 DSN_XML = "https://eyes.nasa.gov/dsn/data/dsn.xml"
 CONFIG_XML = "https://eyes.nasa.gov/dsn/config.xml"
-HORIZONS = "https://ssd.jpl.nasa.gov/api/horizons.api"
-AU_LIGHT_S = 499.004784        # seconds of light per astronomical unit
 
 
 POLL_S = DEFAULT_DSN_CONFIG.poll_s
@@ -188,12 +206,6 @@ SPEECH_CACHE_MAX = 48
 # detail views per contact. Forty-eight sparse assets are still only a few MB
 # and prevent wheel A→B→A from turning into repeated flash writes.
 SCENE_CACHE_MAX = 48
-RANGE_NEAR_EARTH_TTL_S = 5 * 60
-RANGE_INTERMEDIATE_TTL_S = 30 * 60
-RANGE_TTL_S = 6 * 3600         # maximum, for genuinely deep-space targets
-RANGE_RETRY_S = 60             # failure backoff is not a successful zero range
-RANGE_UNAVAILABLE_RETRY_S = RANGE_TTL_S  # Horizons has no record for this id
-RANGE_CACHE_VERSION = 1
 SHUTDOWN_TIMEOUT_S = 2.0
 # A released task needs a moment to unwind its own await points. This is
 # that moment, and it is bounded so a genuinely stuck task still gets
@@ -369,9 +381,7 @@ class NarrationNotice:
 @dataclass
 class State:
     links: list[Link] = field(default_factory=list)
-    ranges: dict[int, tuple[float, float]] = field(default_factory=dict)  # naif -> (km, at)
-    range_retry_at: dict[int, float] = field(default_factory=dict)
-    range_unavailable: set[int] = field(default_factory=set)
+    range_state: RangeState = field(default_factory=RangeState)
     focus: str | None = None      # user real-time lock; None = auto-rotate
     narration_focus: str | None = None  # orthogonal hold while audio plays
     completion_pending: str | None = None  # hold until arrival blink is accepted
@@ -579,88 +589,29 @@ def configure_runtime() -> DsnConfig:
     return config
 
 
-def range_ttl_s(km: float) -> float:
-    """A range-sensitive TTL for geocentric observer distance.
-
-    Earth-orbiting observatories can change range several-fold in six hours;
-    truly deep-space targets move slowly enough for the former maximum TTL.
-    """
-    if km < 2_000_000:
-        return RANGE_NEAR_EARTH_TTL_S
-    if km < 50_000_000:
-        return RANGE_INTERMEDIATE_TTL_S
-    return RANGE_TTL_S
-
-
-def range_cache_fresh(entry: tuple[float, float], now: float) -> bool:
-    """Validate a cached (km, observed_at) pair without trusting JSON types."""
-    try:
-        km, observed_at = float(entry[0]), float(entry[1])
-    except (IndexError, TypeError, ValueError, OverflowError):
-        return False
-    if not (math.isfinite(km) and 0 < km <= MAX_RANGE_KM
-            and math.isfinite(observed_at)):
-        return False
-    age = now - observed_at
-    return 0.0 <= age < range_ttl_s(km)
-
-
 def cached_range(state: State, naif: int, now: float | None = None) -> float | None:
     """A currently defensible range, expiring invalid entries in memory."""
-    entry = state.ranges.get(naif)
-    if entry is None:
-        return None
     current = time.time() if now is None else now
-    if not range_cache_fresh(entry, current):
-        state.ranges.pop(naif, None)
-        return None
-    return float(entry[0])
+    return _dsn_ranges.cached_range(state.range_state, naif, current)
 
 
 def load_ranges(state: State) -> None:
     """Load a versioned range cache atomically; malformed JSON is a cold start."""
-    try:
-        raw = json.loads(RANGE_CACHE.read_text())
-        if (not isinstance(raw, dict)
-                or raw.get("version") != RANGE_CACHE_VERSION
-                or not isinstance(raw.get("ranges"), dict)):
-            raise ValueError("unsupported range-cache schema")
-        now = time.time()
-        loaded: dict[int, tuple[float, float]] = {}
-        for raw_naif, raw_entry in raw["ranges"].items():
-            if (not isinstance(raw_naif, str)
-                    or not isinstance(raw_entry, list)
-                    or len(raw_entry) != 2
-                    or any(isinstance(value, bool) for value in raw_entry)):
-                raise ValueError("invalid range-cache entry")
-            naif = int(raw_naif)
-            km, observed_at = float(raw_entry[0]), float(raw_entry[1])
-            if not (math.isfinite(km) and 0 < km <= MAX_RANGE_KM
-                    and math.isfinite(observed_at)):
-                raise ValueError("invalid range-cache value")
-            entry = (km, observed_at)
-            if range_cache_fresh(entry, now):
-                loaded[naif] = entry
-    except Exception as exc:  # noqa: BLE001 - a cold/corrupt cache is normal
-        logger.debug("range cache ignored: %s", exc)
-        return
-    state.ranges = loaded
-    if state.ranges:
-        logger.info("loaded %d cached distances", len(state.ranges))
+    _dsn_ranges.load_ranges(
+        state.range_state,
+        path=RANGE_CACHE,
+        clock=time.time,
+        logger=logger,
+    )
 
 
 def save_ranges(state: State) -> None:
-    try:
-        now = time.time()
-        RANGE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        RANGE_CACHE.write_text(json.dumps(
-            {"version": RANGE_CACHE_VERSION,
-             "ranges": {
-                 str(k): [v[0], v[1]] for k, v in state.ranges.items()
-                 if range_cache_fresh(v, now)
-             }}, sort_keys=True))
-    except Exception as exc:  # noqa: BLE001 - never fatal
-        logger.debug("range cache not written: %s", exc)
+    _dsn_ranges.save_ranges(
+        state.range_state,
+        path=RANGE_CACHE,
+        clock=time.time,
+        logger=logger,
+    )
 
 
 async def poll_names(state: State) -> None:
@@ -1068,7 +1019,7 @@ async def poll_feed(state: State) -> None:
                 links = parse_feed(r.content)
                 for link in links:                      # fill gaps from Horizons
                     if link.range_km is not None and link.naif:
-                        state.range_unavailable.discard(link.naif)
+                        state.range_state.note_native(link.naif)
                     if link.range_km is None and link.naif:
                         link.range_km = cached_range(
                             state, link.naif, received_at)
@@ -1093,107 +1044,21 @@ async def poll_feed(state: State) -> None:
             await asyncio.sleep(POLL_S)
 
 
-class HorizonsUnavailable(ValueError):
-    """The official service answered, but has no ephemeris for this target."""
-
-
-def horizons_au(body: str) -> float:
-    """Extract Horizons' observer range, preserving a useful source error."""
-    if "$$SOE" not in body or "$$EOE" not in body:
-        detail = next(
-            (line.strip() for line in body.splitlines()
-             if line.strip() and not line.startswith("API ")),
-            "no ephemeris data",
-        )
-        if "no such record" in body.lower():
-            raise HorizonsUnavailable(detail)
-        # A proxy page, truncated success response or future API-format drift
-        # is not evidence that the target lacks an ephemeris. Keep it on the
-        # short transient retry path instead of suppressing checks for hours.
-        raise ValueError(f"missing Horizons ephemeris table: {detail}")
-    row = body.split("$$SOE", 1)[1].split("$$EOE", 1)[0].strip().split()
-    if len(row) < 3:
-        raise ValueError("empty Horizons ephemeris row")
-    au = float(row[2])
-    max_au = MAX_RANGE_KM / (AU_LIGHT_S * C_KM_S)
-    if not math.isfinite(au) or not 0 < au <= max_au:
-        raise ValueError("invalid Horizons observer range")
-    return au
-
-
 async def poll_ranges(state: State) -> None:
-    """Fill in light-time for craft the feed doesn't range.
-
-    The feed's own rtlt has been -1 since NASA degraded it, and downlegRange
-    is populated for only some targets — so ask Horizons for the rest, keyed
-    on the NAIF id the feed hands us. Cache lifetime follows geocentric range:
-    minutes for near-Earth observatories, hours only for deep-space targets.
-    """
-    async with httpx.AsyncClient(headers=UA, timeout=30) as client:
-        while True:
-            # Short idle poll, not a long one: the first pass runs before the
-            # feed has landed, so state.links is still empty. Sleeping a full
-            # minute there left every unranged craft showing "?" for the first
-            # minute of every run — which is most of a short run.
-            now = time.time()
-            pending_by_naif: dict[int, Link] = {}
-            for link in list(state.links):
-                if not link.naif or link.range_km:
-                    continue
-                cached = cached_range(state, link.naif, now)
-                if cached is not None:
-                    link.range_km = cached
-                    state.dirty.set()
-                    continue
-                if now >= state.range_retry_at.get(link.naif, 0.0):
-                    # Several aliases/dishes can share one NAIF id. One query
-                    # fills all of them; source multiplicity must not multiply
-                    # requests to JPL.
-                    pending_by_naif.setdefault(link.naif, link)
-            pending = list(pending_by_naif.values())
-            if not pending:
-                await asyncio.sleep(10)
-                continue
-            for link in pending:
-                naif = link.naif
-                if naif is None:
-                    continue
-                try:
-                    jd = 2440587.5 + time.time() / 86400.0
-                    r = await client.get(HORIZONS, params={
-                        "format": "text", "COMMAND": f"'{naif}'", "OBJ_DATA": "NO",
-                        "MAKE_EPHEM": "YES", "EPHEM_TYPE": "OBSERVER",
-                        "CENTER": "'500@399'", "QUANTITIES": "'20'",
-                        "TLIST_TYPE": "JD", "TLIST": f"'{jd:.5f}'"})
-                    r.raise_for_status()
-                    # " 2026-Aug-12 00:00:00.000   142.946932178947  26.198"
-                    au = horizons_au(r.text)
-                    km = au * AU_LIGHT_S * C_KM_S
-                    observed_at = time.time()
-                    state.ranges[naif] = (km, observed_at)
-                    state.range_retry_at.pop(naif, None)
-                    state.range_unavailable.discard(naif)
-                    save_ranges(state)
-                    for matching in state.links:
-                        if matching.naif == naif and matching.range_km is None:
-                            matching.range_km = km
-                    logger.info("horizons: %s at %.3f AU (%.0f min light)",
-                                link.craft, au, au * AU_LIGHT_S / 60)
-                    state.dirty.set()
-                except HorizonsUnavailable as exc:
-                    # A valid negative answer is not a six-hour success cache,
-                    # but asking the same unsupported spacecraft every minute
-                    # only hammers JPL and floods the log. Keep '?' truthful and
-                    # reconsider after the ordinary range-cache horizon.
-                    logger.info("horizons %s unavailable: %s", link.craft, exc)
-                    state.range_unavailable.add(naif)
-                    state.range_retry_at[naif] = (
-                        time.time() + RANGE_UNAVAILABLE_RETRY_S)
-                except Exception as exc:  # noqa: BLE001 - optional enrichment
-                    logger.warning("horizons %s failed: %s", link.craft, exc)
-                    state.range_retry_at[naif] = time.time() + RANGE_RETRY_S
-                await asyncio.sleep(2)                        # be a good citizen
-            await asyncio.sleep(10)
+    """Fill missing feed ranges through the injected Horizons service."""
+    await _dsn_ranges.poll_ranges(
+        state.range_state,
+        links_getter=lambda: state.links,
+        wake=state.dirty.set,
+        client_factory=httpx.AsyncClient,
+        headers=UA,
+        endpoint=HORIZONS,
+        clock=time.time,
+        sleep=asyncio.sleep,
+        parser=horizons_au,
+        persist=lambda: save_ranges(state),
+        logger=logger,
+    )
 
 
 # --- rendering -------------------------------------------------------------
@@ -6627,7 +6492,7 @@ def narration_ready(state: State, link: Link) -> bool:
     if not state.names:
         return False                       # no full name yet
     if ((link.range_km is None or link.range_km <= 0) and link.naif
-            and link.naif not in state.range_unavailable):
+            and link.naif not in state.range_state.unavailable):
         return False                       # Horizons may still answer
     return True
 

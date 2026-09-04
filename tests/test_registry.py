@@ -212,7 +212,9 @@ def _app_env_keys() -> dict[str, set[str]]:
         "skystrip": (
             "skystrip.py", "skystrip_config.py", "skystrip_lightning.py",
         ),
-        "dsn": ("dsn.py", "dsn_config.py", "dsn_source.py"),
+        "dsn": (
+            "dsn.py", "dsn_config.py", "dsn_ranges.py", "dsn_source.py",
+        ),
     }
     found: dict[str, set[str]] = {}
     for app, prefix in (("skystrip", "SKYSTRIP_"), ("dsn", "DSN_")):
