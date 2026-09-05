@@ -5,8 +5,9 @@ tools, or update documentation.
 
 ## Getting set up
 
-New to the project? Start with the [quickstart](docs/quickstart.md) for tool
-installation and an offline demo. You can contribute without connecting a bar.
+New to the project? The [quickstart](docs/quickstart.md) gets the included apps
+running on your bar. For development without hardware, follow its tool/download
+step and the [optional offline demos](README.md#try-without-a-bar).
 
 ```bash
 cd busybar-lab                    # after cloning the repository
@@ -56,12 +57,13 @@ install and import the required Linux Kokoro engine; model files are not needed
 for the hardware-free test suite:
 
 ```bash
-uv run python -m compileall -q apps barkeep busybar_dev busybar_viz scripts
+uv run python -m compileall -q apps barkeep busybar_dev busybar_viz scripts deploy
 uv run ruff check --output-format github .
 uv run mypy
 node --test tests/frontend/*.test.cjs
 BUSYBAR_HOST=203.0.113.1 uv run pytest -q \
   --cov=apps --cov=barkeep --cov=busybar_dev --cov=busybar_viz \
+  --cov=deploy.check_setup --cov=deploy.setup_config \
   --cov-report=json:coverage.json --cov-report=term:skip-covered
 uv run python scripts/check_coverage.py coverage.json
 uv run busybar-viz doctor --json

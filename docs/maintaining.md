@@ -23,6 +23,7 @@ remain in [AGENTS.md](../AGENTS.md).
 | HTTP input/authentication and response mapping | `barkeep/server.py` | `test_server.py`, `test_config_boundaries.py` |
 | Process ownership, restart and shutdown | `barkeep/supervisor.py` | `test_supervisor.py` |
 | Firmware-specific startup brightness mitigation | `busybar_dev/brightness.py`, called by both app runtimes | `test_brightness_workaround.py`; [known issues](known-issues.md) |
+| Owner onboarding, installer readiness and read-only diagnosis | `README.md`, `docs/quickstart.md`, `deploy/install.sh`, `deploy/check_setup.py`, `deploy/setup_config.py` | `test_quickstart.py`, `test_deploy_contract.py`, `test_installer_diagnostics.py`, `test_setup_diagnostics.py` |
 | Browser config selection, edits and asynchronous responses | `barkeep/static/app.js` | `frontend/config-editor.test.cjs` (Node's built-in test runner) |
 | Offline render evidence and audits | `busybar_viz/` | `test_viz_*.py`, `busybar-viz doctor`, `busybar-viz baseline check` |
 | Review journal transactions and connection lifetime | `busybar_viz/journal.py` | `test_viz_journal.py`, `test_viz_journal_resources.py` |
@@ -30,6 +31,13 @@ remain in [AGENTS.md](../AGENTS.md).
 Test paths in this table are relative to `tests/`. New app/helper Python
 modules are automatically included by the directory-based mypy configuration;
 there is no per-app type-check allowlist to remember.
+
+Setup diagnostics reuse the real configuration parsers and `connect()`;
+they must not start apps, draw, fetch weather or change device settings. Keep
+network probes in deadline-limited subprocesses, distinguish host readiness
+from device readiness, and never print operator values or raw exceptions.
+The web probe reads the public page without sending credentials. Its success
+proves local HTTP reachability, not remote browser access or a visible scene.
 
 ## Keep dependencies one-way
 

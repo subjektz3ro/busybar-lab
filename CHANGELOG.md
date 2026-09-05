@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Bar-owner onboarding and setup diagnostics
+
+- Put the real-bar Barkeep/Skystrip path first in the README and quickstart,
+  with separate help for USB/Wi-Fi connections, remote browsers and services.
+- Add a read-only setup diagnostic for private configuration, the bar API and
+  Barkeep's web page. Network checks have a ten-second deadline and suppress
+  private values and raw errors. The installer checks saved settings before
+  model/service setup and verifies the web page after starting the service;
+  an unavailable bar is reported as unfinished connection setup, not readiness.
+- Preserve the structured cause of connection failures so diagnostics can
+  identify denied API access without parsing or printing request errors.
+
 ### Busylib 2 framebuffer contract
 
 - Upgrade the locked official client to Busylib 2.0.2. Barkeep preview,

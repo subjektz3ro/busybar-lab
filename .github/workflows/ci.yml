@@ -47,6 +47,7 @@ jobs:
         run: |
           uv run pytest -q \
             --cov=apps --cov=barkeep --cov=busybar_dev --cov=busybar_viz \
+            --cov=deploy.check_setup --cov=deploy.setup_config \
             --cov-report=json:coverage.json --cov-report=term:skip-covered
         env:
           # Fail loudly rather than reaching for a bar that is not there.
@@ -83,7 +84,7 @@ jobs:
       - name: Sync dependencies
         run: uv sync --locked --dev
       - name: Byte-compile everything
-        run: uv run python -m compileall -q apps barkeep busybar_dev busybar_viz scripts
+        run: uv run python -m compileall -q apps barkeep busybar_dev busybar_viz scripts deploy
       # The selection and every ignore is justified in pyproject.toml. It found
       # a dish-size map the demo script built and never passed, and two locals
       # computed and dropped in render paths.

@@ -1,75 +1,122 @@
-# Quickstart: from a clone to your first app
+# Get Skystrip running on your BUSY Bar
 
-This guide starts with an offline check, then connects a BUSY Bar and runs
-an example app through Barkeep, the included web UI. You do not need to write
-Python or flash firmware. Run terminal commands from the `busybar-lab` folder
-unless a step says otherwise.
+This walkthrough takes you from a connected bar to a live weather scene,
+controlled from Barkeep in your browser. No coding or firmware flashing is
+required. The [README](../README.md#quickstart) has the shorter version of
+the same steps.
 
-Already completed the README's offline demo? Skip to
-[connecting your bar](#2-connect-your-bar).
+## Before you start
 
-## 1. Install and try it without a bar
+Have your BUSY Bar, a USB **data** cable, internet access and a Mac or
+[supported 64-bit Linux computer](dependencies.md#support-and-resource-matrix).
+Windows is not currently supported. Barkeep and the apps run on that computer,
+so it needs to stay awake and connected for live updates.
 
-Use macOS or [supported 64-bit Linux](dependencies.md#support-and-resource-matrix).
-Windows is not currently supported. Install [Git](https://git-scm.com/downloads)
-and [uv](https://docs.astral.sh/uv/getting-started/installation/), then open a
-new terminal and check that `git --version` and `uv --version` work. You do not
-need to install Python separately: uv manages the compatible interpreter.
+Start with the bar, commands and browser on **one computer**. You can move to
+an always-on Linux computer later. If you are already using a Pi or server,
+run the commands there, connect the bar to it, and use the
+[remote browser instructions](#using-a-browser-on-another-computer) at step 5.
 
-Setup needs internet access. Linux's full speech-enabled setup later in this
-guide also needs `bash`, `curl`, at least 2 GiB RAM and 1 GB free disk; systemd
-and working `sudo` access are needed if you want the run-at-boot service.
+## 1. Connect your bar
+
+Plug the bar into the computer with a USB data cable. A cable that only
+charges the bar will not work. End any active BUSY/CUSTOM focus session so
+Skystrip can use the display. USB does not require a device password.
+
+For a quick connection check, open
+[http://10.0.4.20/](http://10.0.4.20/) in a browser on the connected computer.
+You should see the bar's own settings page—this is **not Barkeep**, which you
+will install next. If it does not open, try another data cable or USB port;
+[connection help](troubleshooting.md#barkeep-opens-but-cannot-reach-the-bar)
+has the next checks.
+
+<details>
+<summary>Use Wi-Fi instead of USB</summary>
+
+First connect over USB and open the bar's settings at
+[http://10.0.4.20/](http://10.0.4.20/). On **Network**, enable **HTTP API access**
+and set its access password/PIN. Connect the bar to your Wi-Fi network and
+find its IP address under **Settings → Wi-Fi → your network → View IP address**
+on the bar. See the vendor's [connection instructions](https://docs.busy.app/bar/dev/http-api).
+
+The app computer must be able to reach that address. Guest networks may block
+devices from talking to one another. In step 3, put the address in
+`BUSYBAR_HOST` and the password/PIN in `BUSYBAR_TOKEN`. These are the bar's
+local-network credentials, not a vendor-cloud token.
+
+</details>
+
+## 2. Install the tools and download the apps
+
+Open **Terminal** on the computer that will run the apps. On a Mac, press
+Command+Space, type “Terminal” and press Enter. On Linux, open your system's
+Terminal application. Paste commands one line at a time and press Enter after
+each. If a command fails, stop at that step rather than continuing.
+
+Two small tools handle setup: **Git** downloads the project, and **uv**
+installs Python and its packages for you. Check whether you already have them:
+
+```bash
+git --version
+uv --version
+```
+
+If both print version numbers, skip the tool installation below.
+
+<details>
+<summary>Install missing tools</summary>
+
+**Git on macOS:** run `xcode-select --install` and follow Apple's installer,
+or choose another method from [Git's macOS instructions](https://git-scm.com/install/mac).
+If the tools are already installed, you do not need to reinstall them.
+
+**Git on Ubuntu, Debian or Raspberry Pi OS:** these commands install Git,
+the download tool and the text editor used below:
+
+```bash
+sudo apt update
+sudo apt install git curl nano
+```
+
+Enter your computer login password if asked; the terminal does not show
+characters while you type it. Other Linux distributions use their own package
+manager; see [Git's Linux instructions](https://git-scm.com/install/linux).
+
+**uv on macOS or Linux:** the following is the
+[official uv installer](https://docs.astral.sh/uv/getting-started/installation/).
+It downloads and runs Astral's installation script; that page also offers
+package-manager installation options.
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Close and reopen Terminal after installation, then rerun `git --version`
+and `uv --version`. You do not need to install Python separately.
+
+</details>
+
+Now download Barkeep and the apps:
 
 <!-- quickstart:setup -->
 ```bash
 git clone https://github.com/subjektz3ro/busybar-lab.git
 cd busybar-lab
 uv sync --locked
-uv run apps/hello.py --dry-run
 ```
 
-**Success:** the terminal prints `Dry run payload:` containing `HELLO`, then
-returns to the prompt. No bar, configuration, voice files or live data are
-needed for this check.
+The first line creates a `busybar-lab` folder. The second moves your terminal
+into it. The third installs the required software. **Success:** installation
+finishes without an error and the terminal prompt returns. Keep this window
+open and run the remaining commands from this folder.
 
-Optionally make a sample scene:
+Already cloned the project? Open its existing folder rather than downloading
+another copy. Use the [update instructions](../deploy/README.md#updating-a-normal-installation)
+for an installation that is already running.
 
-<!-- quickstart:preview -->
-```bash
-mkdir -p scratch
-uv run apps/skystrip.py --preview scratch/sky.png --at 12:00
-```
+## 3. Set your weather location
 
-**Success:** the terminal prints `saved scratch/sky.png`. Open that file in an
-image viewer. It is a sample using built-in inputs, not your current weather.
-The warning about unset coordinates is expected: this unconfigured demo uses
-0° latitude, 0° longitude. You will set your own location in the next step.
-It makes no device or weather-provider requests. Previews cannot prove how
-contrast looks on the physical LEDs.
-
-You can stop here if you only want to explore the code or
-[build an app](../README.md#build-your-own-app).
-
-## 2. Connect your bar
-
-The computer running the apps must be able to reach the bar. If you are using
-a remote Linux host, connect the bar to **that host**, not to the laptop from
-which you are opening the web UI.
-
-**USB is the simplest first connection.** Connect the bar with a USB data
-cable. The connection helper tries the device's USB address, `10.0.4.20`,
-first; USB requires no API token. Leave the connection settings blank in the
-next step.
-
-**For Wi-Fi/LAN instead:** put the bar and app host on a network where they
-can reach each other. Enable HTTP API access in the bar's own local web UI,
-then note its LAN address and access PIN for the next step. See the vendor's
-[HTTP API setup](https://docs.busy.app/bar/dev/http-api). This workflow does
-not use a vendor-cloud account or cloud API token.
-
-### Create your private configuration
-
-Create `.env` without replacing an existing file:
+Create a private settings file. These commands do not overwrite an existing one:
 
 <!-- quickstart:config -->
 ```bash
@@ -77,158 +124,163 @@ test -f .env || cp .env.example .env
 chmod 600 .env
 ```
 
-Open **`.env`**, not `.env.example`, in a text editor. Keep the format
-`KEY=value`, one setting per line. Change only what you need:
+Open that file:
 
-| What you want | Settings to edit |
+<!-- quickstart:editor -->
+```bash
+nano .env
+```
+
+Nano is a text editor inside the terminal. Use the arrow keys to find the
+following lines and type your values after the `=`. Leave the setting names
+unchanged and put each setting on its own line.
+
+| Setting | What to enter |
 |---|---|
-| USB connection | Leave `BUSYBAR_HOST` and `BUSYBAR_TOKEN` blank |
-| Wi-Fi/LAN connection | `BUSYBAR_HOST`: the bar's LAN address; `BUSYBAR_TOKEN`: the PIN from its web UI |
-| DSN only | No location settings are required |
-| Skystrip | Set both `SKYSTRIP_LAT` and `SKYSTRIP_LON` to your decimal-degree coordinates, plus `SKYSTRIP_TZ` to the matching IANA timezone, such as `Europe/London` |
-| Celsius instead of Fahrenheit | Set `SKYSTRIP_UNITS=c` (the default is `f`) |
+| `SKYSTRIP_LAT=` | Latitude in decimal degrees |
+| `SKYSTRIP_LON=` | Longitude in decimal degrees |
+| `SKYSTRIP_TZ=` | The timezone for that location, such as `Europe/London`, `America/New_York` or `Australia/Sydney` |
 
-Save the file before continuing. Skystrip does **not** detect your location or
-infer the timezone from coordinates. Do not start it with blank coordinates
-and expect local weather. Other defaults can stay as they are; optional
-lightning input is off unless you configure an authorized source.
+Look up the place you want weather for in a map or coordinate finder. A nearby
+town centre is fine; you do not need to supply your home address. Use decimal
+numbers, not degrees/minutes/seconds or an address. North/east are positive;
+south/west need a minus sign. Keep latitude and longitude in the correct order.
+The timezone is a separate setting: do not use an abbreviation such as `EST`
+or assume it will be inferred from the coordinates.
 
-`.env` and Barkeep's per-app `config/*.env` files are gitignored. Never put
-personal coordinates, addresses, PINs or tokens in tracked files or public
-issue reports. The two tokens have different jobs: `BUSYBAR_TOKEN` connects
-to the **device**; `BARKEEP_TOKEN` protects the **Barkeep web UI**.
+For **USB**, leave `BUSYBAR_HOST=` and `BUSYBAR_TOKEN=` blank.
+For **Wi-Fi**, fill in the bar's IP address and access password/PIN from step 1.
+For Celsius, change `SKYSTRIP_UNITS=f` to `SKYSTRIP_UNITS=c`.
+Leave the other settings at their defaults for now.
 
-## 3. Check the physical connection
+Press **Ctrl+O**, then **Enter** to save; press **Ctrl+X** to exit. On a Mac,
+these use Control, not Command. **Success:** you are back at the terminal
+prompt with your three location settings saved.
 
-End any active BUSY/CUSTOM focus session on the bar first. If Barkeep is already
-running an app, select **STANDBY** before this test; do not run competing copies.
+If `nano` is unavailable, open `.env` in any plain-text editor. On macOS,
+`open -e .env` opens it in TextEdit. Do not rename it to `.env.txt`.
 
+Keep these settings private. `.env` and Barkeep's per-app settings are excluded
+from Git, but do not attach them to public issues or screenshots. Edit
+`.env`, not `.env.example`. Your configured location is sent to weather
+providers when Skystrip fetches local weather; it is not published to GitHub.
+
+Now check your saved settings:
+
+<!-- quickstart:config-check -->
 ```bash
-uv run apps/hello.py
+uv run python -m deploy.check_setup --config-only
 ```
 
-**Success:** `HELLO` appears on the front display, and the terminal reports
-screenshot paths under `scratch/`. The command exits but leaves the text up.
-When you have seen it, clear the test draw:
-
-```bash
-uv run apps/hello.py --clear
-```
-
-If nothing appears, use [troubleshooting](#troubleshooting) before starting
-the full apps. You do not need to set up speech for this test.
+**Success:** configuration checks pass, with your location set. Fix any
+**FAIL** before continuing; the message names the setting, not its private
+value. A warning about missing location is expected only if you intend to
+run DSN without configuring Skystrip.
 
 ## 4. Start Barkeep
 
-Choose the instructions for the computer that will run the apps. Run only
-one Barkeep instance for a bar.
+Follow **only the section for your operating system**. Run one Barkeep instance
+per bar; do not launch an app separately while Barkeep is running it.
+
+### On macOS
+
+<!-- quickstart:start -->
+```bash
+uv run -m barkeep
+```
+
+Leave this terminal open. It may show little output while waiting; open the
+browser in step 5 to check that Barkeep is ready. Ctrl+C stops it and its apps.
+Speech uses the Mac's built-in voice system.
 
 ### On Linux
 
-From the checkout, run the installer as your normal user, **not with sudo**:
+The installer sets up speech and can keep Barkeep running after you close the
+terminal or reboot. Run it as your normal user, **not with sudo**:
 
+<!-- quickstart:install -->
 ```bash
 ./deploy/install.sh
 ```
 
-It preserves the `.env` you just created, so it skips its location interview.
-It installs locked dependencies, downloads and verifies roughly 340 MiB of
-Kokoro voice/model files, and tests speech synthesis. Let those checks finish;
-a plain `uv sync` does not install the voice files.
+Choose `y` when asked **Install barkeep so the apps run at boot?** for an
+always-on setup. It may ask for your computer login password when installing
+the service. Because you created `.env` in step 3, it keeps your settings and
+skips its configuration questions.
 
-When offered **Install barkeep so the apps run at boot?**, choose `y` for an
-always-on setup. The installer starts the service; do not also launch a manual
-copy. To check it:
+Allow at least 2 GiB RAM and 1 GB free disk. The installer downloads roughly
+340 MiB of speech files and verifies speech synthesis before starting the
+service. Wait for it to finish; do not skip a failed check.
 
-```bash
-systemctl status "barkeep@$USER"
-```
+**Success:** the service is started and you can continue to step 5.
+Do not also run `uv run -m barkeep` while the service is running.
 
-**Success:** the service is `active (running)`. Press `q` if the status viewer
-opens a pager.
+The installer checks device connectivity and waits for Barkeep's web page to
+respond. If it finishes host setup but says the bar connection still needs
+attention, follow that message before selecting an app. You can rerun the
+[setup checker](troubleshooting.md#run-the-setup-checks-again) at any time.
 
-If you choose `n`, or the host has no working systemd service manager, start
-Barkeep manually after the installer succeeds:
+If you choose `n`, or the computer has no working systemd service manager,
+start it manually after the installer succeeds with `uv run -m barkeep`.
+Leave that terminal open; Ctrl+C stops it. See
+[installer/service help](troubleshooting.md#linux-installation-or-service-problems)
+if a check fails.
 
-```bash
-uv run -m barkeep
-```
+## 5. Open Barkeep and start Skystrip
 
-Leave that terminal running. Press Ctrl+C to stop Barkeep and its apps.
+On the **same computer**, open **[http://127.0.0.1:8080](http://127.0.0.1:8080)**
+in your browser's address bar. Use `http`, not `https`, for this default setup.
+**Success:** Barkeep opens with **STANDBY** selected. That is normal: no app
+has started yet. [Page won't open?](troubleshooting.md#barkeep-wont-open)
 
-### On macOS
+Before selecting an app on **firmware 1.2.3**, note that Skystrip and DSN change
+Auto brightness to **fixed 35%** to mitigate washed-out scenes. Existing manual
+levels are preserved. This disables ambient-light adjustment; see
+[known issues](known-issues.md) for the setting, opt-out and restoring Auto.
 
-The earlier `uv sync --locked` is enough for direct development. Speech uses
-macOS `say`; there is no Linux voice-bank download or systemd service step.
+Read the provider credits and use limits below the previews, then click the
+**skystrip** card. It starts weather requests using your saved location.
+The first scene waits for fresh weather; **LOGS** under Skystrip shows progress.
+**Success is the weather scene appearing on the physical bar.** A “running”
+status alone does not prove it can draw to the device.
+[App runs but nothing appears?](troubleshooting.md#barkeep-opens-but-cannot-reach-the-bar)
 
-```bash
-uv run -m barkeep
-```
+Once it is running:
 
-Leave the terminal running. Press Ctrl+C to stop Barkeep and its apps.
+- **CONFIG** → **Save & restart** changes Skystrip's settings.
+- **dsn** switches to NASA's space display; it needs no location setup.
+- **STANDBY** stops the foreground app and lets the bar return to its built-in apps.
 
-## 5. Open the UI and choose an app
+Closing the browser does not stop Barkeep. Keep the app computer awake and
+connected. A Linux service remembers the selected app across restarts.
+If you edit the shared `.env` later, restart **Barkeep itself**; restarting
+only Skystrip does not reload that file.
 
-**On the same computer:** open [http://127.0.0.1:8080](http://127.0.0.1:8080).
-A fresh installation opens in **STANDBY**; that is normal, not an error.
+### Using a browser on another computer
 
-**On a remote host:** on your own computer, open another terminal and run:
+If Barkeep is running on a Pi/server, `127.0.0.1` in your laptop's browser
+means the laptop, not the server. Use an SSH tunnel to reach Barkeep safely.
 
+On your **laptop**, open another terminal and run:
+
+<!-- quickstart:tunnel -->
 ```bash
 ssh -N -L 8080:127.0.0.1:8080 your-user@server.example
 ```
 
-Replace `your-user@server.example` with your SSH login and host. Leave the
-tunnel running, then open the same `http://127.0.0.1:8080` URL in your local
-browser. A quiet terminal is expected: `-N` creates the tunnel without a shell.
-Keep the default loopback bind; do not open a public port just to reach the UI.
-For intentional LAN sharing, follow the [authenticated TLS setup](../deploy/README.md#who-can-reach-the-control-plane).
+Replace `your-user@server.example` with the login and address you use to SSH
+into the server. You need working SSH access first. Leave this terminal open;
+a quiet window is normal. Now open
+[http://127.0.0.1:8080](http://127.0.0.1:8080) on your laptop and follow step 5.
 
-**Before starting an app on firmware 1.2.3:** Skystrip and DSN change Auto
-brightness to fixed 35% to mitigate dark-scene washout. Existing manual levels
-are preserved. This turns off ambient-light adjustment; [known issues](known-issues.md)
-explains the fallback setting and how to opt out and restore Auto.
+Keep Barkeep's local-only default. Do not open a public router port. If you
+specifically need direct LAN access, use the
+[authenticated TLS setup](../deploy/README.md#who-can-reach-the-control-plane).
 
-1. Click **dsn** for a first live app with no location setup. It fetches NASA
-   data and takes the bar's display.
-2. To try **skystrip**, confirm you saved your coordinates and timezone, read
-   the UI's provider credits and use limits, then click its card. Selecting it
-   enables weather-provider polling. It waits for fresh weather before drawing.
-3. Use **LOGS** beneath the selected app to check progress. Use **CONFIG** and
-   **Save & restart** to apply later per-app edits. Editing the shared `.env`
-   instead requires restarting **Barkeep itself**, not just its selected app.
+## After your first app
 
-**Success:** the selected app is running and its scene appears on the bar.
-The UI's framebuffer preview is a still, not a video of the native animation.
-Select **STANDBY** to stop the foreground app and return the bar to its built-in
-apps. Closing the browser does not stop Barkeep. Keep the host awake and
-connected for live updates; a service restores the saved selection on restart.
-
-## Troubleshooting
-
-| Symptom | First thing to check |
-|---|---|
-| `uv` or `git` is not found | Finish the tool's installation, open a new terminal, and rerun its `--version` command. |
-| A script or `pyproject.toml` cannot be found | Run from the cloned `busybar-lab` folder, not its parent or `apps/`. |
-| Bar unreachable or request timeout | Check the data cable and that the bar is connected to the app host. For LAN, check HTTP API access, address and PIN. USB uses `10.0.4.20`; prefer it over ambiguous `busybar.local`. |
-| HTTP 409 / a BUSY session owns the display | End the device's focus session, then retry. Raising app priority is not the solution. |
-| HELLO disappears or two scenes alternate | Select STANDBY and stop any second manual app instance before testing again. |
-| Wrong location, time or weather | Check both coordinates and `SKYSTRIP_TZ`. A preview is a sample, not live data. Restart Barkeep after changing shared `.env`. |
-| Linux speech/model verification fails | Rerun `./deploy/install.sh` and read its first failing check; verify disk space and outbound internet. Do not skip verification. |
-| Web UI will not open | Check the Barkeep terminal or service status. On a remote host, keep the SSH tunnel open. A bar's own web UI is not Barkeep. |
-| Port 8080 is already in use | Do not launch a manual Barkeep alongside its service. If another application uses the port, configure `BARKEEP_PORT` and adjust the URL/tunnel. |
-| UI asks for a token | Use your configured `BARKEEP_TOKEN`, not the device PIN. See [login help](../deploy/README.md#logging-in-from-another-machine). |
-| Night scene looks gray or washed out | Check [firmware 1.2.3 brightness mitigation](known-issues.md). |
-
-Still stuck? Check the selected app's LOGS tab or, for a service,
-`journalctl -u "barkeep@$USER" -n 50 --no-pager`. When
-[opening an issue](https://github.com/subjektz3ro/busybar-lab/issues), include
-your OS/CPU, firmware version, command and error. Redact private locations,
-hostnames, addresses and credentials; do not attach `.env` or unreviewed logs.
-
-## Next steps
-
-- [App controls and configuration](../apps/README.md)
-- [Build your own app](../README.md#build-your-own-app)
-- [Keep a normal installation updated](../deploy/README.md#updating-a-normal-installation)
-- [Contribute and run the test suite](../CONTRIBUTING.md)
+- [Skystrip controls](../apps/skystrip.md) and [other apps](../apps/README.md).
+- [Troubleshooting](troubleshooting.md) if a connection, setting or service is not working.
+- [Build your own app](../README.md#build-your-own-app) when you want to customize the bar.
+- [Optional offline demos](../README.md#try-without-a-bar) for exploring without hardware.
+- [Updates and running at boot](../deploy/README.md).
