@@ -5,6 +5,10 @@ three scales. **Network** summarizes activity at Goldstone, Madrid, and
 Canberra. **Instrument** shows one selected antenna and contact. **Distance**
 shows the represented Earth-to-spacecraft journey and its light-time watch.
 
+**Firmware 1.2.3 brightness:** startup switches Auto to fixed 35% as a
+dark-scene washout mitigation, preserving existing manual levels. See
+[known issues](../docs/known-issues.md) for configuration and the opt-out.
+
 ## Dish Roster — the default live network
 
 ![dish roster](../docs/media/dsn-network.gif)
@@ -680,9 +684,9 @@ mission-private and, for commanding, authenticated.
   source-identity caveats above remain explicit.
   A fresh empty feed says `NO LINK DATA`; delayed, stale and pre-source states say
   so explicitly instead of animating the last-known carrier as current.
-- **Remote XML has one pure trust boundary.** [`dsn_source.py`](dsn_source.py)
+- **Remote XML has one pure trust boundary.** [`source.py`](dsn_app/source.py)
   owns the bounded source vocabulary, domain records and snapshot parsers. It
-  performs no network, filesystem, device or rendering work; `dsn.py` owns
+  performs no network, filesystem, device or rendering work; `dsn_app/feed.py` owns
   those runtime concerns and re-exports the established model/parser names for
   callers that already use them.
 - **Source validation is snapshot-atomic.** A missing/oversized active identity,

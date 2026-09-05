@@ -137,7 +137,14 @@ is in [`deploy/README.md`](../deploy/README.md).
 ```
 apps/            the apps, plus a per-app .md and _template.py
   README.md      every control binding in one table
+  dsn.py, skystrip.py
+                 thin CLI launchers and stable production renderer entry points
+  dsn_app/       feed, history, selection, render/, device/, audio/, runtime
+  skystrip_app/  weather truth, providers/, render/, device/, audio/, runtime
+                 each package's README maps responsibilities and focused tests
 barkeep/         supervisor (no HTTP), server (thin routes), static/ (talks only to /api/*)
+  config_service.py
+                 validated, serialized config transactions independent of HTTP
 busybar_dev/     connect(), anim.py (GPL-2.0-or-later), tts.py, screen.py
 busybar_viz/     the offline visual debugger (`busybar-viz`) — renders, audits,
                  and pins app pixels; production apps never import it
@@ -151,6 +158,11 @@ scripts/         new_app.py, refresh_docs.py, make_demo_gifs.py,
                  check_coverage.py, check_public_release.py
 tests/           hardware-free behavior and contract tests
 ```
+
+The [maintainer map](maintaining.md) links these owners to focused tests and
+the dependency rules enforced in CI. Pure rendering and speech composition
+cannot depend on device or provider operations, and neither app's import graph
+may contain cycles.
 
 ## Display ownership and priority
 

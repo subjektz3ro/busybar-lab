@@ -13,8 +13,17 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from PIL import Image
 
-from apps import skystrip as S
-from apps.skystrip_eclipse import state_at
+from apps.skystrip_app import config as sky_config
+from apps.skystrip_app import eclipse as sky_eclipse
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app.audio import report_plain as sky_audio_report_plain
+from apps.skystrip_app.render import art as sky_render_art
+from apps.skystrip_app.render import astronomy as sky_render_astronomy
+from apps.skystrip_app.render import primitives as sky_render_primitives
+from apps.skystrip_app.render import scene as sky_render_scene
+from apps.skystrip_app.eclipse import state_at
 
 GREATEST = datetime(2026, 8, 28, 4, 13, tzinfo=timezone.utc)
 CENTRE = (36, 8)  # middle of the panel, clear of every edge
@@ -34,24 +43,22 @@ def _chicago(monkeypatch):
     """
     from astral import Observer
 
-    monkeypatch.setattr(
-        S,
-        "OBSERVER",
+    monkeypatch.setattr(sky_settings, "OBSERVER",
         Observer(
             latitude=CHICAGO_OHARE_LATITUDE,
             longitude=CHICAGO_OHARE_LONGITUDE,
         ),
     )
-    monkeypatch.setattr(S, "TZ", S.ZoneInfo("America/Chicago"))
-    monkeypatch.setattr(S, "_ECLIPSE_CACHE", None)
+    monkeypatch.setattr(sky_settings, "TZ", sky_config.ZoneInfo("America/Chicago"))
+    monkeypatch.setattr(sky_render_astronomy, "_ECLIPSE_CACHE", None)
     yield
-    S._ECLIPSE_CACHE = None
+    sky_render_astronomy._ECLIPSE_CACHE = None
 
 
 def _moon(when: datetime, *, phase_days: float = 14.8) -> dict:
     """Draw only the moon on a black field and return {(dx, dy): rgb}."""
-    image = Image.new("RGB", (S.W, S.H), (0, 0, 0))
-    S._draw_moon(image.load(), *CENTRE, phase_days, 0.0, state_at(when))
+    image = Image.new("RGB", (sky_limits.W, sky_limits.H), (0, 0, 0))
+    sky_render_astronomy._draw_moon(image.load(), *CENTRE, phase_days, 0.0, state_at(when))
     px = image.load()
     return {(dx, dy): px[CENTRE[0] + dx, CENTRE[1] + dy]
             for dx in range(-3, 4) for dy in range(-3, 4)}
@@ -163,11 +170,11 @@ class TestTheShadowIsCopperNotBlack:
         """The device crushes brightness deltas under about 30% per channel
         (busybar-app law 5), so a shadow gradient finer than that is a
         gradient nobody sees."""
-        for a, b in zip(S.MOON_UMBRA_RIM, S.MOON_UMBRA_EMBER):
-            assert (a - b) / a >= 0.30, (S.MOON_UMBRA_RIM, S.MOON_UMBRA_EMBER)
+        for a, b in zip(sky_render_primitives.MOON_UMBRA_RIM, sky_render_primitives.MOON_UMBRA_EMBER):
+            assert (a - b) / a >= 0.30, (sky_render_primitives.MOON_UMBRA_RIM, sky_render_primitives.MOON_UMBRA_EMBER)
 
     def test_the_shadow_edge_is_unmistakable_against_the_lit_moon(self):
-        for lit, shadow in zip(S.MOON_COLOR, S.MOON_UMBRA_RIM):
+        for lit, shadow in zip(sky_render_art.MOON_COLOR, sky_render_primitives.MOON_UMBRA_RIM):
             assert (lit - shadow) / lit >= 0.30
 
     def test_the_umbra_is_never_drawn_as_earthshine(self):
@@ -175,7 +182,7 @@ class TestTheShadowIsCopperNotBlack:
         is refracted sunlight and reads copper; reusing the crescent colour
         would draw the wrong physical thing."""
         disc = _moon(GREATEST)
-        assert S.MOON_EARTHSHINE not in disc.values()
+        assert sky_render_primitives.MOON_EARTHSHINE not in disc.values()
 
     def test_shadowed_pixels_are_warm(self):
         disc = _moon(GREATEST)
@@ -204,13 +211,13 @@ def test_moonlight_falls_with_the_eclipsed_disc():
     """The silver pool, the roofline rim and the tower sheen all scale with
     the lit fraction. A 96%-covered moon flooding the yard with light is the
     same lie as drawing the disc uncovered, one layer further out."""
-    wx = S.WeatherState(cloud_frac=0.0, temp_c=20.0)
-    clean = S.render_scene(GREATEST - timedelta(hours=3), wx, seed=7)
-    eclipsed = S.render_scene(GREATEST, wx, seed=7)
+    wx = sky_weather.WeatherState(cloud_frac=0.0, temp_c=20.0)
+    clean = sky_render_scene.render_scene(GREATEST - timedelta(hours=3), wx, seed=7)
+    eclipsed = sky_render_scene.render_scene(GREATEST, wx, seed=7)
 
     def ground_light(image):
         px = image.load()
-        return sum(sum(px[x, y]) for x in range(S.W) for y in range(13, S.H))
+        return sum(sum(px[x, y]) for x in range(sky_limits.W) for y in range(13, sky_limits.H))
 
     assert ground_light(eclipsed) < ground_light(clean) * 0.9
 
@@ -219,10 +226,10 @@ def test_an_eclipse_below_the_horizon_is_not_drawn(monkeypatch):
     """Half the planet cannot see any given eclipse. The gate is the moon's
     real altitude, so pointing Skystrip at Tokyo must leave the sky alone."""
     from astral import Observer
-    monkeypatch.setattr(S, "OBSERVER", Observer(latitude=35.68,
+    monkeypatch.setattr(sky_settings, "OBSERVER", Observer(latitude=35.68,
                                                 longitude=139.69))
-    S._ECLIPSE_CACHE = None
-    assert S._eclipse_now(GREATEST) is None
+    sky_render_astronomy._ECLIPSE_CACHE = None
+    assert sky_render_astronomy._eclipse_now(GREATEST) is None
 
 
 def test_a_broken_eclipse_calculation_loses_the_shadow_not_the_sky(monkeypatch):
@@ -231,12 +238,12 @@ def test_a_broken_eclipse_calculation_loses_the_shadow_not_the_sky(monkeypatch):
     def boom(*_args, **_kwargs):
         raise RuntimeError("ephemeris on fire")
 
-    monkeypatch.setattr(S, "eclipse_visible_state", boom)
-    S._ECLIPSE_CACHE = None
-    assert S._eclipse_now(GREATEST) is None
-    image = S.render_scene(GREATEST, S.WeatherState(temp_c=20.0), seed=7)
+    monkeypatch.setattr(sky_eclipse, "visible_state", boom)
+    sky_render_astronomy._ECLIPSE_CACHE = None
+    assert sky_render_astronomy._eclipse_now(GREATEST) is None
+    image = sky_render_scene.render_scene(GREATEST, sky_weather.WeatherState(temp_c=20.0), seed=7)
     assert any(sum(image.load()[x, y]) > 200
-               for x in range(S.W) for y in range(S.H)), "sky went dark"
+               for x in range(sky_limits.W) for y in range(sky_limits.H)), "sky went dark"
 
 
 class TestEveryStyleSpeaksTheSameNumbers:
@@ -245,14 +252,14 @@ class TestEveryStyleSpeaksTheSameNumbers:
 
     @staticmethod
     def _report(style: str, when: datetime) -> str:
-        original = S.STYLE
-        S.STYLE = style
+        original = sky_settings.STYLE
+        sky_settings.STYLE = style
         try:
-            return S._compose_report(
-                S.WeatherState(cloud_frac=0.05, temp_c=22.0), None,
-                when.astimezone(S.TZ), None)
+            return sky_audio_report_plain._compose_report(
+                sky_weather.WeatherState(cloud_frac=0.05, temp_c=22.0), None,
+                when.astimezone(sky_settings.TZ), None)
         finally:
-            S.STYLE = original
+            sky_settings.STYLE = original
 
     @pytest.mark.parametrize("moment", [
         GREATEST, GREATEST - timedelta(hours=2), GREATEST - timedelta(minutes=40),
@@ -295,14 +302,14 @@ class TestEveryStyleSpeaksTheSameNumbers:
     def test_a_severe_warning_still_silences_the_genz_bit(self):
         """A Tornado Warning drops the flavour for the whole report — an
         eclipse is not a reason to reopen it."""
-        original = S.STYLE
-        S.STYLE = "genz"
+        original = sky_settings.STYLE
+        sky_settings.STYLE = "genz"
         try:
-            spoken = S._compose_report(
-                S.WeatherState(severe=True, thunder=True, temp_c=22.0,
+            spoken = sky_audio_report_plain._compose_report(
+                sky_weather.WeatherState(severe=True, thunder=True, temp_c=22.0,
                                severe_event="Tornado Warning"),
-                None, GREATEST.astimezone(S.TZ), None)
+                None, GREATEST.astimezone(sky_settings.TZ), None)
         finally:
-            S.STYLE = original
+            sky_settings.STYLE = original
         assert "eclipse" not in spoken
         assert spoken.endswith("Stay safe out there.")

@@ -18,15 +18,18 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app.audio import report_facts as sky_audio_report_facts
+from apps.skystrip_app.audio import report_plain as sky_audio_report_plain
 
 
 def _report(event: str, *, style: str, monkeypatch) -> str:
-    monkeypatch.setattr(skystrip, "STYLE", style)
-    monkeypatch.setattr(skystrip, "UNITS", "f")
+    monkeypatch.setattr(sky_settings, "STYLE", style)
+    monkeypatch.setattr(sky_settings, "UNITS", "f")
     wx = replace(
-        skystrip.WeatherState(), severe=True, severe_event=event, temp_c=25.0)
-    return skystrip._compose_report(wx, None, datetime(2026, 8, 11, 10, 43))
+        sky_weather.WeatherState(), severe=True, severe_event=event, temp_c=25.0)
+    return sky_audio_report_plain._compose_report(wx, None, datetime(2026, 8, 11, 10, 43))
 
 
 # The CAP events that actually matter here, plus one vowel-initial name to pin
@@ -97,15 +100,15 @@ def test_the_warning_leads_the_report(style, monkeypatch):
 
 
 def test_the_named_warning_still_outranks_every_other_condition(monkeypatch):
-    monkeypatch.setattr(skystrip, "STYLE", "plain")
-    monkeypatch.setattr(skystrip, "UNITS", "f")
+    monkeypatch.setattr(sky_settings, "STYLE", "plain")
+    monkeypatch.setattr(sky_settings, "UNITS", "f")
     wx = replace(
-        skystrip.WeatherState(),
+        sky_weather.WeatherState(),
         severe=True, severe_event="Tornado Warning",
         thunder=True, snow=True, rain=True, cloud_frac=1.0, temp_c=25.0,
     )
 
-    text = skystrip._compose_report(wx, None, datetime(2026, 8, 11, 10, 43))
+    text = sky_audio_report_plain._compose_report(wx, None, datetime(2026, 8, 11, 10, 43))
 
     assert "Tornado Warning" in text
     assert "thunderstorms" not in text
@@ -115,8 +118,8 @@ def test_the_phrase_comes_from_the_committed_alert_state(monkeypatch):
     """``severe_event`` is set by ``_commit_alerts`` from the CAP event, so
     the speech and the display card cannot disagree about which warning."""
     wx = replace(
-        skystrip.WeatherState(), severe=True, severe_event="Tornado Warning")
+        sky_weather.WeatherState(), severe=True, severe_event="Tornado Warning")
 
-    assert skystrip._alert_phrase(wx) == "a Tornado Warning in effect"
-    assert skystrip._alert_phrase(skystrip.WeatherState()) == (
+    assert sky_audio_report_facts._alert_phrase(wx) == "a Tornado Warning in effect"
+    assert sky_audio_report_facts._alert_phrase(sky_weather.WeatherState()) == (
         "severe weather in the area")

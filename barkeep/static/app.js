@@ -8,6 +8,8 @@ let activeTab = "logs";
 let lastState = null;
 let configLoadedFor = null;   // which app the form currently shows
 let configDirty = false;      // has the operator typed since it loaded?
+let configLoadSeq = 0;        // fences responses from prior selections/reloads
+let configEditSeq = 0;        // protects edits made while a request is in flight
 let logsSeq = 0;              // discards responses for an app you left
 
 /* ---------- api ---------- */
@@ -267,12 +269,21 @@ function fieldControl(k) {
 
 async function loadConfig() {
   if (!selectedApp) return;
+  const app = selectedApp, seq = ++configLoadSeq, edits = configEditSeq;
   // Re-clicking the CONFIG tab or the app you're already on used to silently
   // wipe everything typed so far.
   if (configDirty && configLoadedFor === selectedApp) return;
   if (configDirty && configLoadedFor !== selectedApp) toast("unsaved config discarded");
+  if (configLoadedFor !== app) {
+    configLoadedFor = null;
+    configDirty = false;
+    $("config-form").textContent = "loading config…";
+  }
+  const current = () => seq === configLoadSeq && app === selectedApp
+    && edits === configEditSeq;
   try {
-    const body = await api(`/api/apps/${encodeURIComponent(selectedApp)}/config`);
+    const body = await api(`/api/apps/${encodeURIComponent(app)}/config`);
+    if (!current()) return;
     $("config-status").textContent = "";
     $("config-form").innerHTML = body.keys.map((k) => `
       <div class="cfg-field">
@@ -281,9 +292,10 @@ async function loadConfig() {
         ${fieldControl(k)}
       </div>`).join("")
       || `<p class="ghost-note">this app declares no config keys</p>`;
-    configLoadedFor = selectedApp;
+    configLoadedFor = app;
     configDirty = false;
   } catch (e) {
+    if (!current()) return;
     const p = document.createElement("p");
     p.className = "ghost-note";
     p.textContent = `config unavailable: ${e.message}`;
@@ -301,7 +313,48 @@ function esc(s) {
 }
 const escapeAttr = esc;
 
+function markConfigEdited() {
+  ++configEditSeq;
+  refreshConfigDirty();
+}
+
+function refreshConfigDirty() {
+  const form = $("config-form");
+  configDirty = [...form.querySelectorAll("input")]
+    .some(input => input.value !== input.dataset.initial
+      || (input.validity && input.validity.badInput))
+    || [...form.querySelectorAll(".seg"), ...form.querySelectorAll(".chips")]
+      .some(control => control.dataset.value !== control.dataset.initial);
+}
+
+function acceptSavedBaseline(keys, submitted) {
+  // Edits made during the save stay on screen, but must now be compared with
+  // what the server saved. In particular, reverting to the *old* baseline
+  // during an in-flight save is still an unsaved change.
+  const saved = new Map(keys.map(key => [key.name, key.value]));
+  const form = $("config-form");
+  for (const input of form.querySelectorAll("input")) {
+    if (!Object.hasOwn(submitted, input.name) || !saved.has(input.name)) continue;
+    const value = saved.get(input.name);
+    if (input.value === submitted[input.name]) input.value = value;
+    input.dataset.initial = value;
+  }
+  for (const control of [...form.querySelectorAll(".seg"), ...form.querySelectorAll(".chips")]) {
+    const key = control.dataset.key;
+    if (Object.hasOwn(submitted, key) && saved.has(key))
+      control.dataset.initial = saved.get(key);
+  }
+  refreshConfigDirty();
+}
+
 async function saveConfig(restart) {
+  const app = selectedApp, edits = configEditSeq, loaded = configLoadSeq;
+  if (!app || configLoadedFor !== app) {
+    $("config-status").textContent = "wait for this app's config to load";
+    return;
+  }
+  const current = () => app === selectedApp && loaded === configLoadSeq
+    && edits === configEditSeq;
   const values = {};
   for (const input of $("config-form").querySelectorAll("input")) {
     if (input.validity && input.validity.badInput) {
@@ -328,7 +381,6 @@ async function saveConfig(restart) {
     if (chips.dataset.value !== chips.dataset.initial)
       values[chips.dataset.key] = chips.dataset.value;
   }
-  const app = selectedApp;
   if (!Object.keys(values).length) {
     $("config-status").textContent = "no changes";
     // An empty diff means the form matches its baseline, so there is nothing
@@ -341,24 +393,28 @@ async function saveConfig(restart) {
         toast(`${app} restarting`);
         await pollState();
       } catch (e) {
-        $("config-status").textContent = e.message;
+        if (current()) $("config-status").textContent = e.message;
       }
     }
     return;
   }
   try {
-    await api(`/api/apps/${encodeURIComponent(app)}/config`, {
+    const saved = await api(`/api/apps/${encodeURIComponent(app)}/config`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ values }),
     });
+    if (app === selectedApp && loaded === configLoadSeq)
+      acceptSavedBaseline(saved.keys, values);
     if (restart) await post(`/api/apps/${encodeURIComponent(app)}/restart`);
     toast(restart ? `${app} config saved — restarting` : `${app} config saved`);
-    configDirty = false;      // before the reload, or it would refuse to refresh
-    await loadConfig();       // repaints source badges: shared -> app
+    if (current()) {
+      configDirty = false;    // before reloading the saved form's source badges
+      await loadConfig();
+    }
     await pollState();
   } catch (e) {
-    $("config-status").textContent = e.message;
+    if (current()) $("config-status").textContent = e.message;
   }
 }
 
@@ -480,7 +536,7 @@ document.body.addEventListener("click", async (ev) => {
       .filter((c) => on.has(c)).join(",");
     pick.classList.toggle("on", on.has(pick.dataset.pick));
     pick.setAttribute("aria-checked", on.has(pick.dataset.pick));
-    configDirty = chips.dataset.value !== chips.dataset.initial;
+    markConfigEdited();
     $("config-status").textContent = chips.dataset.value
       ? "" : `${chips.dataset.key}: select at least one`;
     return;
@@ -488,10 +544,10 @@ document.body.addEventListener("click", async (ev) => {
   const choice = ev.target.closest(".seg [data-choice]");
   if (choice) {
     const seg = choice.closest(".seg");
-    // Compare before overwriting: re-picking the current choice isn't an edit,
-    // and marking it dirty would freeze the form the same way.
-    if (seg.dataset.value !== choice.dataset.choice) configDirty = true;
+    // Recompute the whole form: returning this choice to its baseline must
+    // not clear an edit in another field.
     seg.dataset.value = choice.dataset.choice;
+    markConfigEdited();
     for (const b of seg.querySelectorAll("[data-choice]")) {
       const on = b === choice;
       b.classList.toggle("on", on);
@@ -543,7 +599,7 @@ $("insp-restart").addEventListener("click", async () => {
 });
 
 // Delegated on the form itself: per-input listeners would be lost on rebuild.
-$("config-form").addEventListener("input", () => { configDirty = true; });
+$("config-form").addEventListener("input", markConfigEdited);
 
 $("config-save").addEventListener("click", () => saveConfig(false));
 $("config-save-restart").addEventListener("click", () => saveConfig(true));

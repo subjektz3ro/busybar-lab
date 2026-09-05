@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Mapping
 
 from busybar_dev.config import parse_env_text as shared_parse_env_text
+from busybar_dev.config import is_single_line
 
 from .registry import APP_NAME_RE, AppSpec
 
@@ -40,7 +41,7 @@ def write_env_file(path: Path, values: dict[str, str]) -> None:
     for key, value in values.items():
         # Second line of defence behind the API's validation: one key per line
         # is the whole format, so a newline here would forge extra env vars.
-        if set(str(key)) & {"\n", "\r", "\0", "="} or set(str(value)) & {"\n", "\r", "\0"}:
+        if "=" in str(key) or not is_single_line(str(key)) or not is_single_line(str(value)):
             raise ValueError(f"env key/value must be single-line: {key!r}")
     body = "".join(f"{k}={v}\n" for k, v in values.items())
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
@@ -107,7 +108,15 @@ def normalize_multiselect(raw: str, choices: tuple[str, ...]) -> tuple[list[str]
     return selected, unknown
 
 
-def child_env(app_values: dict[str, str], base: Mapping[str, str]) -> dict[str, str]:
+def child_env(
+    app_values: dict[str, str], base: Mapping[str, str], *,
+    allowed_keys: set[str] | None = None,
+) -> dict[str, str]:
+    """Layer safe overrides; registry callers also restrict their key names."""
     env = dict(base)
-    env.update(app_values)
+    env.update({
+        key: value for key, value in app_values.items()
+        if (allowed_keys is None or key in allowed_keys)
+        and is_single_line(key) and is_single_line(value)
+    })
     return env

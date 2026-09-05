@@ -5,6 +5,11 @@ for the configured location. Decorative and seasonal elements are identified
 below. Routine values are available through the spoken report; active alert
 cards include local expiry time.
 
+**Firmware 1.2.3 brightness:** Auto can wash out dark scenes. Startup now
+switches Auto to fixed 35% on that firmware, preserving existing manual levels.
+See [known issues](../docs/known-issues.md) for the evidence, configuration,
+ambient-adjustment tradeoff and opt-out.
+
 > **Not a life-safety warning system.** Skystrip is a secondary ambient notice.
 > NWS alert support exists only where its point API covers the configured
 > location, and network, feed, host, device ownership, polling, or audio
@@ -439,7 +444,7 @@ it is not a direct yard observation.
   event types and none of them are astronomical; Open-Meteo is a weather
   model with no eclipse field. Eclipse circumstances therefore come from
   Meeus, *Astronomical Algorithms* 2nd ed. ch. 54, evaluated in
-  `apps/skystrip_eclipse.py` with no ephemeris file and no network call.
+  `apps/skystrip_app/eclipse.py` with no ephemeris file and no network call.
   `tests/test_skystrip_eclipse.py` pins the result against NASA's
   five-millennium catalogue — times, magnitudes, and the *sign* of gamma,
   which is the term that decides which limb goes dark first.

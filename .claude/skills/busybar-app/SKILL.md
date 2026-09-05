@@ -111,7 +111,7 @@ The firmware caches by filename and may hold a file open while playing it.
   predecessor*, because an element may still be playing what you just replaced.
 - **Sweep orphans at startup.** Your in-memory list of "files I uploaded" dies
   with the process. A crash, a SIGKILL, or a systemd restart abandons files on
-  device flash permanently. `apps/skystrip.py::sweep_stale_assets` is the
+  device flash permanently. `apps/skystrip_app/device/assets.py::sweep_stale_assets` is the
   reference: list `/ext/user_assets/<app>`, delete anything matching your
   generated-file pattern, and do it *before* your first draw. Without this,
   orphans accumulate until uploads start failing — 213 files / 40 MB, observed.
@@ -151,7 +151,7 @@ Three halves people miss:
   *bounded, reusable* cache keyed by content — e.g. one click sound per tempo,
   capped — is better than re-uploading. Keep it swept and bounded.)
 
-`apps/skystrip.py::_is_refusal` is the shared test. busylib exposes the code as
+`busybar_dev/device.py::is_refusal` is the shared test. busylib exposes the code as
 `exc.status_code` — `http_status` does not exist and silently never matches.
 
 ### 5. The panel is not your preview
@@ -494,7 +494,7 @@ who wins a tie against the *system* app, not against another user app — see la
 ## Hardware input: wheel, buttons, switch
 
 Input arrives on the same WebSocket as device status: `bb.stream_status_ws()`
-(`apps/skystrip.py::listen_buttons` is the working reference). Traps, all
+(`apps/skystrip_app/input.py::listen_buttons` is the working reference). Traps, all
 verified on-device:
 
 - **proto3 omits zero values.** An absent field *is* the zero enum, so an empty
@@ -507,14 +507,14 @@ verified on-device:
   four clicks silently did nothing and the dial felt broken. Keep the
   accumulator (it costs nothing and handles a burst), but the threshold is
   **1**. Before inventing any hardware constant, grep the other apps: this one
-  was already measured and written down in `apps/skystrip.py`
+  was already measured and written down in `apps/skystrip_app/limits.py`
   (`ENC_COUNTS_PER_DETENT`).
 - **Never re-render the scene per detent.** An `.anim` upload is ~80 kB and
   about a second round trip; at one per click the wheel feels dead and then
   lurches through a backlog. Use *reveal-on-stop*: draw an instant read-out
   with device Text/Rectangle elements while the wheel moves, and commit the
-  real scene only once it has rested (~0.6 s). Both `apps/dsn.py::draw_picker`
-  and `apps/skystrip.py::draw_scrub_readout` are the reference.
+  real scene only once it has rested (~0.6 s). Both `apps/dsn_app/device/display.py::draw_picker`
+  and `apps/skystrip_app/device/scrubber.py::draw_scrub_readout` are the reference.
 - **Coalesce per message, not per event.** One websocket message can carry
   several updates; drawing inside that loop issues an HTTP POST per event.
   Collect, then draw once at the end of the message.
@@ -647,7 +647,7 @@ background app should draw rarely, briefly, and let its elements time out.
    template and registers the app in `apps.toml` in one collision-safe step.
    The result is a ~140-line **synchronous** hello-world with a `--dry-run`
    flag. It has no async loop and no signal handling, so copy those from
-   `apps/skystrip.py` (`run()` and its `finally`) for anything long-lived.
+   `apps/skystrip_app/runtime.py` (`run()` and its `finally`) for anything long-lived.
 2. `uv run apps/<name>.py --dry-run` before ever touching the device.
 3. Give raster/native-asset visuals one pure, deterministic production seam.
    It returns ordinary PIL frames and must be used by the real asset path; app

@@ -53,9 +53,11 @@ def _cos(deg: float) -> float:
 def _jde_to_utc(jde: float) -> datetime:
     """Julian Ephemeris Day (TT) to an aware UTC datetime."""
     unix_days = jde - 2440587.5
-    return (datetime(1970, 1, 1, tzinfo=timezone.utc)
-            + timedelta(days=unix_days)
-            - timedelta(seconds=TT_MINUS_UTC_S))
+    return (
+        datetime(1970, 1, 1, tzinfo=timezone.utc)
+        + timedelta(days=unix_days)
+        - timedelta(seconds=TT_MINUS_UTC_S)
+    )
 
 
 @dataclass(frozen=True)
@@ -68,10 +70,10 @@ class LunarEclipse:
     rather than being collapsed into an absolute value here.
     """
 
-    greatest: datetime          # UTC, instant of greatest eclipse
-    gamma: float                # Earth radii, signed (+ = Moon north of axis)
-    u: float                    # Meeus' shadow-radius parameter
-    hourly_motion: float        # Earth radii per hour, along the shadow plane
+    greatest: datetime  # UTC, instant of greatest eclipse
+    gamma: float  # Earth radii, signed (+ = Moon north of axis)
+    u: float  # Meeus' shadow-radius parameter
+    hourly_motion: float  # Earth radii per hour, along the shadow plane
 
     @property
     def umbral_radius(self) -> float:
@@ -90,13 +92,13 @@ class LunarEclipse:
         for that. Speaking one while meaning the other is the easy way to
         put a wrong number in the report.
         """
-        return (self.umbral_radius + MOON_RADIUS - abs(self.gamma)) / (
-            2 * MOON_RADIUS)
+        return (self.umbral_radius + MOON_RADIUS - abs(self.gamma)) / (2 * MOON_RADIUS)
 
     @property
     def penumbral_magnitude(self) -> float:
         return (self.penumbral_radius + MOON_RADIUS - abs(self.gamma)) / (
-            2 * MOON_RADIUS)
+            2 * MOON_RADIUS
+        )
 
     @property
     def kind(self) -> str:
@@ -135,17 +137,32 @@ def _eclipse_at_lunation(k: float) -> LunarEclipse | None:
     Returns None when the Moon misses even the penumbra.
     """
     t = k / 1236.85
-    jde = (2451550.09766 + 29.530588861 * k + 0.00015437 * t**2
-           - 0.000000150 * t**3 + 0.00000000073 * t**4)
+    jde = (
+        2451550.09766
+        + 29.530588861 * k
+        + 0.00015437 * t**2
+        - 0.000000150 * t**3
+        + 0.00000000073 * t**4
+    )
     # Eccentricity correction on terms involving the Sun's anomaly.
     e = 1 - 0.002516 * t - 0.0000074 * t**2
     # Sun's mean anomaly, Moon's mean anomaly, Moon's argument of latitude,
     # and the longitude of the ascending node.
     ms = 2.5534 + 29.10535670 * k - 0.0000014 * t**2 - 0.00000011 * t**3
-    mm = (201.5643 + 385.81693528 * k + 0.0107582 * t**2
-          + 0.00001238 * t**3 - 0.000000058 * t**4)
-    f = (160.7108 + 390.67050284 * k - 0.0016118 * t**2
-         - 0.00000227 * t**3 + 0.000000011 * t**4)
+    mm = (
+        201.5643
+        + 385.81693528 * k
+        + 0.0107582 * t**2
+        + 0.00001238 * t**3
+        - 0.000000058 * t**4
+    )
+    f = (
+        160.7108
+        + 390.67050284 * k
+        - 0.0016118 * t**2
+        - 0.00000227 * t**3
+        + 0.000000011 * t**4
+    )
     om = 124.7746 - 1.56375588 * k + 0.0020672 * t**2 + 0.00000215 * t**3
 
     # Too far from a node for the Moon to touch even the penumbra.
@@ -155,33 +172,51 @@ def _eclipse_at_lunation(k: float) -> LunarEclipse | None:
     f1 = f - 0.02665 * _sin(om)
     a1 = 299.77 + 0.107408 * k - 0.009173 * t**2
 
-    jde += (-0.4065 * _sin(mm)
-            + 0.1727 * e * _sin(ms)
-            + 0.0161 * _sin(2 * mm)
-            - 0.0097 * _sin(2 * f1)
-            + 0.0073 * e * _sin(mm - ms)
-            - 0.0050 * e * _sin(mm + ms)
-            - 0.0023 * _sin(mm - 2 * f1)
-            + 0.0021 * e * _sin(2 * ms)
-            + 0.0012 * _sin(mm + 2 * f1)
-            + 0.0006 * e * _sin(2 * mm + ms)
-            - 0.0004 * _sin(3 * mm)
-            - 0.0003 * e * _sin(ms + 2 * f1)
-            + 0.0003 * _sin(a1)
-            - 0.0002 * e * _sin(ms - 2 * f1)
-            - 0.0002 * e * _sin(2 * mm - ms)
-            - 0.0002 * _sin(om))
+    jde += (
+        -0.4065 * _sin(mm)
+        + 0.1727 * e * _sin(ms)
+        + 0.0161 * _sin(2 * mm)
+        - 0.0097 * _sin(2 * f1)
+        + 0.0073 * e * _sin(mm - ms)
+        - 0.0050 * e * _sin(mm + ms)
+        - 0.0023 * _sin(mm - 2 * f1)
+        + 0.0021 * e * _sin(2 * ms)
+        + 0.0012 * _sin(mm + 2 * f1)
+        + 0.0006 * e * _sin(2 * mm + ms)
+        - 0.0004 * _sin(3 * mm)
+        - 0.0003 * e * _sin(ms + 2 * f1)
+        + 0.0003 * _sin(a1)
+        - 0.0002 * e * _sin(ms - 2 * f1)
+        - 0.0002 * e * _sin(2 * mm - ms)
+        - 0.0002 * _sin(om)
+    )
 
-    p = (0.2070 * e * _sin(ms) + 0.0024 * e * _sin(2 * ms) - 0.0392 * _sin(mm)
-         + 0.0116 * _sin(2 * mm) - 0.0073 * e * _sin(mm + ms)
-         + 0.0067 * e * _sin(mm - ms) + 0.0118 * _sin(2 * f1))
-    q = (5.2207 - 0.0048 * e * _cos(ms) + 0.0020 * e * _cos(2 * ms)
-         - 0.3299 * _cos(mm) - 0.0060 * e * _cos(mm + ms)
-         + 0.0041 * e * _cos(mm - ms))
+    p = (
+        0.2070 * e * _sin(ms)
+        + 0.0024 * e * _sin(2 * ms)
+        - 0.0392 * _sin(mm)
+        + 0.0116 * _sin(2 * mm)
+        - 0.0073 * e * _sin(mm + ms)
+        + 0.0067 * e * _sin(mm - ms)
+        + 0.0118 * _sin(2 * f1)
+    )
+    q = (
+        5.2207
+        - 0.0048 * e * _cos(ms)
+        + 0.0020 * e * _cos(2 * ms)
+        - 0.3299 * _cos(mm)
+        - 0.0060 * e * _cos(mm + ms)
+        + 0.0041 * e * _cos(mm - ms)
+    )
     w = abs(_cos(f1))
     gamma = (p * _cos(f1) + q * _sin(f1)) * (1 - 0.0048 * w)
-    u = (0.0059 + 0.0046 * e * _cos(ms) - 0.0182 * _cos(mm)
-         + 0.0004 * _cos(2 * mm) - 0.0005 * e * _cos(ms + mm))
+    u = (
+        0.0059
+        + 0.0046 * e * _cos(ms)
+        - 0.0182 * _cos(mm)
+        + 0.0004 * _cos(2 * mm)
+        - 0.0005 * e * _cos(ms + mm)
+    )
 
     eclipse = LunarEclipse(
         greatest=_jde_to_utc(jde),
@@ -222,8 +257,8 @@ def _overlap_area(r1: float, r2: float, d: float) -> float:
     a1 = math.acos((d * d + r1 * r1 - r2 * r2) / (2 * d * r1))
     a2 = math.acos((d * d + r2 * r2 - r1 * r1) / (2 * d * r2))
     triangle = 0.5 * math.sqrt(
-        max(0.0, (-d + r1 + r2) * (d + r1 - r2)
-            * (d - r1 + r2) * (d + r1 + r2)))
+        max(0.0, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2))
+    )
     return r1 * r1 * a1 + r2 * r2 * a2 - triangle
 
 
@@ -238,11 +273,11 @@ class EclipseState:
     """
 
     eclipse: LunarEclipse
-    phase: str            # "penumbral" | "partial" | "total"
-    umbra_dx: float       # umbra centre offset from the Moon's centre
+    phase: str  # "penumbral" | "partial" | "total"
+    umbra_dx: float  # umbra centre offset from the Moon's centre
     umbra_dy: float
     umbra_r: float
-    obscuration: float    # fraction of the Moon's disc *area* in the umbra
+    obscuration: float  # fraction of the Moon's disc *area* in the umbra
 
     @property
     def in_umbra(self) -> bool:
@@ -256,8 +291,9 @@ class EclipseState:
         return self.phase in ("partial", "total")
 
 
-def state_at(when: datetime, *, eclipse: LunarEclipse | None = None
-             ) -> EclipseState | None:
+def state_at(
+    when: datetime, *, eclipse: LunarEclipse | None = None
+) -> EclipseState | None:
     """Geometry of whichever eclipse is underway at `when`, or None.
 
     `when` must be timezone-aware. Pass `eclipse` to evaluate a specific one
@@ -294,7 +330,7 @@ def state_at(when: datetime, *, eclipse: LunarEclipse | None = None
             umbra_dx=along / MOON_RADIUS,
             umbra_dy=ecl.gamma / MOON_RADIUS,
             umbra_r=ecl.umbral_radius / MOON_RADIUS,
-            obscuration=obscured / (math.pi * MOON_RADIUS ** 2),
+            obscuration=obscured / (math.pi * MOON_RADIUS**2),
         )
     return None
 
@@ -310,6 +346,7 @@ def visible_state(when: datetime, observer) -> EclipseState | None:
     if state is None:
         return None
     from astral import moon as _moon  # local: keeps import cost off the path
+
     if _moon.elevation(observer, when) <= 0:
         return None
     return state

@@ -16,14 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from .configstore import (
-    app_env_path,
-    effective_config,
-    normalize_multiselect,
-    read_env_file,
-    write_env_file,
-)
-from .config_validation import validate_effective_config, validate_submitted_values
+from .config_service import ConfigService
 from .preview import BarOffline
 from .registry import AppSpec
 from .statestore import DesiredState, save_state
@@ -263,6 +256,8 @@ def token_accepted(presented: str, expected: str) -> bool:
         return True                    # unauthenticated by configuration
     if not presented:
         return False
+    if not presented.isascii() or not expected.isascii():
+        return False
     return hmac.compare_digest(presented, expected)
 
 
@@ -292,6 +287,7 @@ def exposure_warning(bind: str, token: str) -> str:
 def create_app(supervisor, registry: dict[str, AppSpec], preview,
                config_dir: Path, state_path: Path) -> FastAPI:
     app = FastAPI(title="barkeep", docs_url=None, redoc_url=None)
+    config = ConfigService(config_dir, os.environ)
 
     def persist() -> None:
         save_state(state_path, DesiredState(
@@ -325,7 +321,10 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
 
     @app.post("/api/foreground")
     async def set_foreground(body: dict):
-        return await _operate(supervisor.set_foreground, body.get("app"))
+        name = body.get("app")
+        if name is not None and not isinstance(name, str):
+            return error(422, "app must be a name or null")
+        return await _operate(supervisor.set_foreground, name)
 
     @app.post("/api/apps/{name}/enable")
     async def enable(name: str):
@@ -346,77 +345,23 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
         except KeyError:
             return error(404, f"unknown app: {name}")
 
-    def _config_rows(spec: AppSpec) -> list[dict]:
-        return effective_config(
-            spec, read_env_file(app_env_path(config_dir, spec)), os.environ
-        )
-
     @app.get("/api/apps/{name}/config")
     def get_config(name: str):
         spec = registry.get(name)
         if spec is None:
             return error(404, f"unknown app: {name}")
-        return {"keys": _config_rows(spec)}
+        return {"keys": config.rows(spec)}
 
     @app.put("/api/apps/{name}/config")
     def put_config(name: str, body: dict):
         spec = registry.get(name)
         if spec is None:
             return error(404, f"unknown app: {name}")
-        values = body.get("values", {})
-        if not isinstance(values, dict):
-            return error(422, "values must be an object")
-        declared = {k.name for k in spec.config}
-        unknown = sorted(set(values) - declared)
-        if unknown:
-            return error(422, f"undeclared config keys: {', '.join(unknown)}")
-        coerced = {k: str(v) for k, v in values.items()}
-        # One key per line IS the file format, and the file becomes the child's
-        # environment: a newline in a value would smuggle in undeclared vars
-        # (BUSYBAR_HOST, LD_PRELOAD, PYTHONPATH) on the next spawn.
-        bad = sorted(k for k, v in coerced.items() if set(v) & {"\n", "\r", "\0"})
-        if bad:
-            return error(422, f"values must be single-line: {', '.join(bad)}")
-
-        # multiselect values name a subset of the declared choices. Validate
-        # and canonicalize here rather than only in the UI — the API is
-        # curl-able, and an app reading a bogus scene name would just ignore
-        # it silently.
-        for key in spec.config:
-            if key.type != "multiselect" or key.name not in coerced:
-                continue
-            selected, unknown = normalize_multiselect(coerced[key.name], key.choices)
-            if unknown:
-                return error(422, f"{key.name}: not valid choices: "
-                                  f"{', '.join(unknown)}")
-            if not selected:
-                return error(422, f"{key.name}: select at least one")
-            coerced[key.name] = ",".join(selected)
-
-        validation_error = validate_submitted_values(spec, coerced)
-        if validation_error:
-            return error(422, validation_error)
-
-        # Blank normally removes the app override and reveals the shared .env
-        # or registry default. A few keys explicitly declare blank as their
-        # value (anonymous contact, automatic station); only those persist
-        # ``KEY=``. A blank registry default alone cannot encode both meanings.
-        blankable = {
-            k.name for k in spec.config if k.blank_is_value
-        }
-        path = app_env_path(config_dir, spec)
-        merged = read_env_file(path)
-        for key, value in coerced.items():
-            if value == "" and key not in blankable:
-                merged.pop(key, None)
-            else:
-                merged[key] = value
-        validation_error = validate_effective_config(
-            spec, merged, os.environ)
-        if validation_error:
-            return error(422, validation_error)
-        write_env_file(path, merged)
-        return {"keys": _config_rows(spec)}
+        try:
+            rows = config.update(spec, body.get("values", {}))
+        except ValueError as exc:
+            return error(422, str(exc))
+        return {"keys": rows}
 
     # --- TLS admin: replacing the certificate is a paste, not an ssh session.
     # Uploads stage to config/tls/ after validation; nothing here restarts the

@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 
 import pytest
 
@@ -29,7 +30,7 @@ def test_journal_is_wal_append_only_and_optimistically_revisioned(tmp_path):
     session, created = journal.create_session("General visual draft")
     assert session.revision == created.revision == 1
 
-    with sqlite3.connect(journal.path) as connection:
+    with closing(sqlite3.connect(journal.path)) as connection, connection:
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         with pytest.raises(sqlite3.IntegrityError, match="append-only"):
             connection.execute(
@@ -260,7 +261,7 @@ def test_interrupted_render_reconciliation_is_durable_and_idempotent(tmp_path):
 def test_jsonl_export_does_not_truncate_after_one_thousand_events(tmp_path):
     journal = SessionJournal(tmp_path / "sessions.sqlite3")
     session, _ = journal.create_session("Long collaboration")
-    with sqlite3.connect(journal.path) as connection:
+    with closing(sqlite3.connect(journal.path)) as connection, connection:
         for revision in range(2, 1003):
             connection.execute(
                 """

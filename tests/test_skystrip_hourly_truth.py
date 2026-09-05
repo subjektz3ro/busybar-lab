@@ -18,7 +18,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps"))
 
-import skystrip  # noqa: E402
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app import weather_timeline as sky_weather_timeline
 
 EASTERN = ZoneInfo("America/New_York")
 
@@ -49,7 +51,7 @@ def test_the_autumn_fall_back_keeps_two_distinct_hours():
     # 2026-11-01: EDT (UTC-4) becomes EST (UTC-5) at 06:00 UTC.
     times = ["2026-11-01T04:00", "2026-11-01T05:00",
              "2026-11-01T06:00", "2026-11-01T07:00"]
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(times, temperature_2m=[10.0, 11.0, 12.0, 13.0]), tz=EASTERN)
     local_hours = [when.hour for when, _ in rows]
     assert local_hours == [0, 1, 1, 2], local_hours
@@ -71,7 +73,7 @@ def test_the_scrubber_can_tell_the_two_repeated_hours_apart():
     measured zero seconds from a 01:00 target and the first always won."""
     times = ["2026-11-01T04:00", "2026-11-01T05:00",
              "2026-11-01T06:00", "2026-11-01T07:00"]
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(times, temperature_2m=[10.0, 11.0, 12.0, 13.0]), tz=EASTERN)
     state = _state_with(rows)
 
@@ -81,13 +83,13 @@ def test_the_scrubber_can_tell_the_two_repeated_hours_apart():
     early = datetime(2026, 11, 1, 1, 0, tzinfo=EASTERN)            # EDT
     late = datetime(2026, 11, 1, 1, 0, fold=1, tzinfo=EASTERN)     # EST
     assert early.utcoffset() != late.utcoffset(), "fixture must straddle the fold"
-    assert skystrip.wx_at(state, early).temp_c == 11.0
-    assert skystrip.wx_at(state, late).temp_c == 12.0
+    assert sky_weather_timeline.wx_at(state, early).temp_c == 11.0
+    assert sky_weather_timeline.wx_at(state, late).temp_c == 12.0
 
 
 def test_rows_are_returned_in_time_order():
     times = ["2026-06-15T12:00", "2026-06-15T10:00", "2026-06-15T11:00"]
-    rows = skystrip.parse_hourly(payload(times), tz=timezone.utc)
+    rows = sky_weather_timeline.parse_hourly(payload(times), tz=timezone.utc)
     assert [w.hour for w, _ in rows] == [10, 11, 12]
 
 
@@ -98,35 +100,35 @@ def test_an_hour_with_no_temperature_is_dropped():
     """Open-Meteo returns null past its range. Such an hour is absent, not
     weak — wx_at should fall back to live rather than show a number."""
     times = ["2026-06-15T10:00", "2026-06-15T11:00"]
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(times, temperature_2m=[20.0, None]), tz=timezone.utc)
     assert len(rows) == 1 and rows[0][0].hour == 10
 
 
 def test_an_hour_with_no_cloud_cover_is_dropped():
     times = ["2026-06-15T10:00", "2026-06-15T11:00"]
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(times, cloud_cover=[10.0, None]), tz=timezone.utc)
     assert len(rows) == 1
 
 
 def test_out_of_range_values_are_refused_not_clamped():
     times = ["2026-06-15T10:00"]
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(times, temperature_2m=[500.0]), tz=timezone.utc)
     assert rows == []
 
 
 def test_a_string_where_a_number_belongs_is_refused():
     times = ["2026-06-15T10:00", "2026-06-15T11:00"]
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(times, temperature_2m=["warm", 20.0]), tz=timezone.utc)
     assert len(rows) == 1 and rows[0][0].hour == 11
 
 
 def test_a_secondary_column_may_be_unknown_without_losing_the_hour():
     times = ["2026-06-15T10:00"]
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(times, visibility=[None], relative_humidity_2m=[None]),
         tz=timezone.utc)
     assert len(rows) == 1
@@ -137,20 +139,20 @@ def test_a_missing_column_entirely_is_tolerated():
     """An older cached response has no snow_depth column at all."""
     body = payload(["2026-06-15T10:00"])
     del body["snow_depth"]
-    rows = skystrip.parse_hourly(body, tz=timezone.utc)
+    rows = sky_weather_timeline.parse_hourly(body, tz=timezone.utc)
     assert len(rows) == 1 and rows[0][1]["snow_depth"] is None
 
 
 def test_an_unparseable_timestamp_drops_only_its_own_row():
     times = ["not-a-time", "2026-06-15T11:00"]
-    rows = skystrip.parse_hourly(payload(times), tz=timezone.utc)
+    rows = sky_weather_timeline.parse_hourly(payload(times), tz=timezone.utc)
     assert len(rows) == 1
 
 
 def test_the_row_count_is_bounded():
     times = [f"2026-06-15T{h:02d}:00" for h in range(24)] * 20
-    rows = skystrip.parse_hourly(payload(times), tz=timezone.utc)
-    assert len(rows) <= skystrip.HOURLY_MAX_ROWS
+    rows = sky_weather_timeline.parse_hourly(payload(times), tz=timezone.utc)
+    assert len(rows) <= sky_weather.HOURLY_MAX_ROWS
 
 
 # --- a malformed envelope leaves last-good alone ---------------------------
@@ -159,14 +161,14 @@ def test_the_row_count_is_bounded():
 @pytest.mark.parametrize("bad", [None, [], "hourly", {"time": "not-a-list"}, {}])
 def test_a_malformed_envelope_raises_rather_than_returning_a_partial(bad):
     with pytest.raises(ValueError):
-        skystrip.parse_hourly(bad, tz=timezone.utc)
+        sky_weather_timeline.parse_hourly(bad, tz=timezone.utc)
 
 
 # --- wx_at no longer invents ------------------------------------------------
 
 
 def _state_with(rows, live=None):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.hourly = rows
     if live is not None:
         state.weather = live
@@ -174,23 +176,23 @@ def _state_with(rows, live=None):
 
 
 def test_wx_at_falls_back_to_live_for_an_hour_it_has_no_row_for():
-    live = skystrip.WeatherState(temp_c=31.0, humidity=77.0)
+    live = sky_weather.WeatherState(temp_c=31.0, humidity=77.0)
     target = datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc)
     state = _state_with([], live)
-    assert skystrip.wx_at(state, target) is live
+    assert sky_weather_timeline.wx_at(state, target) is live
 
 
 def test_wx_at_uses_live_values_for_columns_the_model_lacks():
     """Not 50% humidity and 16 km — those were constants that rendered as
     confidently as a measurement."""
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(["2026-06-15T10:00"], relative_humidity_2m=[None],
                 visibility=[None], wind_speed_10m=[None]),
         tz=timezone.utc)
-    live = skystrip.WeatherState(humidity=88.0, visibility_m=1200.0,
+    live = sky_weather.WeatherState(humidity=88.0, visibility_m=1200.0,
                                  wind_kmh=42.0)
     state = _state_with(rows, live)
-    got = skystrip.wx_at(state, datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc))
+    got = sky_weather_timeline.wx_at(state, datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc))
     assert got.humidity == 88.0
     assert got.visibility_m == 1200.0
     assert got.wind_kmh == 42.0
@@ -198,8 +200,8 @@ def test_wx_at_uses_live_values_for_columns_the_model_lacks():
 
 
 def test_wx_at_prefers_the_model_over_live_when_it_has_data():
-    rows = skystrip.parse_hourly(
+    rows = sky_weather_timeline.parse_hourly(
         payload(["2026-06-15T10:00"], temperature_2m=[3.0]), tz=timezone.utc)
-    state = _state_with(rows, skystrip.WeatherState(temp_c=31.0))
-    got = skystrip.wx_at(state, datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc))
+    state = _state_with(rows, sky_weather.WeatherState(temp_c=31.0))
+    got = sky_weather_timeline.wx_at(state, datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc))
     assert got.temp_c == 3.0

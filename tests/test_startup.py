@@ -12,11 +12,12 @@ import pytest
 
 import barkeep.__main__ as entrypoint
 from barkeep.__main__ import restore_desired
-from barkeep.registry import AppSpec
+from barkeep.registry import AppSpec, ConfigKey
 from barkeep.statestore import DesiredState, load_state
 
 REGISTRY = {
-    "sky": AppSpec("sky", "foreground", "apps/sky.py", "the sky"),
+    "sky": AppSpec("sky", "foreground", "apps/sky.py", "the sky",
+                   (ConfigKey("APP_ONLY", "test override", ""),)),
     "pinger": AppSpec("pinger", "background", "apps/pinger.py", "pings"),
 }
 
@@ -127,7 +128,9 @@ def _wire_main(monkeypatch, tls_env=None):
 
     monkeypatch.setattr(entrypoint.busybar_dev, "load_env", lambda: captured.setdefault("loaded_env", True))
     monkeypatch.setattr(entrypoint, "load_registry", lambda _path: REGISTRY)
-    monkeypatch.setattr(entrypoint, "read_env_file", lambda _path: {"APP_ONLY": "yes"})
+    monkeypatch.setattr(entrypoint, "read_env_file", lambda _path: {
+        "APP_ONLY": "yes", "UNDECLARED_OVERRIDE": "must not reach a child",
+    })
     monkeypatch.setattr(entrypoint, "Supervisor", build_supervisor)
     monkeypatch.setattr(entrypoint, "load_state", fake_load_state)
     monkeypatch.setattr(entrypoint, "Preview", lambda: "preview")
@@ -158,6 +161,7 @@ def test_main_wires_registry_config_and_uvicorn(monkeypatch):
     # STANDBY so Skystrip's provider limits are visible before polling starts.
     assert supervisor.child_env["BASE_VALUE"] == "shared"
     assert supervisor.child_env["APP_ONLY"] == "yes"
+    assert "UNDECLARED_OVERRIDE" not in supervisor.child_env
     assert supervisor.child_env["BARKEEP_MANAGED"] == "1"
     assert captured["create_app"][2] == "preview"
     assert captured["app"].router.lifespan_context is not None

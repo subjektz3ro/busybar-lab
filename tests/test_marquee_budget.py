@@ -24,12 +24,13 @@ from busybar_dev.weather_alerts import MAX_EVENT_CHARS
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps"))
 
-import skystrip  # noqa: E402
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app.render import alerts as sky_render_alerts
 
-BOX = (2, skystrip.W - 3)
+BOX = (2, sky_limits.W - 3)
 BOX_WIDTH = BOX[1] - BOX[0] + 1
-SPEED = skystrip.ALERT_SCROLL_SPEED_PX_S
-FPS = skystrip.ALERT_ANIM_FPS
+SPEED = sky_limits.ALERT_SCROLL_SPEED_PX_S
+FPS = sky_limits.ALERT_ANIM_FPS
 
 
 def test_the_budgets_are_documented_as_a_single_number():
@@ -68,7 +69,7 @@ def test_every_event_name_the_ingestion_bound_allows_stays_readable():
     through; whatever the card ends up showing must scroll at or under the
     declared speed."""
     worst = "W" * MAX_EVENT_CHARS          # W is the widest glyph, 5 columns
-    shown = skystrip.presentable_event(_alert(worst + " Warning"))
+    shown = sky_render_alerts.presentable_event(_alert(worst + " Warning"))
     realised = marquee_speed_px_s(shown, BOX_WIDTH, fps=FPS, speed_px_s=SPEED)
     assert realised <= SPEED + 1e-6, (
         f"the card scrolls {shown!r} at {realised:.1f} px/s against a "
@@ -79,19 +80,19 @@ def test_an_unpresentable_name_falls_back_to_its_product_class():
     """Not a slice of the original — visual_eligible has already established
     that the event ends in 'warning' or 'emergency', so the generic is derived
     from the CAP data rather than invented."""
-    assert skystrip.presentable_event(
+    assert sky_render_alerts.presentable_event(
         _alert("W" * 300 + " Warning")) == "WEATHER WARNING"
-    assert skystrip.presentable_event(
+    assert sky_render_alerts.presentable_event(
         _alert("W" * 300 + " Emergency")) == "WEATHER EMERGENCY"
 
 
 def test_a_real_event_name_is_shown_verbatim():
-    assert skystrip.presentable_event(
+    assert sky_render_alerts.presentable_event(
         _alert("Tornado Warning")) == "TORNADO WARNING"
 
 
 def test_the_alert_card_renders_within_a_sane_frame_budget():
-    frames = skystrip.alert_animation_frames(_alert("W" * 300 + " Warning"))
+    frames = sky_render_alerts.alert_animation_frames(_alert("W" * 300 + " Warning"))
     assert len(frames) <= 240, f"{len(frames)} frames is not a bounded asset"
 
 
@@ -111,6 +112,6 @@ def test_a_short_label_is_centred_not_scrolled():
 
 @pytest.mark.parametrize("chars", [1, 12, 40, 114, 200, MAX_EVENT_CHARS])
 def test_the_alert_card_never_exceeds_its_declared_speed(chars):
-    shown = skystrip.presentable_event(_alert("M" * chars + " Warning"))
+    shown = sky_render_alerts.presentable_event(_alert("M" * chars + " Warning"))
     realised = marquee_speed_px_s(shown, BOX_WIDTH, fps=FPS, speed_px_s=SPEED)
     assert realised <= SPEED + 1e-6, chars

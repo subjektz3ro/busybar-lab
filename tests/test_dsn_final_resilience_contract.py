@@ -19,15 +19,34 @@ import pytest
 from busylib import exceptions
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-dsn = pytest.importorskip("dsn")
+from apps.dsn_app import feed as dsn_feed
+from apps.dsn_app import history as dsn_history
+from apps.dsn_app import input as dsn_input
+from apps.dsn_app import limits as dsn_limits
+from apps.dsn_app import model as dsn_model
+from apps.dsn_app import ranges as dsn_ranges
+from apps.dsn_app import reconcile as dsn_reconcile
+from apps.dsn_app import runtime as dsn_runtime
+from apps.dsn_app import selection as dsn_selection
+from apps.dsn_app import settings as dsn_settings
+from apps.dsn_app import source as dsn_source
+from apps.dsn_app.audio import assets as dsn_audio_assets
+from apps.dsn_app.audio import narration as dsn_audio_narration
+from apps.dsn_app.audio import words as dsn_audio_words
+from apps.dsn_app.device import assets as dsn_device_assets
+from apps.dsn_app.device import display as dsn_device_display
+from apps.dsn_app.device import events as dsn_device_events
+from apps.dsn_app.device import scenes as dsn_device_scenes
+from apps.dsn_app.render import events as dsn_render_events
+from busybar_dev import anim
 
 
 def link(
     craft: str = "VGR2",
     dish: str = "DSS43",
     **changes,
-) -> dsn.Link:
-    base = dsn.Link(
+) -> dsn_source.Link:
+    base = dsn_source.Link(
         complex_name="Canberra",
         dish=dish,
         craft=craft,
@@ -41,15 +60,15 @@ def link(
         up_kw=18.0,
         streams=1,
         azimuth=120.0,
-        down_streams=(dsn.DownStream("X", 20_000.0, -140.0),),
+        down_streams=(dsn_source.DownStream("X", 20_000.0, -140.0),),
         up_band="X",
     )
     return replace(base, **changes)
 
 
-def fresh_state(*links: dsn.Link, view: str = "instrument") -> dsn.State:
+def fresh_state(*links: dsn_source.Link, view: str = "instrument") -> dsn_model.State:
     now = time.time()
-    state = dsn.State(links=list(links), view=view)
+    state = dsn_model.State(links=list(links), view=view)
     state.feed_seeded = True
     state.feed_timestamp_ms = int(now * 1000)
     state.feed_advanced_at = now
@@ -89,7 +108,7 @@ def test_scene_upload_adoption_requires_an_exact_sized_file(entry, expected):
             return SimpleNamespace(list=[entry])
 
     adopted = asyncio.run(
-        dsn.scene_asset_exists(StorageBar(), "scene.anim", 81_234))
+        dsn_device_assets.scene_asset_exists(StorageBar(), "scene.anim", 81_234))
 
     assert adopted is expected
 
@@ -116,7 +135,7 @@ def test_cached_scene_404_is_evicted_and_retry_uploads_a_new_generation():
 
     async def scenario():
         with pytest.raises(exceptions.BusyBarAPIError):
-            await dsn.push_scene(bb, state, selected, signature)
+            await dsn_device_scenes.push_scene(bb, state, selected, signature)
 
         assert signature not in state.scene_cache
         assert state.last_scene_filename is None
@@ -124,21 +143,21 @@ def test_cached_scene_404_is_evicted_and_retry_uploads_a_new_generation():
         assert state.dirty.is_set()
 
         state.dirty.clear()
-        assert await dsn.push_scene(bb, state, selected, signature)
+        assert await dsn_device_scenes.push_scene(bb, state, selected, signature)
 
     asyncio.run(scenario())
 
-    assert bb.removed == [f"/ext/user_assets/{dsn.APP_NAME}/{missing}"]
+    assert bb.removed == [f"/ext/user_assets/{dsn_limits.APP_NAME}/{missing}"]
     assert len(bb.uploads) == 1
     assert bb.uploads[0][1] != missing
     assert bb.draws[-1].elements[0].path == bb.uploads[0][1]
 
 
 def encoded_event_asset(effect: str) -> tuple[str, bytes]:
-    frames, fps, hold = dsn.render_event_frames(effect)
-    blob = dsn.anim.encode_anim(
+    frames, fps, hold = dsn_render_events.render_event_frames(effect)
+    blob = anim.encode_anim(
         frames, fps=fps, durations=[hold] * len(frames))
-    return dsn.event_asset_name(effect, blob), blob
+    return dsn_device_assets.event_asset_name(effect, blob), blob
 
 
 def test_event_prewarm_replaces_a_zero_byte_content_addressed_file():
@@ -165,13 +184,13 @@ def test_event_prewarm_replaces_a_zero_byte_content_addressed_file():
             self.files[name] = blob
 
     bb = ZeroByteEventBar()
-    state = dsn.State()
-    asyncio.run(dsn.prepare_event_assets(bb, state))
+    state = dsn_model.State()
+    asyncio.run(dsn_device_assets.prepare_event_assets(bb, state))
 
-    assert bb.removed[0] == f"/ext/user_assets/{dsn.APP_NAME}/{acquire_name}"
-    assert (dsn.APP_NAME, acquire_name, acquire_blob) in bb.uploads
+    assert bb.removed[0] == f"/ext/user_assets/{dsn_limits.APP_NAME}/{acquire_name}"
+    assert (dsn_limits.APP_NAME, acquire_name, acquire_blob) in bb.uploads
     assert state.event_assets["acquire"] == acquire_name
-    assert len(state.event_assets) == len(dsn.EVENT_EFFECTS)
+    assert len(state.event_assets) == len(dsn_limits.EVENT_EFFECTS)
 
 
 def test_event_asset_404_falls_back_to_text_and_rewarms_in_background():
@@ -214,11 +233,11 @@ def test_event_asset_404_falls_back_to_text_and_rewarms_in_background():
 
     async def scenario():
         bb = RepairingEventBar()
-        state = dsn.State()
+        state = dsn_model.State()
         state.event_assets["acquire"] = broken
         state.event_queue = [event]
 
-        assert await dsn.show_next_event(bb, state) is True
+        assert await dsn_device_events.show_next_event(bb, state) is True
         assert state.event_queue == []
         assert len(bb.draws) == 2
         assert any(element.type == "animation"
@@ -232,10 +251,10 @@ def test_event_asset_404_falls_back_to_text_and_rewarms_in_background():
 
     bb, state = asyncio.run(scenario())
 
-    assert f"/ext/user_assets/{dsn.APP_NAME}/{broken}" in bb.removed
+    assert f"/ext/user_assets/{dsn_limits.APP_NAME}/{broken}" in bb.removed
     assert state.event_assets["acquire"] != broken
-    assert len(state.event_assets) == len(dsn.EVENT_EFFECTS)
-    assert len(bb.uploads) == len(dsn.EVENT_EFFECTS)
+    assert len(state.event_assets) == len(dsn_limits.EVENT_EFFECTS)
+    assert len(bb.uploads) == len(dsn_limits.EVENT_EFFECTS)
 
 
 def test_ambiguous_heartbeat_draw_retries_the_exact_same_element_id():
@@ -253,12 +272,12 @@ def test_ambiguous_heartbeat_draw_retries_the_exact_same_element_id():
     bb = CommitThenLoseResponse()
 
     async def scenario():
-        assert await dsn.sync_live_lease(bb, state, "fresh") is False
+        assert await dsn_device_display.sync_live_lease(bb, state, "fresh") is False
         pending_id = state.heartbeat_pending_id
         pending_y = state.heartbeat_pending_y
         assert pending_id is not None
 
-        assert await dsn.sync_live_lease(bb, state, "fresh") is True
+        assert await dsn_device_display.sync_live_lease(bb, state, "fresh") is True
         return pending_id, pending_y
 
     pending_id, pending_y = asyncio.run(scenario())
@@ -284,10 +303,10 @@ def test_network_cursor_does_not_auto_rotate_without_a_visible_picker(monkeypatc
         if calls > 1:
             await blocked.wait()
 
-    monkeypatch.setattr(dsn.asyncio, "sleep", one_tick_then_block)
+    monkeypatch.setattr(asyncio, "sleep", one_tick_then_block)
 
     async def scenario():
-        task = asyncio.create_task(dsn.rotate(state))
+        task = asyncio.create_task(dsn_selection.rotate(state))
         for _ in range(5):
             await real_sleep(0)
             if calls > 1:
@@ -314,10 +333,10 @@ class AudioBar:
         self.stops += 1
 
 
-def cache_narration(state: dsn.State, selected: dsn.Link,
+def cache_narration(state: dsn_model.State, selected: dsn_source.Link,
                     seconds: float = 0.0) -> str:
-    text = dsn.spoken(selected, state.names, state.dish_types)
-    name = dsn.speech_name(text)
+    text = dsn_audio_words.spoken(selected, state.names, state.dish_types)
+    name = dsn_audio_assets.speech_name(text)
     state.speech[name] = seconds
     return name
 
@@ -326,12 +345,12 @@ def test_cached_narration_is_blocked_when_the_source_is_already_stale():
     selected = link()
     state = fresh_state(selected)
     cache_narration(state, selected)
-    old = time.time() - dsn.FEED_STALE_S - 1
+    old = time.time() - dsn_settings.FEED_STALE_S - 1
     state.feed_timestamp_ms = int(old * 1000)
     state.feed_advanced_at = old
     bb = AudioBar()
 
-    asyncio.run(dsn.speak(bb, state, selected))
+    asyncio.run(dsn_audio_narration.speak(bb, state, selected))
 
     assert bb.played == []
     assert bb.stops == 0
@@ -349,8 +368,8 @@ def test_narration_task_revalidates_the_exact_link_key_before_playing():
     async def scenario():
         # create_task does not run inline.  This is the real START race: another
         # ready task may reconcile the feed before speak() gets its first turn.
-        narration = asyncio.create_task(dsn.speak(bb, state, old))
-        dsn.reconcile_links(state, [handoff], now=time.time())
+        narration = asyncio.create_task(dsn_audio_narration.speak(bb, state, old))
+        dsn_reconcile.reconcile_links(state, [handoff], now=time.time())
         await narration
 
     asyncio.run(scenario())
@@ -395,7 +414,7 @@ def test_accepted_cached_narration_stops_when_the_feed_becomes_stale(monkeypatch
     async def park(*args, **kwargs):
         await asyncio.Event().wait()
 
-    async def seed_feed(state: dsn.State):
+    async def seed_feed(state: dsn_model.State):
         now = time.time()
         state.links = [selected]
         state.feed_seeded = True
@@ -404,15 +423,15 @@ def test_accepted_cached_narration_stops_when_the_feed_becomes_stale(monkeypatch
         state.dirty.set()
         await asyncio.Event().wait()
 
-    async def start_then_stale(runtime_bb, state: dsn.State):
+    async def start_then_stale(runtime_bb, state: dsn_model.State):
         while not state.feed_seeded:
             await asyncio.sleep(0)
         cache_narration(state, selected, seconds=60.0)
-        narration = asyncio.create_task(dsn.speak(runtime_bb, state, selected))
+        narration = asyncio.create_task(dsn_audio_narration.speak(runtime_bb, state, selected))
         state.speech_tasks.add(narration)
         narration.add_done_callback(state.speech_tasks.discard)
         await bb.played.wait()
-        old = time.time() - dsn.FEED_STALE_S - 1
+        old = time.time() - dsn_settings.FEED_STALE_S - 1
         state.feed_timestamp_ms = int(old * 1000)
         state.feed_advanced_at = old
         state.dirty.set()
@@ -421,22 +440,22 @@ def test_accepted_cached_narration_stops_when_the_feed_becomes_stale(monkeypatch
     async def prepare_cache(*args, **kwargs):
         await asyncio.Event().wait()
 
-    def start_warm(runtime_bb, state: dsn.State):
+    def start_warm(runtime_bb, state: dsn_model.State):
         task = asyncio.create_task(park())
         state.event_warm_task = task
         return task
 
-    monkeypatch.setattr(dsn, "aconnect", connect)
-    monkeypatch.setattr(dsn, "sweep_stale_assets", noop)
-    monkeypatch.setattr(dsn, "load_ranges", lambda state: None)
-    monkeypatch.setattr(dsn, "load_history", lambda state: None)
-    monkeypatch.setattr(dsn, "poll_names", park)
-    monkeypatch.setattr(dsn, "poll_feed", seed_feed)
-    monkeypatch.setattr(dsn, "poll_ranges", park)
-    monkeypatch.setattr(dsn, "listen_input", start_then_stale)
-    monkeypatch.setattr(dsn, "rotate", park)
-    monkeypatch.setattr(dsn, "prepare_narration_cache", prepare_cache)
-    monkeypatch.setattr(dsn, "start_event_asset_warm", start_warm)
+    monkeypatch.setattr(dsn_runtime, "aconnect", connect)
+    monkeypatch.setattr(dsn_device_assets, "sweep_stale_assets", noop)
+    monkeypatch.setattr(dsn_ranges, "load_ranges", lambda state: None)
+    monkeypatch.setattr(dsn_history, "load_history", lambda state: None)
+    monkeypatch.setattr(dsn_feed, "poll_names", park)
+    monkeypatch.setattr(dsn_feed, "poll_feed", seed_feed)
+    monkeypatch.setattr(dsn_ranges, "poll_ranges", park)
+    monkeypatch.setattr(dsn_input, "listen_input", start_then_stale)
+    monkeypatch.setattr(dsn_selection, "rotate", park)
+    monkeypatch.setattr(dsn_audio_narration, "prepare_narration_cache", prepare_cache)
+    monkeypatch.setattr(dsn_device_events, "start_event_asset_warm", start_warm)
 
     async def scenario():
         loop = asyncio.get_running_loop()
@@ -445,7 +464,7 @@ def test_accepted_cached_narration_stops_when_the_feed_becomes_stale(monkeypatch
             handlers[sig] = (callback, args)
 
         monkeypatch.setattr(loop, "add_signal_handler", add_signal_handler)
-        running = asyncio.create_task(dsn.run(False))
+        running = asyncio.create_task(dsn_runtime.run(False))
         await asyncio.wait_for(bb.stopped.wait(), 3.0)
         callback, args = handlers[signal.SIGTERM]
         callback(*args)

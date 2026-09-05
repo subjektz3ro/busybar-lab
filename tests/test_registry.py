@@ -210,9 +210,11 @@ def _app_env_keys() -> dict[str, set[str]]:
     pattern = re.compile(r'"((?:SKYSTRIP|DSN)_[A-Z0-9_]+)"')
     modules = {
         "skystrip": (
-            "skystrip.py", "skystrip_config.py", "skystrip_lightning.py",
+            "skystrip.py", *(str(path.relative_to(repo / "apps"))
+                             for path in (repo / "apps" / "skystrip_app").rglob("*.py")),
         ),
-        "dsn": ("dsn.py", "dsn_config.py", "dsn_source.py"),
+        "dsn": ("dsn.py", *(str(path.relative_to(repo / "apps"))
+                              for path in (repo / "apps" / "dsn_app").rglob("*.py"))),
     }
     found: dict[str, set[str]] = {}
     for app, prefix in (("skystrip", "SKYSTRIP_"), ("dsn", "DSN_")):
@@ -289,7 +291,7 @@ def _runtime_env_keys() -> set[str]:
     pattern = re.compile(r'"((?:SKYSTRIP|DSN|BARKEEP|BUSYBAR)_[A-Z0-9_]+)"')
     found: set[str] = set()
     for pkg in ("apps", "barkeep", "busybar_dev"):
-        for module in sorted((repo / pkg).glob("*.py")):
+        for module in sorted((repo / pkg).rglob("*.py")):
             found |= set(pattern.findall(module.read_text()))
     return found
 

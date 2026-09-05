@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from astral import Observer
 
 from busybar_viz.adapters.skystrip import SkystripAdapter, _find_checkout, _skystrip
 from busybar_viz.analysis import analyze, required_checks_pass
@@ -95,20 +96,20 @@ def test_adapter_output_does_not_depend_on_cached_renderer_globals(
     monkeypatch,
 ):
     module = _skystrip()
-    preexisting_tz = module.ZoneInfo("America/Los_Angeles")
+    preexisting_tz = module.config.ZoneInfo("America/Los_Angeles")
     # London's published city-centre reference point is a public fixture.
-    preexisting_observer = module.Observer(latitude=51.5074, longitude=-0.1278)
-    monkeypatch.setattr(module, "TZ", preexisting_tz)
-    monkeypatch.setattr(module, "OBSERVER", preexisting_observer)
-    monkeypatch.setattr(module, "UNITS", "c")
+    preexisting_observer = Observer(latitude=51.5074, longitude=-0.1278)
+    monkeypatch.setattr(module.settings, "TZ", preexisting_tz)
+    monkeypatch.setattr(module.settings, "OBSERVER", preexisting_observer)
+    monkeypatch.setattr(module.settings, "UNITS", "c")
 
     first = _render("skystrip/lightning-near").displays[0]
 
     # The adapter fences and restores globals rather than permanently mutating
     # an app module that another test or tool may already be using.
-    assert module.TZ is preexisting_tz
-    assert module.OBSERVER is preexisting_observer
-    assert module.UNITS == "c"
+    assert module.settings.TZ is preexisting_tz
+    assert module.settings.OBSERVER is preexisting_observer
+    assert module.settings.UNITS == "c"
     second = _render("skystrip/lightning-near").displays[0]
     assert [frame.tobytes() for frame in first.frames] == [
         frame.tobytes() for frame in second.frames

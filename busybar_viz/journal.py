@@ -12,6 +12,8 @@ import json
 import re
 import sqlite3
 import uuid
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -158,14 +160,27 @@ class SessionJournal:
             timeout=5,
             isolation_level=None,
         )
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
-        connection.execute("PRAGMA synchronous = FULL")
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 5000")
+            connection.execute("PRAGMA synchronous = FULL")
+        except BaseException:
+            connection.close()
+            raise
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        # SQLite's context manager commits/rolls back but does NOT close.
+        # Keep that transaction behavior and release the handle immediately;
+        # polling must not exhaust file descriptors while waiting for GC.
+        with closing(self._connect()) as connection:
+            with connection:
+                yield connection
+
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute("PRAGMA synchronous = FULL")
             connection.executescript(
@@ -249,7 +264,7 @@ class SessionJournal:
         event_id = _validate_id(event_id or _new_id("evt"), "evt")
         created_at = _now()
         body_json = _json({"title": title}, label="session event")
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 existing_row = connection.execute(
@@ -301,7 +316,7 @@ class SessionJournal:
 
     def get_session(self, session_id: str) -> SessionRecord:
         _validate_id(session_id, "ses")
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM sessions WHERE id = ?", (session_id,)
             ).fetchone()
@@ -315,7 +330,7 @@ class SessionJournal:
         Store garbage collection treats this set as immortal, so it must be
         complete rather than paged: one query over the whole journal.
         """
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 "SELECT artifact_id AS ref FROM events"
                 " WHERE artifact_id IS NOT NULL"
@@ -328,7 +343,7 @@ class SessionJournal:
     def list_sessions(self, *, limit: int = 100) -> tuple[SessionRecord, ...]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise JournalError("session list limit must be between 1 and 500")
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 "SELECT * FROM sessions ORDER BY updated_at DESC, id DESC LIMIT ?",
                 (limit,),
@@ -343,7 +358,7 @@ class SessionJournal:
 
     def find_event(self, event_id: str) -> EventRecord | None:
         _validate_id(event_id, "evt")
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM events WHERE id = ?", (event_id,)
             ).fetchone()
@@ -367,7 +382,7 @@ class SessionJournal:
             raise JournalError("after_revision must be a nonnegative integer")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise JournalError("event list limit must be between 1 and 1000")
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM events
@@ -434,7 +449,7 @@ class SessionJournal:
         event_id = _validate_id(event_id or _new_id("evt"), "evt")
         created_at = _now()
 
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 session_row = connection.execute(
@@ -556,7 +571,7 @@ class SessionJournal:
         event_id = _validate_id(event_id or _new_id("evt"), "evt")
         created_at = _now()
 
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 row = connection.execute(
@@ -629,7 +644,7 @@ class SessionJournal:
         event_id = _new_id("evt")
         created_at = _now()
 
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 row = connection.execute(
@@ -724,7 +739,7 @@ class SessionJournal:
     def reconcile_interrupted_renders(self) -> tuple[EventRecord, ...]:
         """Mark requests abandoned by an earlier server process as failed."""
 
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM events

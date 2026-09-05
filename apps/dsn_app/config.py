@@ -1,19 +1,18 @@
 """Pure configuration and cache-path policy for the DSN app.
 
 This module deliberately does not read ``os.environ`` or load ``.env``.  It
-turns an explicit mapping into one immutable value; ``dsn.py`` owns applying
+turns an explicit mapping into one immutable value; ``settings.py`` owns applying
 that value to its long-running process state.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-import math
 from pathlib import Path
 
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 VIEW_ORDER = ("network", "instrument", "distance")
 NETWORK_STYLES = frozenset({"dishes", "skies", "rows"})
 
@@ -39,8 +38,10 @@ class DsnConfig:
 
 
 def _positive_seconds(
-        raw: str | None, default: float, minimum: float = 1.0,
-        ) -> float:
+    raw: str | None,
+    default: float,
+    minimum: float = 1.0,
+) -> float:
     """A UI ``number`` may be fractional or blank; neither may crash-loop."""
     try:
         value = float(raw or default)
@@ -50,8 +51,9 @@ def _positive_seconds(
 
 
 def resolve_managed_cache_root(
-        raw: str | None, repo_root: Path,
-        ) -> tuple[Path, str]:
+    raw: str | None,
+    repo_root: Path,
+) -> tuple[Path, str]:
     """Resolve the service cache allow-list without making startup fallible."""
     default = repo_root / "cache"
     value = (raw or "").strip()
@@ -64,8 +66,8 @@ def resolve_managed_cache_root(
         return candidate.resolve(), ""
     except (OSError, RuntimeError, ValueError):
         return default.resolve(), (
-            "BUSYBAR_CACHE_DIR is unusable; using the repository cache root "
-            f"{default}")
+            f"BUSYBAR_CACHE_DIR is unusable; using the repository cache root {default}"
+        )
 
 
 def resolve_cache_dir(
@@ -95,10 +97,10 @@ def resolve_cache_dir(
     allowing a config write to create an arbitrary host directory tree.
     """
     cache_root = (
-        managed_cache_root
-        if managed_cache_root is not None
-        else repo_root / "cache"
-    ).expanduser().resolve()
+        (managed_cache_root if managed_cache_root is not None else repo_root / "cache")
+        .expanduser()
+        .resolve()
+    )
     default = cache_root / "dsn"
     value = (raw or "").strip()
     if not value:
@@ -106,8 +108,7 @@ def resolve_cache_dir(
     try:
         candidate = Path(value).expanduser()
         if not candidate.is_absolute():
-            candidate = (
-                cache_root / candidate if managed else repo_root / candidate)
+            candidate = cache_root / candidate if managed else repo_root / candidate
         resolved = candidate.resolve()
     except (OSError, RuntimeError, ValueError):
         # ValueError is the embedded-NUL case. Barkeep's API already rejects
@@ -121,7 +122,8 @@ def resolve_cache_dir(
             f"DSN_CACHE_DIR {value!r} is outside the service-managed cache "
             f"root {cache_root}; rerun deploy/install.sh with "
             "BUSYBAR_CACHE_DIR set if that location is intentional. "
-            f"Using {default}")
+            f"Using {default}"
+        )
     root = repo_root.resolve()
     if resolved == root or root in resolved.parents:
         return resolved, ""
@@ -129,23 +131,26 @@ def resolve_cache_dir(
         return resolved, ""
     return default, (
         f"DSN_CACHE_DIR {value!r} is outside the checkout and does not exist; "
-        f"create it first if you meant it. Using {default}")
+        f"create it first if you meant it. Using {default}"
+    )
 
 
 def parse_runtime_config(
-        values: Mapping[str, str], repo_root: Path = REPO_ROOT,
-        ) -> DsnConfig:
+    values: Mapping[str, str],
+    repo_root: Path = REPO_ROOT,
+) -> DsnConfig:
     """Validate a configuration mapping without reading or mutating process state."""
     view = (values.get("DSN_VIEW") or _DEFAULT_VIEW).strip().lower()
     if view not in VIEW_ORDER:
         view = _DEFAULT_VIEW
     network_style = (
-        values.get("DSN_NETWORK_STYLE") or _DEFAULT_NETWORK_STYLE
-    ).strip().lower()
+        (values.get("DSN_NETWORK_STYLE") or _DEFAULT_NETWORK_STYLE).strip().lower()
+    )
     if network_style not in NETWORK_STYLES:
         network_style = _DEFAULT_NETWORK_STYLE
     managed_cache_root, root_warning = resolve_managed_cache_root(
-        values.get("BUSYBAR_CACHE_DIR"), repo_root)
+        values.get("BUSYBAR_CACHE_DIR"), repo_root
+    )
     cache_dir, cache_warning = resolve_cache_dir(
         values.get("DSN_CACHE_DIR"),
         repo_root,
@@ -154,15 +159,13 @@ def parse_runtime_config(
     )
     return DsnConfig(
         poll_s=_positive_seconds(values.get("DSN_POLL_S"), _DEFAULT_POLL_S),
-        rotate_s=_positive_seconds(
-            values.get("DSN_ROTATE_S"), _DEFAULT_ROTATE_S),
+        rotate_s=_positive_seconds(values.get("DSN_ROTATE_S"), _DEFAULT_ROTATE_S),
         voice=values.get("DSN_VOICE") or _DEFAULT_VOICE,
         default_view=view,
         network_style=network_style,
         managed_cache_root=managed_cache_root,
         cache_dir=cache_dir,
-        warnings=tuple(
-            warning for warning in (root_warning, cache_warning) if warning),
+        warnings=tuple(warning for warning in (root_warning, cache_warning) if warning),
     )
 
 

@@ -14,7 +14,12 @@ from PIL import Image
 from busybar_dev.radar import OM_FRESH_S, RADAR_FRESH_S, STATION_FRESH_S
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app import weather_state as sky_weather_state
+from apps.skystrip_app.providers import radar as sky_providers_radar
+import time
 WALL_NOW = 1_800_000_000.0
 
 
@@ -40,15 +45,15 @@ async def _wait_until(predicate) -> None:
 
 @pytest.mark.asyncio
 async def test_absent_station_preserves_last_good_until_rain_lease_expires():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     now = asyncio.get_running_loop().time()
-    state.weather = skystrip.WeatherState(rain=True, rain_tier=2)
+    state.weather = sky_weather.WeatherState(rain=True, rain_tier=2)
     state.weather_ready.set()
     state.weather_updated_at = now
     state.rain_known = True
     state.rain_at = now
 
-    skystrip.apply_rain(state)
+    sky_weather_state.apply_rain(state)
 
     assert state.station_rain is None
     assert state.station_at is None
@@ -58,8 +63,8 @@ async def test_absent_station_preserves_last_good_until_rain_lease_expires():
 
     # A newer temperature/cloud refresh does not renew precipitation evidence.
     state.weather_updated_at = now
-    state.rain_at = now - skystrip.WEATHER_LEASE_S - 1.0
-    skystrip.apply_rain(state)
+    state.rain_at = now - sky_weather.WEATHER_LEASE_S - 1.0
+    sky_weather_state.apply_rain(state)
 
     # Suppress the stale visual but label it unavailable, never provider-clear.
     assert state.weather.rain is False
@@ -69,9 +74,9 @@ async def test_absent_station_preserves_last_good_until_rain_lease_expires():
 
 @pytest.mark.asyncio
 async def test_stale_station_cannot_reassert_over_global_or_last_good_state():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     now = asyncio.get_running_loop().time()
-    state.weather = skystrip.WeatherState(rain=True, rain_tier=2)
+    state.weather = sky_weather.WeatherState(rain=True, rain_tier=2)
     state.weather_ready.set()
     state.weather_updated_at = now
     state.station_rain = True
@@ -79,14 +84,14 @@ async def test_stale_station_cannot_reassert_over_global_or_last_good_state():
     state.om_rain = False
     state.om_at = now
 
-    skystrip.apply_rain(state)
+    sky_weather_state.apply_rain(state)
 
     assert state.weather.rain is False
     assert state.weather.rain_tier == 1
     assert state.rain_src == "nowcast"
 
     state.om_at = now - OM_FRESH_S
-    skystrip.apply_rain(state)
+    sky_weather_state.apply_rain(state)
 
     assert state.weather.rain is False
     assert state.weather.rain_tier == 1
@@ -111,20 +116,20 @@ async def test_uncovered_mask_invalidates_radar_and_skips_echo_tile(monkeypatch)
             return httpx.Response(200, content=uncovered)
         raise AssertionError(f"radar tile must be skipped without coverage: {request.url}")
 
-    monkeypatch.setattr(skystrip, "LAT", 0.0)
-    monkeypatch.setattr(skystrip, "LON", 0.0)
-    monkeypatch.setattr(skystrip.time, "time", lambda: WALL_NOW)
+    monkeypatch.setattr(sky_settings, "LAT", 0.0)
+    monkeypatch.setattr(sky_settings, "LON", 0.0)
+    monkeypatch.setattr(time, "time", lambda: WALL_NOW)
     monkeypatch.setattr(
-        skystrip.httpx, "AsyncClient", _client_for(handler))
+        httpx, "AsyncClient", _client_for(handler))
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     now = asyncio.get_running_loop().time()
     state.radar_dbz = 50.0
     state.radar_at = now
     state.om_rain = True
     state.om_at = now
 
-    poller = asyncio.create_task(skystrip.poll_radar(state))
+    poller = asyncio.create_task(sky_providers_radar.poll_radar(state))
     try:
         await asyncio.wait_for(
             _wait_until(
@@ -167,17 +172,17 @@ async def test_covered_mask_allows_echo_tile_to_own_rain(monkeypatch):
             return httpx.Response(200, content=echo_png)
         raise AssertionError(f"unexpected request: {request.url}")
 
-    monkeypatch.setattr(skystrip, "LAT", 0.0)
-    monkeypatch.setattr(skystrip, "LON", 0.0)
-    monkeypatch.setattr(skystrip.time, "time", lambda: WALL_NOW)
+    monkeypatch.setattr(sky_settings, "LAT", 0.0)
+    monkeypatch.setattr(sky_settings, "LON", 0.0)
+    monkeypatch.setattr(time, "time", lambda: WALL_NOW)
     monkeypatch.setattr(
-        skystrip.httpx, "AsyncClient", _client_for(handler))
+        httpx, "AsyncClient", _client_for(handler))
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.om_rain = False
     state.om_at = asyncio.get_running_loop().time()
 
-    poller = asyncio.create_task(skystrip.poll_radar(state))
+    poller = asyncio.create_task(sky_providers_radar.poll_radar(state))
     try:
         await asyncio.wait_for(
             _wait_until(lambda: state.rain_src == "radar"),
@@ -219,17 +224,17 @@ async def test_wrong_size_echo_tile_never_gains_radar_authority(monkeypatch):
             return httpx.Response(200, content=wrong_size)
         raise AssertionError(f"unexpected request: {request.url}")
 
-    monkeypatch.setattr(skystrip, "LAT", 0.0)
-    monkeypatch.setattr(skystrip, "LON", 0.0)
-    monkeypatch.setattr(skystrip.time, "time", lambda: WALL_NOW)
+    monkeypatch.setattr(sky_settings, "LAT", 0.0)
+    monkeypatch.setattr(sky_settings, "LON", 0.0)
+    monkeypatch.setattr(time, "time", lambda: WALL_NOW)
     monkeypatch.setattr(
-        skystrip.httpx, "AsyncClient", _client_for(handler))
+        httpx, "AsyncClient", _client_for(handler))
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.om_rain = True
     state.om_at = asyncio.get_running_loop().time()
 
-    poller = asyncio.create_task(skystrip.poll_radar(state))
+    poller = asyncio.create_task(sky_providers_radar.poll_radar(state))
     try:
         await asyncio.wait_for(
             _wait_until(lambda: state.rain_src == "nowcast"), timeout=1.0)
@@ -262,13 +267,13 @@ async def test_stale_cached_frame_preserves_sample_but_falls_through_to_nowcast(
             })
         raise AssertionError("stale frame must not request mask or echo tiles")
 
-    monkeypatch.setattr(skystrip, "LAT", 0.0)
-    monkeypatch.setattr(skystrip, "LON", 0.0)
-    monkeypatch.setattr(skystrip.time, "time", lambda: WALL_NOW)
+    monkeypatch.setattr(sky_settings, "LAT", 0.0)
+    monkeypatch.setattr(sky_settings, "LON", 0.0)
+    monkeypatch.setattr(time, "time", lambda: WALL_NOW)
     monkeypatch.setattr(
-        skystrip.httpx, "AsyncClient", _client_for(handler))
+        httpx, "AsyncClient", _client_for(handler))
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     loop_now = asyncio.get_running_loop().time()
     old_radar_at = loop_now - RADAR_FRESH_S - 10.0
     state.radar_dbz = 50.0
@@ -276,7 +281,7 @@ async def test_stale_cached_frame_preserves_sample_but_falls_through_to_nowcast(
     state.om_rain = True
     state.om_at = loop_now
 
-    poller = asyncio.create_task(skystrip.poll_radar(state))
+    poller = asyncio.create_task(sky_providers_radar.poll_radar(state))
     try:
         await asyncio.wait_for(
             _wait_until(lambda: state.rain_src == "nowcast"), timeout=1.0)
@@ -311,17 +316,17 @@ async def test_invalid_frame_time_never_requests_tiles_or_gains_authority(
             })
         raise AssertionError("invalid frame must not request mask or echo tiles")
 
-    monkeypatch.setattr(skystrip, "LAT", 0.0)
-    monkeypatch.setattr(skystrip, "LON", 0.0)
-    monkeypatch.setattr(skystrip.time, "time", lambda: WALL_NOW)
+    monkeypatch.setattr(sky_settings, "LAT", 0.0)
+    monkeypatch.setattr(sky_settings, "LON", 0.0)
+    monkeypatch.setattr(time, "time", lambda: WALL_NOW)
     monkeypatch.setattr(
-        skystrip.httpx, "AsyncClient", _client_for(handler))
+        httpx, "AsyncClient", _client_for(handler))
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.om_rain = True
     state.om_at = asyncio.get_running_loop().time()
 
-    poller = asyncio.create_task(skystrip.poll_radar(state))
+    poller = asyncio.create_task(sky_providers_radar.poll_radar(state))
     try:
         await asyncio.wait_for(
             _wait_until(lambda: state.rain_src == "nowcast"), timeout=1.0)
@@ -343,18 +348,18 @@ async def test_polar_coordinate_stands_down_without_requesting_edge_tile(
         def __init__(self, *args, **kwargs):
             raise AssertionError("polar coordinates must not request radar")
 
-    monkeypatch.setattr(skystrip, "LAT", 90.0)
-    monkeypatch.setattr(skystrip, "LON", 180.0)
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", ForbiddenClient)
+    monkeypatch.setattr(sky_settings, "LAT", 90.0)
+    monkeypatch.setattr(sky_settings, "LON", 180.0)
+    monkeypatch.setattr(httpx, "AsyncClient", ForbiddenClient)
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     now = asyncio.get_running_loop().time()
     state.radar_dbz = 50.0
     state.radar_at = now
     state.om_rain = True
     state.om_at = now
 
-    poller = asyncio.create_task(skystrip.poll_radar(state))
+    poller = asyncio.create_task(sky_providers_radar.poll_radar(state))
     try:
         await asyncio.wait_for(
             _wait_until(

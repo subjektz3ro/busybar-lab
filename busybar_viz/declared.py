@@ -21,7 +21,7 @@ import re
 import sys
 import tomllib
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from PIL import Image
@@ -38,6 +38,7 @@ from .models import (
     ScenarioSpec,
 )
 from .profiles import DISPLAY_PROFILES, profile_for
+from .sources import app_source_paths
 
 _REGION_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}\Z")
 _INK_COLOR = re.compile(r"#?[0-9A-Fa-f]{6}\Z")
@@ -430,4 +431,7 @@ class DeclaredAdapter:
                 "promote the app to a hand-written adapter for those"
             )
         renderer = _import_renderer(declaration, repo_root)
-        return _wrap_production(declaration, renderer())
+        segment = _wrap_production(declaration, renderer())
+        return replace(segment, source_paths=tuple(sorted({
+            *segment.source_paths, *app_source_paths(repo_root),
+        })))

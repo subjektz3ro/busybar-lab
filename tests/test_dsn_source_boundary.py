@@ -1,4 +1,4 @@
-"""The DSN source trust boundary stays pure and import-compatible."""
+"""DSN has one source-model owner, separate from launchers and runtime I/O."""
 
 from __future__ import annotations
 
@@ -6,39 +6,19 @@ from pathlib import Path
 import subprocess
 import sys
 
-import apps.dsn as dsn
-import apps.dsn_source as source
+from apps.dsn_app import feed, ranges, source
+from apps.dsn_app.render import distance
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_entrypoint_reexports_the_source_contract() -> None:
-    """Existing callers keep one API while ingestion has a distinct owner."""
-    for name in (
-        "DownStream",
-        "UpStream",
-        "Link",
-        "SourceValidationError",
-        "parse_feed",
-        "parse_config",
-        "feed_timestamp_ms",
-        "source_timestamp_valid",
-        "canonical_site_name",
-        "band_key",
-        "_signal_dbm",
-    ):
-        assert getattr(dsn, name) is getattr(source, name)
-
-    for name in (
-        "FEED_XML_MAX_BYTES",
-        "CONFIG_XML_MAX_BYTES",
-        "FEED_DISH_ELEMENTS_MAX",
-        "FEED_SIGNAL_RECORDS_PER_DISH_MAX",
-        "MAX_RANGE_KM",
-        "NOT_SPACECRAFT",
-    ):
-        assert getattr(dsn, name) == getattr(source, name)
+def test_ingestion_ranges_and_rendering_share_the_source_contract() -> None:
+    """Consumers must not create local imitations of the validated model."""
+    assert feed._source is source
+    assert ranges._source is source
+    assert distance._source is source
+    assert source.Link.__module__ == "apps.dsn_app.source"
 
 
 def test_source_parser_builds_the_domain_model_directly() -> None:
@@ -63,17 +43,21 @@ def test_source_parser_builds_the_domain_model_directly() -> None:
     assert links[0].down_streams == (source.DownStream("X", 160.0, -130.0),)
 
 
-def test_standalone_entrypoint_import_uses_the_same_source_objects() -> None:
-    """``python apps/dsn.py`` follows the same seam as ``import apps.dsn``."""
+def test_standalone_and_package_import_share_offline_renderers() -> None:
+    """The stable renderer entry points must not pull in runtime I/O."""
     code = f"""
 import sys
 sys.path.insert(0, {str(ROOT)!r})
 sys.path.insert(0, {str(ROOT / "apps")!r})
 import dsn
-import dsn_source
-assert dsn.Link is dsn_source.Link
-assert dsn.parse_feed is dsn_source.parse_feed
-assert dsn.band_key is dsn_source.band_key
+from apps import dsn as packaged
+from apps.dsn_app.render import examples
+assert dsn.render_visual is packaged.render_visual is examples.render_visual
+assert dsn.render_distance_visual is examples.render_distance_visual
+assert dsn.render_instrument_visual is examples.render_instrument_visual
+assert "apps.dsn_app.runtime" not in sys.modules
+assert "apps.dsn_app.audio.narration" not in sys.modules
+assert "apps.dsn_app.feed" not in sys.modules
 """
 
     subprocess.run(

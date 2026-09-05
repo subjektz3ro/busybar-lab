@@ -40,20 +40,22 @@ its offline preview and device-only `--once` path do not.
 
 ## Code map
 
-The entry-point modules keep rendering, device ownership, and interaction
-sequencing together, because those paths share generation counters and scene
-state. Pure boundaries live beside them:
+The two app scripts are thin launchers; implementation lives in packages with
+explicit owners. Start with the package guide for the app you are changing:
 
 | Module | Owns |
 |---|---|
-| `dsn_config.py` | Immutable runtime configuration and managed cache paths |
-| `dsn_source.py` | Bounded NASA XML ingestion and the remote-source domain models |
-| `skystrip_config.py` | Immutable runtime configuration, paths, and endpoint validation |
-| `skystrip_lightning.py` | Bounded decoding of the optional lightning wire format |
+| [`dsn_app/`](dsn_app/README.md) | NASA feed and history, selection, network/instrument/distance rendering, device leases and narration |
+| [`skystrip_app/`](skystrip_app/README.md) | Weather providers and source precedence, six scenes, input/scrubbing, alerts and reports |
+| Each package's `config.py` / `settings.py` | Pure configuration parsing / explicit startup application |
+| Each package's `runtime.py` | Background tasks, shutdown and shared-state lifetime |
+| Each package's `render/`, `device/`, `audio/` | Pixels, device effects and speech, with one-way dependencies |
 
-The entry points re-export these modules' established names, so existing app,
-test, and visualizer imports continue to work while a reader can start at the
-boundary relevant to the change.
+The script and `python -m apps.<name>` commands are unchanged, as are the
+registered production renderer entry points. Internal functions are imported
+from their owner, not re-exported wholesale through the launcher. The
+[maintainer map](../docs/maintaining.md) links these boundaries to focused tests
+and explains the architectural checks enforced by CI.
 
 ## The controls
 

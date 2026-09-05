@@ -15,7 +15,6 @@ from xml.etree.ElementTree import Element
 
 import defusedxml.ElementTree as ET
 
-
 C_KM_S = 299792.458
 
 # NASA's source clock may be slightly ahead of the host, but accepting an

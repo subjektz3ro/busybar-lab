@@ -84,22 +84,30 @@ def save_gif(name: str, frames: list[Image.Image], ms: int) -> None:
 
 
 def dsn_gifs() -> None:
-    import dsn
+    from apps.dsn_app import config as dsn_config
+    from apps.dsn_app import limits as dsn_limits
+    from apps.dsn_app import settings as dsn_settings
+    from apps.dsn_app import source as dsn_source
+    from apps.dsn_app.render import distance as dsn_render_distance
+    from apps.dsn_app.render import instrument as dsn_render_instrument
+    from apps.dsn_app.render import network_dishes as dsn_render_network_dishes
+    from apps.dsn_app.render import network_skies as dsn_render_network_skies
+    from apps.dsn_app.render import text as dsn_render_text
 
     # Never inherit a maintainer's dotenv or a prior in-process configuration.
-    dsn.apply_runtime_config(dsn.parse_runtime_config({}))
+    dsn_settings.apply_runtime_config(dsn_config.parse_runtime_config({}))
     names = {"vgr2": "Voyager 2", "mro": "Mars Reconnaissance Orbiter"}
     # DSS-43 is a 70 m dish and DSS-36 a 34 m one. This map was built and then
     # never passed, so every demo GIF rendered both at the unknown-size default
     # — the dish icon is size-aware and was drawing a fact it had been given.
     types = {"DSS43": "70M", "DSS36": "34M"}
-    voyager = dsn.Link("Canberra", "DSS43", "VGR2", 32, "X", 160, True,
+    voyager = dsn_source.Link("Canberra", "DSS43", "VGR2", 32, "X", 160, True,
                        2.1e10, 0.0, down_dbm=-155.0, up_kw=18.0, streams=1)
-    mars = dsn.Link("Canberra", "DSS36", "MRO", 30, "X", 1.5e6, True,
+    mars = dsn_source.Link("Canberra", "DSS36", "MRO", 30, "X", 1.5e6, True,
                     2.95e8, 0.0, down_dbm=-120.0, up_kw=5.0, streams=1)
 
     when = datetime(2026, 8, 6, 18, 30, tzinfo=timezone.utc)
-    frames, fps, _ = dsn.render_frames(voyager, when, names, dish_types=types)
+    frames, fps, _ = dsn_render_distance.render_frames(voyager, when, names, dish_types=types)
     save_gif("dsn-browsing.gif", frames, int(1000 / fps))
 
     # Real time: ONE message, followed from the instant of the lock. Sampled
@@ -108,8 +116,8 @@ def dsn_gifs() -> None:
     # message's departure time, and it holds until the message lands.
     light = voyager.light_s
     lock = 1_780_000_000.0
-    step = light / (dsn.TRACK1 - dsn.TRACK0)
-    creep = [dsn.render_frames(voyager,
+    step = light / (dsn_limits.TRACK1 - dsn_limits.TRACK0)
+    creep = [dsn_render_distance.render_frames(voyager,
                                datetime.fromtimestamp(lock + i * step, timezone.utc),
                                names, realtime_since=lock,
                                dish_types=types)[0][0]
@@ -124,10 +132,10 @@ def dsn_gifs() -> None:
     links = [("JNO", 1), ("SOHO", 2), ("MRO", 3), ("VGR2", 4), ("LUCY", 5)]
     picker = []
     for craft, idx in links:
-        img = Image.new("RGB", (dsn.W, dsn.H), (0, 0, 0))
-        dsn._text(img.load(), 4, 5, f"{craft} {idx}/5", (255, 217, 140))
+        img = Image.new("RGB", (dsn_limits.W, dsn_limits.H), (0, 0, 0))
+        dsn_render_text._text(img.load(), 4, 5, f"{craft} {idx}/5", (255, 217, 140))
         picker.extend([img] * 3)
-    picker.extend(dsn.render_frames(mars, when, names, dish_types=types)[0][:20])
+    picker.extend(dsn_render_distance.render_frames(mars, when, names, dish_types=types)[0][:20])
     save_gif("dsn-picker.gif", picker, 150)
 
     # The Network view: the default. A literal site -> physical dish -> live
@@ -135,69 +143,72 @@ def dsn_gifs() -> None:
     # is the thing the Distance view above deliberately cannot show, because
     # it follows one message.
     roster = [
-        dsn.Link("Goldstone", "DSS14", "VGR1", 24, "X", 160, True, 2.5e10,
+        dsn_source.Link("Goldstone", "DSS14", "VGR1", 24, "X", 160, True, 2.5e10,
                  down_dbm=-156.0, up_kw=20.0, streams=1, azimuth=218.0),
         # Two craft on one aperture (MSPA), so Focus below has co-dish links
         # to show rather than a dish carrying one contact.
-        dsn.Link("Goldstone", "DSS24", "MRO", 41, "X", 2.0e6, True, 2.9e8,
+        dsn_source.Link("Goldstone", "DSS24", "MRO", 41, "X", 2.0e6, True, 2.9e8,
                  down_dbm=-119.0, up_kw=5.0, streams=2, mspa=True,
                  azimuth=143.0),
-        dsn.Link("Goldstone", "DSS24", "ODY", 41, "X", 1.2e5, False, 2.9e8,
+        dsn_source.Link("Goldstone", "DSS24", "ODY", 41, "X", 1.2e5, False, 2.9e8,
                  down_dbm=-127.0, streams=1, mspa=True, azimuth=143.0),
-        dsn.Link("Goldstone", "DSS26", "MVN", 55, "X", 5.6e5, False, 3.0e8,
+        dsn_source.Link("Goldstone", "DSS26", "MVN", 55, "X", 5.6e5, False, 3.0e8,
                  down_dbm=-124.0, streams=1, azimuth=97.0),
-        dsn.Link("Madrid", "DSS63", "VGR2", 18, "X", 160, True, 2.1e10,
+        dsn_source.Link("Madrid", "DSS63", "VGR2", 18, "X", 160, True, 2.1e10,
                  down_dbm=-155.0, up_kw=18.0, streams=1, azimuth=64.0),
-        dsn.Link("Madrid", "DSS54", "JWST", 62, "K", 2.8e7, False, 1.5e6,
+        dsn_source.Link("Madrid", "DSS54", "JWST", 62, "K", 2.8e7, False, 1.5e6,
                  down_dbm=-118.0, streams=2, azimuth=181.0),
-        dsn.Link("Canberra", "DSS43", "JNO", 33, "X", 0, True, 9.4e8,
+        dsn_source.Link("Canberra", "DSS43", "JNO", 33, "X", 0, True, 9.4e8,
                  down_dbm=-141.0, up_kw=20.0, streams=1, azimuth=305.0),
-        dsn.Link("Canberra", "DSS36", "TESS", 66, "S", 1.6e4, False, 3.0e5,
+        dsn_source.Link("Canberra", "DSS36", "TESS", 66, "S", 1.6e4, False, 3.0e5,
                  down_dbm=-131.0, streams=1, azimuth=12.0),
     ]
-    frames, fps, _ = dsn.render_dish_network_frames(roster)
+    frames, fps, _ = dsn_render_network_dishes.render_dish_network_frames(roster)
     save_gif("dsn-network.gif", frames, int(1000 / fps))
 
     # Selected-dish Focus: what a rested wheel opens. One physical dish, its
     # real aim, and every link sharing it — the thing the roster above counts
     # but cannot show. Goldstone's DSS24 is carrying two.
     focus_key = roster[1].key            # Goldstone DSS24, carrying two
-    frames, fps, _ = dsn.render_dish_focus_frames(roster, names=names,
+    frames, fps, _ = dsn_render_network_dishes.render_dish_focus_frames(roster, names=names,
                                                   selected_key=focus_key)
     save_gif("dsn-focus.gif", frames, int(1000 / fps))
 
     # Three Skies: the same network as three local horizons, one per complex,
     # so elevation is read as height rather than as a number.
-    frames, fps, _ = dsn.render_three_skies_frames(roster, names=names)
+    frames, fps, _ = dsn_render_network_skies.render_three_skies_frames(roster, names=names)
     save_gif("dsn-skies.gif", frames, int(1000 / fps))
 
     # The Instrument view: one selected antenna and contact, in detail. The
     # RF lanes move because the numbers behind them do.
-    frames, fps, _ = dsn.render_instrument_frames(voyager, names=names)
+    frames, fps, _ = dsn_render_instrument.render_instrument_frames(voyager, names=names)
     save_gif("dsn-instrument.gif", frames, int(1000 / fps))
 
 
 def skystrip_gifs() -> None:
-    import skystrip
+    from apps.skystrip_app import config as sky_config
+    from apps.skystrip_app import settings as sky_settings
+    from apps.skystrip_app import weather as sky_weather
+    from apps.skystrip_app.render import scene as sky_render_scene
 
     # Greenwich is a recognisable public fixture, not the maintainer's location.
     # Supplying every location field also prevents import defaults or owner
     # dotenv values from changing documentation output.
-    public_fixture = skystrip.parse_runtime_config({
+    public_fixture = sky_config.parse_runtime_config({
         "SKYSTRIP_LAT": "51.4769",
         "SKYSTRIP_LON": "0.0005",
         "SKYSTRIP_TZ": "Europe/London",
         "SKYSTRIP_UNITS": "c",
         "SKYSTRIP_STYLE": "plain",
     })
-    skystrip.apply_runtime_config(public_fixture)
+    sky_settings.apply_runtime_config(public_fixture)
 
     # A whole day in one loop: solstice dawn to the following dawn, every
     # half hour. The sun's position is real astronomy, so the gradient, the
     # stars appearing and the moon are all doing what they would that day.
-    clear = skystrip.WeatherState(cloud_frac=0.15, temp_c=24.0, wind_kmh=8.0)
-    start = datetime(2026, 6, 21, 4, 0, tzinfo=skystrip.TZ)
-    frames = [skystrip.render_scene(start + timedelta(minutes=30 * i),
+    clear = sky_weather.WeatherState(cloud_frac=0.15, temp_c=24.0, wind_kmh=8.0)
+    start = datetime(2026, 6, 21, 4, 0, tzinfo=sky_settings.TZ)
+    frames = [sky_render_scene.render_scene(start + timedelta(minutes=30 * i),
                                     clear, seed=7, scene="house")
               for i in range(48)]
     save_gif("skystrip-day.gif", frames, 120)
@@ -214,46 +225,46 @@ def skystrip_gifs() -> None:
     lying = {12: 0.18, 1: 0.30, 2: 0.22, 3: 0.05, 11: 0.02}
     frames = []
     for month in range(1, 13):
-        clearish = skystrip.WeatherState(cloud_frac=0.2, temp_c=14.0,
+        clearish = sky_weather.WeatherState(cloud_frac=0.2, temp_c=14.0,
                                          wind_kmh=7.0,
                                          snow_depth_m=lying.get(month, 0.0))
-        when = datetime(2026, month, 15, 15, 0, tzinfo=skystrip.TZ)
+        when = datetime(2026, month, 15, 15, 0, tzinfo=sky_settings.TZ)
         for i in range(3):
-            frames.append(skystrip.render_scene(when, clearish, seed=5,
+            frames.append(sky_render_scene.render_scene(when, clearish, seed=5,
                                                 phase=i / 3, scene="grove"))
     save_gif("skystrip-seasons.gif", frames, 260)
 
     # And one hour under weather it is not currently having. Midday rather
     # than dusk so the precipitation is actually visible against the sky.
-    noon = datetime(2026, 11, 3, 13, 30, tzinfo=skystrip.TZ)
+    noon = datetime(2026, 11, 3, 13, 30, tzinfo=sky_settings.TZ)
     weathers = [
-        skystrip.WeatherState(cloud_frac=0.0, temp_c=8.0, wind_kmh=5.0),
-        skystrip.WeatherState(cloud_frac=1.0, temp_c=6.0, wind_kmh=10.0),
-        skystrip.WeatherState(cloud_frac=0.8, rain=True, rain_tier=0,
+        sky_weather.WeatherState(cloud_frac=0.0, temp_c=8.0, wind_kmh=5.0),
+        sky_weather.WeatherState(cloud_frac=1.0, temp_c=6.0, wind_kmh=10.0),
+        sky_weather.WeatherState(cloud_frac=0.8, rain=True, rain_tier=0,
                               temp_c=7.0, wind_kmh=12.0),          # drizzle
-        skystrip.WeatherState(cloud_frac=0.95, rain=True, rain_tier=2,
+        sky_weather.WeatherState(cloud_frac=0.95, rain=True, rain_tier=2,
                               temp_c=5.0, wind_kmh=25.0),          # downpour
-        skystrip.WeatherState(cloud_frac=1.0, rain=True, thunder=True,
+        sky_weather.WeatherState(cloud_frac=1.0, rain=True, thunder=True,
                               temp_c=12.0, wind_kmh=40.0),         # storm
-        skystrip.WeatherState(cloud_frac=1.0, rain=True, thunder=True,
+        sky_weather.WeatherState(cloud_frac=1.0, rain=True, thunder=True,
                               severe=True, severe_event="Severe Thunderstorm",
                               temp_c=14.0, wind_kmh=60.0),         # warned
-        skystrip.WeatherState(cloud_frac=0.9, snow=True, temp_c=-3.0,
+        sky_weather.WeatherState(cloud_frac=0.9, snow=True, temp_c=-3.0,
                               wind_kmh=15.0),                      # snow
         # Falling snow with nothing on the ground is only the first hour of a
         # storm. These two are the rest of it: snow landing, and then the
         # clear cold day afterwards where the sky is done but the ground is
         # not. That second one is the whole reason settled depth is a
         # separate thing from `snow`.
-        skystrip.WeatherState(cloud_frac=0.95, snow=True, temp_c=-4.0,
+        sky_weather.WeatherState(cloud_frac=0.95, snow=True, temp_c=-4.0,
                               wind_kmh=20.0, snow_depth_m=0.12),   # settling
-        skystrip.WeatherState(cloud_frac=0.1, temp_c=-8.0, wind_kmh=6.0,
+        sky_weather.WeatherState(cloud_frac=0.1, temp_c=-8.0, wind_kmh=6.0,
                               snow_depth_m=0.35),                  # the morning after
     ]
     frames = []
     for wx in weathers:
         for i in range(8):
-            frames.append(skystrip.render_scene(noon, wx, seed=7,
+            frames.append(sky_render_scene.render_scene(noon, wx, seed=7,
                                                 phase=i / 8, scene="house"))
     save_gif("skystrip-weather.gif", frames, 130)
 
@@ -264,17 +275,17 @@ def skystrip_gifs() -> None:
     # December, after dark -- the skyline recolour only touches windows that
     # are already lit, so there is nothing to see before dusk. 17:40 local
     # is where this was checked on the device.
-    dusk = datetime(2026, 12, 24, 17, 40, tzinfo=skystrip.TZ)
-    cold_clear = skystrip.WeatherState(cloud_frac=0.15, temp_c=-4.0,
+    dusk = datetime(2026, 12, 24, 17, 40, tzinfo=sky_settings.TZ)
+    cold_clear = sky_weather.WeatherState(cloud_frac=0.15, temp_c=-4.0,
                                        wind_kmh=6.0)
     frames = []
     for scene in ("house", "skyline"):
         for on in (False, True):
-            skystrip.CHRISTMAS_FORCED = on
+            sky_settings.CHRISTMAS_FORCED = on
             for i in range(8):
-                frames.append(skystrip.render_scene(dusk, cold_clear, seed=7,
+                frames.append(sky_render_scene.render_scene(dusk, cold_clear, seed=7,
                                                     phase=i / 8, scene=scene))
-    skystrip.CHRISTMAS_FORCED = None  # don't leave this set for the rest
+    sky_settings.CHRISTMAS_FORCED = None  # don't leave this set for the rest
     save_gif("skystrip-christmas.gif", frames, 130)
 
 
