@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from barkeep import tls as barkeep_tls
 from barkeep import server as barkeep_server
+from barkeep import config_service, configstore
 from barkeep.preview import BarOffline
 from barkeep.registry import AppSpec, ConfigKey
 from barkeep.server import MAX_JSON_BYTES, create_app, tls_upload_allowed
@@ -191,6 +192,72 @@ def test_config_get_put(tmp_path):
 
     bad = client.put("/api/apps/sky/config", json={"values": {"HACK": "x"}})
     assert bad.status_code == 422
+
+
+@pytest.mark.parametrize(("values", "message"), [
+    ([], "values must be an object"),
+    ({"UNDECLARED": "x"}, "undeclared config keys: UNDECLARED"),
+    ({"SKY_VOICE": "bad\nvalue"}, "values must be single-line: SKY_VOICE"),
+    ({"SKY_SCENES": "unknown"}, "SKY_SCENES: not valid choices: unknown"),
+    ({"SKY_SCENES": " , "}, "SKY_SCENES: select at least one"),
+    ({"SKY_UNITS": "kelvin"}, "SKY_UNITS: must be one of: f, c"),
+    ({"SKY_RATE": "nan"}, "SKY_RATE: must be a finite number"),
+])
+def test_config_validation_preserves_actionable_messages(tmp_path, values, message):
+    client, _, config_dir = make_client(tmp_path)
+    assert client.put("/api/apps/sky/config", json={
+        "values": {"SKY_VOICE": "previous"},
+    }).status_code == 200
+    path = config_dir / "sky.env"
+    before = path.read_bytes()
+
+    response = client.put("/api/apps/sky/config", json={"values": values})
+
+    assert response.status_code == 422
+    assert response.json() == {"error": message}
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize(("module", "operation"), [
+    (configstore, "read_env_file"),
+    (configstore, "write_env_file"),
+    (config_service, "validate_submitted_values"),
+    (config_service, "validate_effective_config"),
+])
+@pytest.mark.parametrize("exception_type", [ValueError, OSError])
+def test_config_internal_errors_are_logged_not_returned(
+    tmp_path, monkeypatch, caplog, module, operation, exception_type,
+):
+    client, _, config_dir = make_client(tmp_path)
+    assert client.put("/api/apps/sky/config", json={
+        "values": {"SKY_VOICE": "previous"},
+    }).status_code == 200
+    path = config_dir / "sky.env"
+    before = path.read_bytes()
+    sentinel = "SECRET_TOKEN /private/operator/path Traceback: internal frame"
+
+    def fail(*args, **kwargs):
+        raise exception_type(sentinel)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(module, operation, fail)
+        with caplog.at_level("ERROR", logger="barkeep.server"):
+            response = client.put("/api/apps/sky/config", json={
+                "values": {"SKY_VOICE": "next"},
+            })
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": "could not save configuration; inspect the Barkeep service logs",
+    }
+    assert all(part not in response.text for part in ("SECRET_TOKEN", "/private", "Traceback"))
+    assert sentinel in caplog.text
+    assert path.read_bytes() == before
+    # A failed transaction releases its lock so the next save can succeed.
+    assert client.put("/api/apps/sky/config", json={
+        "values": {"SKY_VOICE": "recovered"},
+    }).status_code == 200
+    assert configstore.read_env_file(path)["SKY_VOICE"] == "recovered"
 
 
 def test_config_file_uses_the_canonical_registry_spec_name(tmp_path):

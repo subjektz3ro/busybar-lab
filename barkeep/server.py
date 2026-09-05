@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from .config_service import ConfigService
+from .config_service import ConfigService, ConfigValidationError
 from .preview import BarOffline
 from .registry import AppSpec
 from .statestore import DesiredState, save_state
@@ -359,8 +359,13 @@ def create_app(supervisor, registry: dict[str, AppSpec], preview,
             return error(404, f"unknown app: {name}")
         try:
             rows = config.update(spec, body.get("values", {}))
-        except ValueError as exc:
-            return error(422, str(exc))
+        except ConfigValidationError as exc:
+            return error(422, exc.public_message)
+        except (ValueError, OSError):
+            log.exception("config update failed for %r", spec.name)
+            return error(
+                500, "could not save configuration; inspect the Barkeep service logs",
+            )
         return {"keys": rows}
 
     # --- TLS admin: replacing the certificate is a paste, not an ssh session.

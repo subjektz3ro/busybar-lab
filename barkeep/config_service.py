@@ -1,6 +1,7 @@
 """Configuration transactions independent of HTTP and process supervision.
 
-The API supplies a resolved registry spec and translates ValueError into 422.
+The API supplies a resolved registry spec and translates ConfigValidationError
+into 422 using its explicit public message, never arbitrary exception text.
 Normalization, layer validation and persistence stay here, so another caller
 can use exactly the same rules. One service belongs to one Barkeep daemon.
 """
@@ -16,21 +17,33 @@ from .config_validation import validate_effective_config, validate_submitted_val
 from .registry import AppSpec
 
 
+class ConfigValidationError(ValueError):
+    """An intentional validation rejection with feedback safe for the editor.
+
+    Raise only for checks whose messages are authored for API callers. Do not
+    wrap storage or other internal exceptions in this type.
+    """
+
+    def __init__(self, public_message: str) -> None:
+        super().__init__(public_message)
+        self.public_message = public_message
+
+
 def prepare_config_update(
     spec: AppSpec, values: object, current: Mapping[str, str],
     shared: Mapping[str, str],
 ) -> dict[str, str]:
     """Build a complete validated candidate without changing any input."""
     if not isinstance(values, dict):
-        raise ValueError("values must be an object")
+        raise ConfigValidationError("values must be an object")
     declared = {key.name for key in spec.config}
     unknown = sorted(set(values) - declared)
     if unknown:
-        raise ValueError(f"undeclared config keys: {', '.join(unknown)}")
+        raise ConfigValidationError(f"undeclared config keys: {', '.join(unknown)}")
     coerced = {key: str(value) for key, value in values.items()}
     bad = sorted(key for key, value in coerced.items() if not is_single_line(value))
     if bad:
-        raise ValueError(f"values must be single-line: {', '.join(bad)}")
+        raise ConfigValidationError(f"values must be single-line: {', '.join(bad)}")
 
     for key in spec.config:
         if key.type != "multiselect" or key.name not in coerced:
@@ -38,14 +51,14 @@ def prepare_config_update(
         selected, unknown = configstore.normalize_multiselect(
             coerced[key.name], key.choices)
         if unknown:
-            raise ValueError(f"{key.name}: not valid choices: {', '.join(unknown)}")
+            raise ConfigValidationError(f"{key.name}: not valid choices: {', '.join(unknown)}")
         if not selected:
-            raise ValueError(f"{key.name}: select at least one")
+            raise ConfigValidationError(f"{key.name}: select at least one")
         coerced[key.name] = ",".join(selected)
 
     validation_error = validate_submitted_values(spec, coerced)
     if validation_error:
-        raise ValueError(validation_error)
+        raise ConfigValidationError(validation_error)
 
     blankable = {key.name for key in spec.config if key.blank_is_value}
     merged = dict(current)
@@ -56,7 +69,7 @@ def prepare_config_update(
             merged[key] = value
     validation_error = validate_effective_config(spec, merged, shared)
     if validation_error:
-        raise ValueError(validation_error)
+        raise ConfigValidationError(validation_error)
     return merged
 
 

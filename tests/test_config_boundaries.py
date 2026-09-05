@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from barkeep.configstore import child_env, parse_env_text, read_env_file, write_env_file
-from barkeep.config_service import prepare_config_update
+from barkeep.config_service import ConfigValidationError, prepare_config_update
 from barkeep import configstore, server
 from barkeep.registry import AppSpec, ConfigKey
 from barkeep.server import create_app
@@ -117,7 +117,7 @@ def test_failed_candidate_leaves_input_layers_untouched():
     current = {"EXAMPLE_TEXT": "previous", "EXAMPLE_RATE": "20"}
     submitted = {"EXAMPLE_TEXT": "new", "EXAMPLE_RATE": "nan"}
     shared = {"EXAMPLE_RATE": "10"}
-    with pytest.raises(ValueError, match="finite"):
+    with pytest.raises(ConfigValidationError, match="finite"):
         prepare_config_update(SPEC, submitted, current, shared)
     assert current == {"EXAMPLE_TEXT": "previous", "EXAMPLE_RATE": "20"}
     assert submitted == {"EXAMPLE_TEXT": "new", "EXAMPLE_RATE": "nan"}

@@ -85,6 +85,12 @@ do not run multiple Barkeep writers against the same config directory.
 `prepare_config_update` is the pure candidate-building seam and does not
 mutate submitted, shared, or current values.
 
+Intentional config rejections raise `ConfigValidationError` with an authored
+`public_message`; the route returns that feedback with HTTP 422. Never wrap
+internal exceptions in this type or return their string representations.
+Unexpected config `ValueError` and storage `OSError` failures are logged by
+the service's HTTP adapter and receive a generic HTTP 500 response.
+
 Config rules must agree with the parser: every separator recognized by
 `str.splitlines()`, plus NUL, is invalid in a machine-written value. Only
 registry-declared per-app overrides reach a child. The owner's base process
