@@ -481,6 +481,32 @@ def test_tls_diagnostic_accepts_real_runtime_certificates_without_mutating_them(
     ]
 
 
+def test_web_probe_reloads_a_certificate_generated_during_startup(
+    config_root, monkeypatch, tls_pair
+):
+    cert, key = tls_pair
+    pending_cert = cert.rename(config_root / "pending.crt")
+    pending_key = key.rename(config_root / "pending.key")
+    calls = []
+
+    def serve(request):
+        calls.append(request)
+        if len(calls) == 1:
+            pending_cert.rename(cert)
+            pending_key.rename(key)
+            raise httpx.ConnectError("server was generating its certificate")
+        if options["verify"].check_hostname:
+            raise httpx.ConnectError("old context cannot trust the new certificate")
+        return httpx.Response(
+            200, content=(ROOT / "barkeep/static/index.html").read_bytes()
+        )
+
+    options = web_with(monkeypatch, serve)
+    assert diagnostic.web_probe(config_root, {"BARKEEP_TLS": "1"}).level == "PASS"
+    assert len(calls) == 2
+    assert options["verify"].verify_mode == ssl.CERT_REQUIRED
+
+
 def test_device_probe_wire_contract_is_only_get_version(monkeypatch):
     requests = []
 

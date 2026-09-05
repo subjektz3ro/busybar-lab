@@ -60,21 +60,23 @@ def device_probe(values: Mapping[str, str]) -> Finding:
 
 
 def web_probe(root: Path, values: Mapping[str, str]) -> Finding:
-    target = web_target(root, values)
-    context = ssl.create_default_context()
-    if target.certificate:
-        # Trust the operator's on-disk server certificate, not arbitrary TLS.
-        # The generated certificate names 'barkeep', not the loopback address.
-        context.load_verify_locations(cafile=str(target.certificate))
-        context.check_hostname = False
-        context.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+    deadline = time.monotonic() + WEB_READY_TIMEOUT_S
     try:
-        with httpx.Client(
-            timeout=2.0, trust_env=False, verify=context, follow_redirects=False
-        ) as client:
-            deadline = time.monotonic() + WEB_READY_TIMEOUT_S
-            while True:
-                try:
+        while True:
+            # Barkeep may finish generating its first certificate after this
+            # probe starts. Resolve trust again on retry, without generating it
+            # ourselves or ever weakening certificate verification.
+            target = web_target(root, values)
+            context = ssl.create_default_context()
+            if target.certificate:
+                # The generated certificate names 'barkeep', not loopback.
+                context.load_verify_locations(cafile=str(target.certificate))
+                context.check_hostname = False
+                context.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+            try:
+                with httpx.Client(
+                    timeout=2.0, trust_env=False, verify=context, follow_redirects=False
+                ) as client:
                     # Root UI is public even with BARKEEP_TOKEN. Never transmit
                     # a credential or follow a redirect to diagnose readiness.
                     with client.stream("GET", target.url + "/") as response:
@@ -100,11 +102,11 @@ def web_probe(root: Path, values: Mapping[str, str]) -> Finding:
                         "PASS",
                         "Barkeep's web page responds on this computer. Remote-browser access still needs a tunnel or deliberate LAN setup.",
                     )
-                except httpx.TransportError:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise
-                    time.sleep(min(0.25, remaining))
+            except httpx.TransportError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(0.25, remaining))
     except httpx.TransportError:
         return Finding(
             "FAIL",
