@@ -16,7 +16,19 @@ import pytest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app.device import ambient as sky_device_ambient
+from apps.skystrip_app.device import display as sky_device_display
+from apps.skystrip_app.device import effects as sky_device_effects
+from apps.skystrip_app.providers import lightning as sky_providers_lightning
+from apps.skystrip_app.render import art as sky_render_art
+from apps.skystrip_app.render import effects as sky_render_effects
+from apps.skystrip_app.render import scene as sky_render_scene
+from apps.skystrip_app.render import status as sky_render_status
+from busybar_dev import anim
+import random
 
 
 NOW = datetime(2026, 1, 15, 6, 0, tzinfo=timezone.utc)
@@ -31,13 +43,13 @@ def _status_ink(now: datetime, phase: float) -> set[tuple[int, int]]:
     if phase >= 0.7:
         text = f"{round(10.0 * 9 / 5 + 32)}°"
     else:
-        text = skystrip.clock_str(now)
+        text = sky_render_status.clock_str(now)
     coordinates: set[tuple[int, int]] = set()
     # Mirrors _bake_status: text centered in the corner's reserved span.
-    text_w = sum(len(skystrip.DIGITS_3X5[ch][0]) + 1 for ch in text) - 1
-    cursor = max(1, (skystrip.STATUS_CARD_W - text_w) // 2)
+    text_w = sum(len(sky_render_art.DIGITS_3X5[ch][0]) + 1 for ch in text) - 1
+    cursor = max(1, (sky_limits.STATUS_CARD_W - text_w) // 2)
     for character in text:
-        glyph = skystrip.DIGITS_3X5[character]
+        glyph = sky_render_art.DIGITS_3X5[character]
         for row_index, row in enumerate(glyph):
             for column_index, bit in enumerate(row):
                 if bit == "1":
@@ -60,8 +72,8 @@ def _assert_backdrop_only(
     # composed after backdrop lightning.  They are a stable semantic mask,
     # independent of whatever color the sky happens to have tonight.
     foreground = {
-        *((x, y) for x, y, _color in skystrip.HOUSE_SPRITE),
-        *((x, 15) for x in range(skystrip.W)),
+        *((x, y) for x, y, _color in sky_render_art.HOUSE_SPRITE),
+        *((x, 15) for x in range(sky_limits.W)),
         *_status_ink(now, phase),
     }
     assert all(dark.getpixel(point) == lit.getpixel(point)
@@ -83,22 +95,22 @@ def _assert_backdrop_only(
     near_white = sum(
         min(pixel) >= 245 for pixel in lit.get_flattened_data()
     )
-    assert near_white < skystrip.W * skystrip.H * 0.10
+    assert near_white < sky_limits.W * sky_limits.H * 0.10
 
 
 def test_explicit_strike_brightens_only_the_sky_backdrop(monkeypatch):
-    monkeypatch.setattr(skystrip, "elevation", lambda *_args: -12.0)
-    weather = skystrip.WeatherState(
+    monkeypatch.setattr(sky_render_scene, "elevation", lambda *_args: -12.0)
+    weather = sky_weather.WeatherState(
         cloud_frac=0.65,
         temp_c=10.0,
         humidity=50.0,
         visibility_m=16_000.0,
     )
     phase = 0.20
-    dark = skystrip.render_scene(
+    dark = sky_render_scene.render_scene(
         NOW, weather, seed=17, phase=phase, scene="house", lightning=0.0,
     )
-    lit = skystrip.render_scene(
+    lit = sky_render_scene.render_scene(
         NOW, weather, seed=17, phase=phase, scene="house", lightning=1.0,
     )
 
@@ -113,20 +125,20 @@ def test_observed_thunder_loop_has_no_synthetic_lightning(monkeypatch):
     Normal moving rain may perturb a few pixels here; it must never create the
     broad luminance jump of the removed recurring sheet-lightning frames.
     """
-    monkeypatch.setattr(skystrip, "elevation", lambda *_args: -12.0)
-    weather = skystrip.WeatherState(
+    monkeypatch.setattr(sky_render_scene, "elevation", lambda *_args: -12.0)
+    weather = sky_weather.WeatherState(
         cloud_frac=1.0,
         thunder=True,
         temp_c=10.0,
         humidity=50.0,
         visibility_m=16_000.0,
     )
-    frames = skystrip.render_loop_frames(
+    frames = sky_render_scene.render_loop_frames(
         NOW,
         weather,
         seed=17,
         scene="house",
-        n_frames=skystrip.ANIM_FRAMES,
+        n_frames=sky_limits.ANIM_FRAMES,
     )
     sky = [(x, y) for y in range(0, 7) for x in range(24, 47)]
     means = [
@@ -139,23 +151,23 @@ def test_observed_thunder_loop_has_no_synthetic_lightning(monkeypatch):
 def test_lightning_segment_is_deterministic_and_owns_near_led_policy(
     monkeypatch,
 ):
-    monkeypatch.setattr(skystrip, "render_scene", _fake_scene)
-    weather = skystrip.WeatherState(cloud_frac=1.0, thunder=True)
+    monkeypatch.setattr(sky_render_scene, "render_scene", _fake_scene)
+    weather = sky_weather.WeatherState(cloud_frac=1.0, thunder=True)
     kwargs = {
         "phase0": 0.25,
         "scene": "house",
-        "dist_km": skystrip.STRIKE_NEAR_KM,
+        "dist_km": sky_limits.STRIKE_NEAR_KM,
     }
 
-    first = skystrip.render_lightning_segment(NOW, weather, 17, **kwargs)
-    second = skystrip.render_lightning_segment(NOW, weather, 17, **kwargs)
-    distant = skystrip.render_lightning_segment(
+    first = sky_render_effects.render_lightning_segment(NOW, weather, 17, **kwargs)
+    second = sky_render_effects.render_lightning_segment(NOW, weather, 17, **kwargs)
+    distant = sky_render_effects.render_lightning_segment(
         NOW,
         weather,
         17,
         phase0=0.25,
         scene="house",
-        dist_km=skystrip.STRIKE_NEAR_KM + 0.01,
+        dist_km=sky_limits.STRIKE_NEAR_KM + 0.01,
     )
 
     assert isinstance(first.frames, tuple)
@@ -173,7 +185,7 @@ def test_lightning_segment_is_deterministic_and_owns_near_led_policy(
 
 
 def test_led_ping_draw_is_transparent_after_busylib_serialization():
-    payload = skystrip._led_ping_payload("#3377EEFF")
+    payload = sky_device_ambient._led_ping_payload("#3377EEFF")
     rectangle = payload.elements[0]
 
     assert rectangle.fill_colors == ["#00000000"]
@@ -203,28 +215,28 @@ def test_lightning_segment_fills_lease_with_original_pulse_and_moving_tail(
         phase_color = round(phase * 10_000) % 256
         return Image.new(
             "RGB",
-            (skystrip.W, skystrip.H),
+            (sky_limits.W, sky_limits.H),
             (phase_color, round(lightning * 255), 0),
         )
 
-    monkeypatch.setattr(skystrip, "render_scene", capture_scene)
-    distance = skystrip.STRIKE_NEAR_KM
+    monkeypatch.setattr(sky_render_scene, "render_scene", capture_scene)
+    distance = sky_limits.STRIKE_NEAR_KM
     phase0 = 0.20
-    segment = skystrip.render_lightning_segment(
+    segment = sky_render_effects.render_lightning_segment(
         NOW,
-        skystrip.WeatherState(cloud_frac=1.0, thunder=True),
+        sky_weather.WeatherState(cloud_frac=1.0, thunder=True),
         17,
         phase0=phase0,
         scene="house",
         dist_km=distance,
     )
 
-    assert segment.fps == skystrip.FLASH_ANIM_FPS == 12
-    assert segment.timeout_s == skystrip.FLASH_ELEMENT_TIMEOUT_S == 2
+    assert segment.fps == sky_limits.FLASH_ANIM_FPS == 12
+    assert segment.timeout_s == sky_limits.FLASH_ELEMENT_TIMEOUT_S == 2
     assert len(segment.frames) == segment.fps * segment.timeout_s == 24
 
     peak = 0.42 + 0.58 * (
-        1.0 - distance / skystrip.STRIKE_RADIUS_KM
+        1.0 - distance / sky_limits.STRIKE_RADIUS_KM
     )
     assert [lightning for _phase, lightning in calls[:6]] == pytest.approx([
         0.0,
@@ -236,7 +248,7 @@ def test_lightning_segment_fills_lease_with_original_pulse_and_moving_tail(
     ])
     assert [lightning for _phase, lightning in calls[6:]] == [0.0] * 18
 
-    loop_duration_s = skystrip.ANIM_FRAMES / skystrip.ANIM_FPS
+    loop_duration_s = sky_limits.ANIM_FRAMES / sky_limits.ANIM_FPS
     phase_step = 1.0 / (loop_duration_s * segment.fps)
     assert [phase for phase, _lightning in calls] == pytest.approx([
         (phase0 + index * phase_step) % 1.0
@@ -284,8 +296,8 @@ def _fake_scene(
 ) -> Image.Image:
     del phase, scene, scrubbed
     sky = 20 + round(lightning * 120)
-    image = Image.new("RGB", (skystrip.W, skystrip.H), (sky, sky, sky + 10))
-    for x in range(skystrip.W):
+    image = Image.new("RGB", (sky_limits.W, sky_limits.H), (sky, sky, sky + 10))
+    for x in range(sky_limits.W):
         image.putpixel((x, 15), (18, 42, 16))
     return image
 
@@ -302,7 +314,7 @@ def _capture_encoder(monkeypatch):
         encoded.append((copies, fps))
         return b"bicycle0" + bytes([len(encoded)])
 
-    monkeypatch.setattr(skystrip.anim, "encode_anim", capture)
+    monkeypatch.setattr(anim, "encode_anim", capture)
     return encoded
 
 
@@ -313,31 +325,31 @@ def _mark_live_scene(state) -> None:
 
 
 def test_flash_is_one_native_animation_with_near_only_top_led(monkeypatch):
-    monkeypatch.setattr(skystrip, "render_scene", _fake_scene)
+    monkeypatch.setattr(sky_render_scene, "render_scene", _fake_scene)
     sleeps: list[float] = []
 
     async def record_sleep(seconds: float) -> None:
         sleeps.append(seconds)
         bar.operations.append(("sleep", seconds))
 
-    monkeypatch.setattr(skystrip.asyncio, "sleep", record_sleep)
+    monkeypatch.setattr(asyncio, "sleep", record_sleep)
     rendered = []
-    render_segment = skystrip.render_lightning_segment
+    render_segment = sky_render_effects.render_lightning_segment
 
     def capture_segment(*args, **kwargs):
         segment = render_segment(*args, **kwargs)
         rendered.append(segment)
         return segment
 
-    monkeypatch.setattr(skystrip, "render_lightning_segment", capture_segment)
+    monkeypatch.setattr(sky_render_effects, "render_lightning_segment", capture_segment)
     encoded = _capture_encoder(monkeypatch)
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     bar = EffectBar()
 
     async def scenario():
         _mark_live_scene(state)
-        await skystrip.flash(bar, state, skystrip.STRIKE_NEAR_KM)
-        await skystrip.flash(bar, state, 40.0)
+        await sky_device_effects.flash(bar, state, sky_limits.STRIKE_NEAR_KM)
+        await sky_device_effects.flash(bar, state, 40.0)
 
     asyncio.run(scenario())
 
@@ -390,31 +402,31 @@ def test_flash_is_one_native_animation_with_near_only_top_led(monkeypatch):
             (
                 "sleep",
                 rendered[index - 1].timeout_s
-                + skystrip.FLASH_ASSET_RETIRE_GRACE_S,
+                + sky_limits.FLASH_ASSET_RETIRE_GRACE_S,
             ),
-            ("remove", f"/ext/user_assets/{skystrip.APP_NAME}/{filename}"),
+            ("remove", f"/ext/user_assets/{sky_limits.APP_NAME}/{filename}"),
         ])
     assert bar.operations == expected_operations
     assert sleeps == pytest.approx([
-        segment.timeout_s + skystrip.FLASH_ASSET_RETIRE_GRACE_S
+        segment.timeout_s + sky_limits.FLASH_ASSET_RETIRE_GRACE_S
         for segment in rendered
     ])
 
 
 def test_stale_queued_strike_is_not_replayed_after_weather_recovers():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
 
     async def scenario():
         now = asyncio.get_running_loop().time()
         # The strike arrived while no fresh scene was eligible to show it.
-        skystrip._enqueue_flash(
+        sky_providers_lightning._enqueue_flash(
             state.flash_queue,
             5.0,
-            observed_at=now - skystrip.FLASH_EVENT_TTL_S - 0.1,
+            observed_at=now - sky_limits.FLASH_EVENT_TTL_S - 0.1,
         )
         _mark_live_scene(state)  # weather recovers after the old observation
         event = state.flash_queue.get_nowait()
-        return skystrip._coalesce_fresh_flashes(
+        return sky_providers_lightning._coalesce_fresh_flashes(
             state.flash_queue, event, now=now,
         )
 
@@ -422,24 +434,24 @@ def test_stale_queued_strike_is_not_replayed_after_weather_recovers():
 
 
 def test_stale_near_strike_cannot_override_a_fresh_distant_strike():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
 
     async def scenario():
         now = asyncio.get_running_loop().time()
-        skystrip._enqueue_flash(
+        sky_providers_lightning._enqueue_flash(
             state.flash_queue,
             5.0,
-            observed_at=now - skystrip.FLASH_EVENT_TTL_S - 0.1,
+            observed_at=now - sky_limits.FLASH_EVENT_TTL_S - 0.1,
         )
-        skystrip._enqueue_flash(
+        sky_providers_lightning._enqueue_flash(
             state.flash_queue, 40.0, observed_at=now,
         )
         first = state.flash_queue.get_nowait()
-        event = skystrip._coalesce_fresh_flashes(
+        event = sky_providers_lightning._coalesce_fresh_flashes(
             state.flash_queue, first, now=now,
         )
         assert event is not None
-        return skystrip._flash_distance(event)
+        return sky_providers_lightning._flash_distance(event)
 
     assert asyncio.run(scenario()) == 40.0
 
@@ -448,13 +460,13 @@ def test_push_scene_led_uses_the_same_weather_snapshot_as_its_frames(
     monkeypatch,
 ):
     _capture_encoder(monkeypatch)
-    state = skystrip.SkyState(weather=skystrip.WeatherState(rain=True))
+    state = sky_model.SkyState(weather=sky_weather.WeatherState(rain=True))
     bar = EffectBar(after_upload=lambda: setattr(
-        state, "weather", skystrip.WeatherState(snow=True),
+        state, "weather", sky_weather.WeatherState(snow=True),
     ))
-    frames = [Image.new("RGB", (skystrip.W, skystrip.H), (20, 30, 40))]
+    frames = [Image.new("RGB", (sky_limits.W, sky_limits.H), (20, 30, 40))]
 
-    asyncio.run(skystrip.push_scene(bar, state, NOW, frames))
+    asyncio.run(sky_device_display.push_scene(bar, state, NOW, frames))
 
     assert state.weather.snow is True
     assert len(bar.draws) == 1
@@ -462,38 +474,38 @@ def test_push_scene_led_uses_the_same_weather_snapshot_as_its_frames(
 
 
 def test_stale_flash_view_reclaims_upload_without_drawing(monkeypatch):
-    monkeypatch.setattr(skystrip, "render_scene", _fake_scene)
-    monkeypatch.setattr(skystrip.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(sky_render_scene, "render_scene", _fake_scene)
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
     _capture_encoder(monkeypatch)
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     bar = EffectBar(after_upload=lambda: setattr(
         state, "view_generation", state.view_generation + 1,
     ))
 
     async def scenario():
         _mark_live_scene(state)
-        await skystrip.flash(bar, state, 10.0)
+        await sky_device_effects.flash(bar, state, 10.0)
 
     asyncio.run(scenario())
 
     assert len(bar.uploads) == 1
     filename = bar.uploads[0][1]
     assert bar.draws == []
-    assert bar.removed == [f"/ext/user_assets/{skystrip.APP_NAME}/{filename}"]
+    assert bar.removed == [f"/ext/user_assets/{sky_limits.APP_NAME}/{filename}"]
 
 
 def test_flash_does_not_cover_a_newer_same_scene_asset(monkeypatch):
-    monkeypatch.setattr(skystrip, "render_scene", _fake_scene)
-    monkeypatch.setattr(skystrip.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(sky_render_scene, "render_scene", _fake_scene)
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
     _capture_encoder(monkeypatch)
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     bar = EffectBar(after_upload=lambda: setattr(
         state, "current_scene_file", "sky-newer.anim",
     ))
 
     async def scenario():
         _mark_live_scene(state)
-        await skystrip.flash(bar, state, 10.0)
+        await sky_device_effects.flash(bar, state, 10.0)
 
     asyncio.run(scenario())
 
@@ -501,7 +513,7 @@ def test_flash_does_not_cover_a_newer_same_scene_asset(monkeypatch):
     filename = bar.uploads[0][1]
     assert bar.draws == []
     assert state.current_scene_file == "sky-newer.anim"
-    assert bar.removed == [f"/ext/user_assets/{skystrip.APP_NAME}/{filename}"]
+    assert bar.removed == [f"/ext/user_assets/{sky_limits.APP_NAME}/{filename}"]
 
 
 class _FixedMeteorRandom:
@@ -516,22 +528,20 @@ class _FixedMeteorRandom:
 
 
 def test_meteor_geometry_moves_inside_one_native_animation(monkeypatch):
-    monkeypatch.setattr(skystrip.random, "Random", _FixedMeteorRandom)
-    monkeypatch.setattr(
-        skystrip,
-        "render_scene",
+    monkeypatch.setattr(random, "Random", _FixedMeteorRandom)
+    monkeypatch.setattr(sky_render_scene, "render_scene",
         lambda *_args, **_kwargs: Image.new(
-            "RGB", (skystrip.W, skystrip.H), (0, 0, 0),
+            "RGB", (sky_limits.W, sky_limits.H), (0, 0, 0),
         ),
     )
-    monkeypatch.setattr(skystrip.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
     encoded = _capture_encoder(monkeypatch)
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     bar = EffectBar()
 
     async def scenario():
         _mark_live_scene(state)
-        await skystrip.meteor(bar, state)
+        await sky_device_effects.meteor(bar, state)
 
     asyncio.run(scenario())
 
@@ -540,7 +550,7 @@ def test_meteor_geometry_moves_inside_one_native_animation(monkeypatch):
     assert fps == 12 and len(frames) == 8
     head = (242, 246, 255)
     heads = [
-        next((x, y) for y in range(skystrip.H) for x in range(skystrip.W)
+        next((x, y) for y in range(sky_limits.H) for x in range(sky_limits.W)
              if frame.getpixel((x, y)) == head)
         for frame in frames
     ]
@@ -555,36 +565,36 @@ def test_meteor_geometry_moves_inside_one_native_animation(monkeypatch):
 
 
 def test_alert_arriving_during_meteor_upload_reclaims_it(monkeypatch):
-    monkeypatch.setattr(skystrip.random, "Random", _FixedMeteorRandom)
-    monkeypatch.setattr(skystrip, "render_scene", _fake_scene)
-    monkeypatch.setattr(skystrip.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(random, "Random", _FixedMeteorRandom)
+    monkeypatch.setattr(sky_render_scene, "render_scene", _fake_scene)
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
     _capture_encoder(monkeypatch)
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     marker = object()
     bar = EffectBar(after_upload=lambda: setattr(state, "visual_alert", marker))
 
     async def scenario():
         _mark_live_scene(state)
-        await skystrip.meteor(bar, state)
+        await sky_device_effects.meteor(bar, state)
 
     asyncio.run(scenario())
 
     assert len(bar.uploads) == 1
     filename = bar.uploads[0][1]
     assert bar.draws == []
-    assert bar.removed == [f"/ext/user_assets/{skystrip.APP_NAME}/{filename}"]
+    assert bar.removed == [f"/ext/user_assets/{sky_limits.APP_NAME}/{filename}"]
 
 
 def test_full_scene_effects_stay_dark_before_fresh_live_scene(monkeypatch):
-    monkeypatch.setattr(skystrip, "render_scene", _fake_scene)
-    monkeypatch.setattr(skystrip.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(sky_render_scene, "render_scene", _fake_scene)
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
     _capture_encoder(monkeypatch)
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     bar = EffectBar()
 
     async def scenario():
-        await skystrip.flash(bar, state, 5.0)
-        await skystrip.meteor(bar, state)
+        await sky_device_effects.flash(bar, state, 5.0)
+        await sky_device_effects.meteor(bar, state)
 
     asyncio.run(scenario())
 

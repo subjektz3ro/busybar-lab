@@ -100,7 +100,8 @@ def main() -> None:
     def env_for(name: str) -> dict[str, str]:
         spec = registry[name]
         env = child_env(
-            read_env_file(app_env_path(CONFIG_DIR, spec)), os.environ
+            read_env_file(app_env_path(CONFIG_DIR, spec)), os.environ,
+            allowed_keys={key.name for key in spec.config},
         )
         env["BARKEEP_MANAGED"] = "1"
         return env

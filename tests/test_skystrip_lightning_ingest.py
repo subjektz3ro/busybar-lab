@@ -22,7 +22,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps"))
 
-import skystrip  # noqa: E402
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app.providers import lightning as sky_providers_lightning
 from busybar_dev.device import connect_with_retry  # noqa: E402
 
 
@@ -34,7 +35,7 @@ def test_a_reconnect_floor_exists_and_is_positive():
     clean-close branch reset backoff to 1.0 and reconnected immediately, which
     against a community-run non-commercial service is hammering rather than
     reconnecting (see NOTICE.md)."""
-    assert skystrip.RECONNECT_FLOOR_S > 0
+    assert sky_limits.RECONNECT_FLOOR_S > 0
 
 
 def test_the_clean_close_path_waits_before_reconnecting():
@@ -43,7 +44,7 @@ def test_the_clean_close_path_waits_before_reconnecting():
     370 times."""
     import inspect
 
-    source = inspect.getsource(skystrip.listen_lightning)
+    source = inspect.getsource(sky_providers_lightning.listen_lightning)
     clean = source.split("closed cleanly", 1)
     assert len(clean) == 2, "the clean-close branch moved; re-check the floor"
     assert "RECONNECT_FLOOR_S" in clean[1], (

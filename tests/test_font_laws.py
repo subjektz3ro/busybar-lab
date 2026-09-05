@@ -24,11 +24,11 @@ import busybar_dev.pixel_text as pixel_text
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps"))
 
-import dsn  # noqa: E402
+from apps.dsn_app.render import text as dsn_render_text
 
 FONTS = [
     pytest.param(pixel_text.FONT, pixel_text.glyph_width, id="pixel_text"),
-    pytest.param(dsn.FONT, dsn.glyph_width, id="dsn"),
+    pytest.param(dsn_render_text.FONT, dsn_render_text.glyph_width, id="dsn"),
 ]
 
 

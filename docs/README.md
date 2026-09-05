@@ -8,7 +8,9 @@ build your own, then use the guides below for the part you are changing.
 | Guide | Scope |
 |---|---|
 | [Architecture](architecture.md) | Laptop and always-on-host topology, deployment flow, and module map |
+| [Maintainer map](maintaining.md) | Package ownership, enforced dependency boundaries and focused tests |
 | [Dependencies](dependencies.md) | Runtime packages, speech engines, host prerequisites, and disk budget |
+| [Known issues](known-issues.md) | Firmware-specific limitations, brightness mitigation and opt-out |
 | [Agent cookbook](agent-cookbook.md) | Step-by-step app workflow: create, render, iterate, register, pin, and capture |
 | [BUSY Bar visualizer](busybar-viz.md) | Ad-hoc frame audits, offline renderer checks, evidence bundles, comparisons, and review sessions |
 | [Scene checklist](scenes.md) | Physical-panel and weather-state checks for a new Skystrip scene |
@@ -41,3 +43,7 @@ The canonical device and contributor rules for coding agents are in
 [`docs/design/`](design/) contains selected visual explorations that still help
 explain the shipped displays. They are historical and non-normative: current
 behavior is defined by the app documentation, production code, and tests.
+
+The [maintainer refactor validation record](refactor-validation.md) records the
+scope, regression evidence and verification limits of the September 2026
+package migration.

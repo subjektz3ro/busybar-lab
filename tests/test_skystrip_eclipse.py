@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from apps.skystrip_eclipse import (
+from apps.skystrip_app.eclipse import (
     MOON_RADIUS,
     EclipseState,
     eclipses_near,
@@ -164,7 +164,7 @@ def test_visible_state_is_gated_on_the_moon_being_up():
     under a daylit sky and must not be shown Earth's shadow."""
     from astral import Observer
 
-    from apps.skystrip_eclipse import visible_state
+    from apps.skystrip_app.eclipse import visible_state
 
     chicago = Observer(latitude=CHICAGO_OHARE_LATITUDE,
                        longitude=CHICAGO_OHARE_LONGITUDE)
@@ -176,7 +176,7 @@ def test_visible_state_is_gated_on_the_moon_being_up():
 def test_overlap_area_matches_a_numeric_integration():
     """The circular-lens formula is easy to get subtly wrong at the
     containment boundaries, so check it against brute force."""
-    from apps.skystrip_eclipse import _overlap_area
+    from apps.skystrip_app.eclipse import _overlap_area
 
     for r1, r2, d in ((1.0, 2.7, 1.8), (1.0, 2.7, 0.5), (1.0, 1.0, 1.5),
                       (0.3, 2.0, 1.71), (1.0, 2.7, 3.69)):

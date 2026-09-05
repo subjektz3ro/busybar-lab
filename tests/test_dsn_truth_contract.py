@@ -16,7 +16,25 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-dsn = pytest.importorskip("dsn")
+from apps.dsn_app import feed as dsn_feed
+from apps.dsn_app import history as dsn_history
+from apps.dsn_app import input as dsn_input
+from apps.dsn_app import limits as dsn_limits
+from apps.dsn_app import model as dsn_model
+from apps.dsn_app import ranges as dsn_ranges
+from apps.dsn_app import reconcile as dsn_reconcile
+from apps.dsn_app import selection as dsn_selection
+from apps.dsn_app import settings as dsn_settings
+from apps.dsn_app import source as dsn_source
+from apps.dsn_app import telemetry as dsn_telemetry
+from apps.dsn_app.audio import policy as dsn_audio_policy
+from apps.dsn_app.audio import words as dsn_audio_words
+from apps.dsn_app.device import scene_policy as dsn_device_scene_policy
+from apps.dsn_app.render import distance as dsn_render_distance
+from apps.dsn_app.render import instrument as dsn_render_instrument
+from apps.dsn_app.render import palette as dsn_render_palette
+from apps.dsn_app.render import timing as dsn_render_timing
+import httpx
 
 
 def _duplex_feed(rate: str, craft: str = "ORX") -> bytes:
@@ -57,8 +75,8 @@ def _partial_multistream_feed() -> bytes:
     </dsn>"""
 
 
-def _link(**changes) -> dsn.Link:
-    base = dsn.Link(
+def _link(**changes) -> dsn_source.Link:
+    base = dsn_source.Link(
         complex_name="Canberra",
         dish="DSS43",
         craft="VGR2",
@@ -66,61 +84,61 @@ def _link(**changes) -> dsn.Link:
         band="X",
         down_bps=160.0,
         up_active=True,
-        range_km=dsn.C_KM_S * 2.0,
+        range_km=dsn_source.C_KM_S * 2.0,
         naif=-32,
         down_dbm=-140.0,
         up_kw=18.0,
         streams=1,
         azimuth=120.0,
-        down_streams=(dsn.DownStream("X", 160.0, -140.0),),
+        down_streams=(dsn_source.DownStream("X", 160.0, -140.0),),
         up_band="X",
     )
     return replace(base, **changes)
 
 
-def _seeded_state(link: dsn.Link) -> dsn.State:
-    state = dsn.State()
+def _seeded_state(link: dsn_source.Link) -> dsn_model.State:
+    state = dsn_model.State()
     state.links = [link]
     state.feed_seeded = True
     return state
 
 
 def test_unknown_rate_is_not_the_same_observation_as_explicit_zero_rate():
-    unknown = dsn.parse_feed(_duplex_feed("NaN"))[0]
-    zero = dsn.parse_feed(_duplex_feed("0"))[0]
+    unknown = dsn_source.parse_feed(_duplex_feed("NaN"))[0]
+    zero = dsn_source.parse_feed(_duplex_feed("0"))[0]
 
     # ``active`` says a receive signal exists.  Rate validity is a separate
     # fact: unavailable must not silently become a measured zero.
     assert unknown.down_streams != zero.down_streams
-    assert dsn._instrument_metrics(unknown) != dsn._instrument_metrics(zero)
-    assert dsn._instrument_metrics(unknown)[0][1] != "0BPS"
-    assert dsn._instrument_metrics(zero)[0][1] == "0BPS"
+    assert dsn_render_instrument._instrument_metrics(unknown) != dsn_render_instrument._instrument_metrics(zero)
+    assert dsn_render_instrument._instrument_metrics(unknown)[0][1] != "0BPS"
+    assert dsn_render_instrument._instrument_metrics(zero)[0][1] == "0BPS"
 
 
 @pytest.mark.parametrize("rate", ["NaN", "0"])
 def test_active_downsignal_is_narrated_and_drawn_as_receive_even_without_rate(rate):
-    link = dsn.parse_feed(_duplex_feed(rate))[0]
+    link = dsn_source.parse_feed(_duplex_feed(rate))[0]
 
-    words = dsn.spoken(link, {"orx": "OSIRIS-APEX"}, {"DSS25": "34M"}).lower()
+    words = dsn_audio_words.spoken(link, {"orx": "OSIRIS-APEX"}, {"DSS25": "34M"}).lower()
     assert "listening" in words or "receiv" in words
     assert "femtowatt" in words, "published receive power must not be discarded"
 
-    frames, _, _ = dsn.render_frames(
+    frames, _, _ = dsn_render_distance.render_frames(
         link, datetime(2026, 8, 8, tzinfo=timezone.utc), {"orx": "OSIRIS-APEX"})
-    downlink_colour = dsn.BAND_PULSE["X"]
+    downlink_colour = dsn_render_palette.BAND_PULSE["X"]
     assert any(
-        frame.getpixel((x, dsn.DOWN_Y)) == downlink_colour
+        frame.getpixel((x, dsn_render_timing.DOWN_Y)) == downlink_colour
         for frame in frames
-        for x in range(dsn.TRACK0, dsn.TRACK1 + 1)
+        for x in range(dsn_limits.TRACK0, dsn_limits.TRACK1 + 1)
     ), "an active receive signal must not look like an uplink-only pass"
 
 
 def test_partial_multistream_rate_is_not_narrated_as_no_usable_rate():
-    link = dsn.parse_feed(_partial_multistream_feed())[0]
+    link = dsn_source.parse_feed(_partial_multistream_feed())[0]
     assert {stream.bps for stream in link.down_streams} == {1000.0, None}
     assert link.down_bps is None, "an incomplete set has no defensible total"
 
-    words = dsn.spoken(
+    words = dsn_audio_words.spoken(
         link, {"orx": "OSIRIS-APEX"}, {"DSS25": "34M"}).lower()
     assert "no usable data rate" not in words
     assert "per-record rates" in words
@@ -129,44 +147,44 @@ def test_partial_multistream_rate_is_not_narrated_as_no_usable_rate():
 
 
 def test_multistream_receive_power_is_attributed_to_the_strongest_record():
-    link = dsn.parse_feed(_partial_multistream_feed())[0]
+    link = dsn_source.parse_feed(_partial_multistream_feed())[0]
     assert link.down_dbm == -120.0
 
-    words = dsn.spoken(
+    words = dsn_audio_words.spoken(
         link, {"orx": "OSIRIS-APEX"}, {"DSS25": "34M"}).lower()
     assert "strongest published receive" in words
 
 
 def test_missing_band_record_prevents_contact_wide_band_claims():
-    link = dsn.parse_feed(_partial_multistream_feed())[0]
+    link = dsn_source.parse_feed(_partial_multistream_feed())[0]
 
     assert link.band == ""
     assert link.up_band == ""
-    words = dsn.spoken(
+    words = dsn_audio_words.spoken(
         link, {"orx": "OSIRIS-APEX"}, {"DSS25": "34M"}).lower()
     assert "this is x band" not in words
     assert "the uplink is x band" not in words
 
 
 def test_watch_completion_uses_the_light_time_frozen_at_the_click():
-    original = _link(range_km=dsn.C_KM_S * 2.0)
+    original = _link(range_km=dsn_source.C_KM_S * 2.0)
     state = _seeded_state(original)
-    assert dsn.toggle_realtime(state, now=100.0) is True
+    assert dsn_input.toggle_realtime(state, now=100.0) is True
 
     # A later feed sample may update the geometric range, but it must not move
     # the deadline of the traversal the user already started.
-    refreshed = replace(original, range_km=dsn.C_KM_S * 20.0)
-    dsn.reconcile_links(state, [refreshed], now=101.0)
+    refreshed = replace(original, range_km=dsn_source.C_KM_S * 20.0)
+    dsn_reconcile.reconcile_links(state, [refreshed], now=101.0)
 
-    assert dsn.arrival_due(state, refreshed, 102.01) is True
+    assert dsn_device_scene_policy.arrival_due(state, refreshed, 102.01) is True
 
 
 def test_watch_keeps_its_frozen_scene_when_the_live_pass_ends():
-    original = _link(range_km=dsn.C_KM_S * 20.0)
+    original = _link(range_km=dsn_source.C_KM_S * 20.0)
     state = _seeded_state(original)
-    assert dsn.toggle_realtime(state, now=100.0) is True
+    assert dsn_input.toggle_realtime(state, now=100.0) is True
 
-    dsn.reconcile_links(state, [], now=101.0)
+    dsn_reconcile.reconcile_links(state, [], now=101.0)
 
     assert state.realtime_since == 100.0
     assert state.view == "distance"
@@ -177,17 +195,17 @@ def test_watch_keeps_its_frozen_scene_when_the_live_pass_ends():
 
 
 def test_watch_recovers_its_live_annotation_when_the_contact_returns():
-    original = _link(range_km=dsn.C_KM_S * 20.0)
+    original = _link(range_km=dsn_source.C_KM_S * 20.0)
     state = _seeded_state(original)
-    assert dsn.toggle_realtime(state, now=100.0) is True
+    assert dsn_input.toggle_realtime(state, now=100.0) is True
 
-    dsn.reconcile_links(state, [], now=101.0)
+    dsn_reconcile.reconcile_links(state, [], now=101.0)
     assert state.watch is not None
     assert state.watch.on_air is False
     assert state.watch.live_key is None
 
     refreshed = replace(original, down_bps=320.0)
-    dsn.reconcile_links(state, [refreshed], now=102.0)
+    dsn_reconcile.reconcile_links(state, [refreshed], now=102.0)
 
     assert state.watch.on_air is True
     assert state.watch.live_key == refreshed.key
@@ -198,25 +216,25 @@ def test_watch_recovers_its_live_annotation_when_the_contact_returns():
 
 
 def test_watch_narration_targets_the_live_handoff_not_the_frozen_old_dish():
-    original = _link(dish="DSS43", range_km=dsn.C_KM_S * 20.0)
+    original = _link(dish="DSS43", range_km=dsn_source.C_KM_S * 20.0)
     state = _seeded_state(original)
-    assert dsn.toggle_realtime(state, now=100.0) is True
+    assert dsn_input.toggle_realtime(state, now=100.0) is True
 
     handoff = replace(original, dish="DSS14", down_bps=320.0)
-    dsn.reconcile_links(state, [handoff], now=101.0)
+    dsn_reconcile.reconcile_links(state, [handoff], now=101.0)
 
     assert state.current() is state.watch.link  # journey stays click-time frozen
-    assert dsn.narration_target_link(state) is handoff
-    assert dsn.narration_target_link(state).key == "DSS14/VGR2"
+    assert dsn_selection.narration_target_link(state) is handoff
+    assert dsn_selection.narration_target_link(state).key == "DSS14/VGR2"
 
 
 def test_just_received_but_old_source_snapshot_is_not_fresh():
     now = 1_800_000_000.0
-    state = dsn.State()
-    state.feed_timestamp_ms = int((now - dsn.FEED_STALE_S - 1.0) * 1000)
+    state = dsn_model.State()
+    state.feed_timestamp_ms = int((now - dsn_settings.FEED_STALE_S - 1.0) * 1000)
     state.feed_advanced_at = now
 
-    assert dsn.feed_freshness(state, now=now) != "fresh"
+    assert dsn_telemetry.feed_freshness(state, now=now) != "fresh"
 
 
 def test_seeded_state_quarantines_a_snapshot_without_a_source_timestamp(monkeypatch):
@@ -250,12 +268,12 @@ def test_seeded_state_quarantines_a_snapshot_without_a_source_timestamp(monkeypa
     async def stop_after_poll(_delay):
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(dsn.httpx, "AsyncClient", Client)
-    monkeypatch.setattr(dsn.asyncio, "sleep", stop_after_poll)
-    monkeypatch.setattr(dsn, "append_history", lambda _events: None)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_poll)
+    monkeypatch.setattr(dsn_history, "append_history", lambda _events: None)
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(dsn.poll_feed(state))
+        asyncio.run(dsn_feed.poll_feed(state))
 
     assert [link.key for link in state.links] == [original.key]
     assert state.feed_timestamp_ms == 2_000
@@ -282,12 +300,12 @@ def test_horizons_failure_does_not_enter_the_success_range_cache(monkeypatch):
     async def stop_after_attempt(_delay):
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(dsn.httpx, "AsyncClient", Client)
-    monkeypatch.setattr(dsn.asyncio, "sleep", stop_after_attempt)
-    monkeypatch.setattr(dsn, "save_ranges", lambda _state: None)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_attempt)
+    monkeypatch.setattr(dsn_ranges, "save_ranges", lambda _state: None)
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(dsn.poll_ranges(state))
+        asyncio.run(dsn_ranges.poll_ranges(state))
 
     assert unresolved.naif not in state.ranges
 
@@ -319,24 +337,24 @@ def test_horizons_unavailable_target_gets_a_long_negative_backoff(monkeypatch):
     async def stop_after_attempt(_delay):
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(dsn.httpx, "AsyncClient", Client)
-    monkeypatch.setattr(dsn.asyncio, "sleep", stop_after_attempt)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_attempt)
     before = time.time()
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(dsn.poll_ranges(state))
+        asyncio.run(dsn_ranges.poll_ranges(state))
 
     assert unresolved.naif not in state.ranges
     assert state.range_retry_at[unresolved.naif] >= (
-        before + dsn.RANGE_UNAVAILABLE_RETRY_S)
+        before + dsn_limits.RANGE_UNAVAILABLE_RETRY_S)
     assert unresolved.naif in state.range_unavailable
-    with pytest.raises(dsn.HorizonsUnavailable,
+    with pytest.raises(dsn_ranges.HorizonsUnavailable,
                        match="No such record, positive values only"):
-        dsn.horizons_au(Response.text)
+        dsn_ranges.horizons_au(Response.text)
 
     state.names = {"xmm": "X-ray Multi-Mirror Mission"}
-    assert dsn.narration_ready(state, unresolved)
-    words = dsn.spoken(unresolved, state.names, state.dish_types)
+    assert dsn_audio_policy.narration_ready(state, unresolved)
+    words = dsn_audio_words.spoken(unresolved, state.names, state.dish_types)
     assert "kilometres away" not in words
     assert "signal takes" not in words
 
@@ -367,20 +385,20 @@ def test_malformed_horizons_success_keeps_the_short_transient_retry(monkeypatch)
     async def stop_after_attempt(_delay):
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(dsn.httpx, "AsyncClient", Client)
-    monkeypatch.setattr(dsn.asyncio, "sleep", stop_after_attempt)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_attempt)
     before = time.time()
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(dsn.poll_ranges(state))
+        asyncio.run(dsn_ranges.poll_ranges(state))
 
     assert unresolved.naif not in state.ranges
     assert unresolved.naif not in state.range_unavailable
-    assert before + dsn.RANGE_RETRY_S <= state.range_retry_at[unresolved.naif]
+    assert before + dsn_limits.RANGE_RETRY_S <= state.range_retry_at[unresolved.naif]
     assert state.range_retry_at[unresolved.naif] < (
-        before + dsn.RANGE_UNAVAILABLE_RETRY_S)
+        before + dsn_limits.RANGE_UNAVAILABLE_RETRY_S)
     with pytest.raises(ValueError, match="missing Horizons ephemeris table"):
-        dsn.horizons_au(Response.text)
+        dsn_ranges.horizons_au(Response.text)
 
 
 def test_horizons_range_parser_accepts_the_official_observer_table():
@@ -389,19 +407,19 @@ $$SOE
  2026-Aug-08 06:52:17.184     6.29489242661185  -4.6392252
 $$EOE
 """
-    assert dsn.horizons_au(body) == pytest.approx(6.29489242661185)
+    assert dsn_ranges.horizons_au(body) == pytest.approx(6.29489242661185)
 
 
 @pytest.mark.parametrize("band", ["S", "K", "Ka"])
 def test_band_narration_does_not_claim_band_alone_explains_live_rate(band):
-    words = dsn.band_words(band).lower()
+    words = dsn_audio_words.band_words(band).lower()
     assert f"{band.lower()} band" in words
     for unsupported_claim in ("the reason", "most of why", "slowest"):
         assert unsupported_claim not in words
 
 
 def test_narration_attributes_spacecraft_identity_to_the_source():
-    opening = dsn.spoken(
+    opening = dsn_audio_words.spoken(
         _link(), {"vgr2": "Voyager 2"}, {"DSS43": "70M"}).split(".", 1)[0].lower()
 
     assert any(marker in opening for marker in (
@@ -411,7 +429,7 @@ def test_narration_attributes_spacecraft_identity_to_the_source():
 
 @pytest.mark.parametrize("test_name", ["DOUG", "SHAN"])
 def test_nasa_test_targets_are_not_presented_as_spacecraft(test_name):
-    links = dsn.parse_feed(_duplex_feed("160", craft=test_name))
+    links = dsn_source.parse_feed(_duplex_feed("160", craft=test_name))
     assert links == []
 
 
@@ -429,7 +447,7 @@ def test_directional_ranges_wind_and_every_uplink_record_survive_parsing():
       </dish>
       <timestamp>1786153687000</timestamp>
     </dsn>"""
-    link = dsn.parse_feed(feed)[0]
+    link = dsn_source.parse_feed(feed)[0]
 
     assert link.range_km == 21_000_000_001, "uplink-only must use uplegRange"
     assert link.up_range_km == 21_000_000_001
@@ -445,17 +463,17 @@ def test_directional_ranges_wind_and_every_uplink_record_survive_parsing():
         b'<downSignal active="true" signalType="data" band="X" '
         b'dataRate="160" power="-140" spacecraft="VGR2" spacecraftID="-32"/>'
         b'<target name="VGR2"')
-    duplex = dsn.parse_feed(with_down)[0]
+    duplex = dsn_source.parse_feed(with_down)[0]
     assert duplex.range_km == 21_000_000_099, "receive must use downlegRange"
     assert duplex.down_streams[0].signal_type == "data"
 
 
 def test_round_trip_narration_adds_published_legs_without_promising_an_answer():
     link = _link(
-        range_km=dsn.C_KM_S * 120,
-        up_range_km=dsn.C_KM_S * 180,
+        range_km=dsn_source.C_KM_S * 120,
+        up_range_km=dsn_source.C_KM_S * 180,
     )
-    words = dsn.spoken(link).lower()
+    words = dsn_audio_words.spoken(link).lower()
     assert "light-time alone for an immediate round trip" in words
     assert "5 minutes" in words
     assert "answered" not in words

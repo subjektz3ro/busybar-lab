@@ -7,10 +7,9 @@ checks, and the immutable strike value returned after those checks pass.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import math
-
+from dataclasses import dataclass
 
 LIGHTNING_FRAME_MAX_BYTES = 256 * 1024
 LIGHTNING_DECODED_MAX_CHARS = 512 * 1024
@@ -148,10 +147,7 @@ def parse_lightning_strike(
     seconds, nanoseconds = divmod(epoch_ns, 1_000_000_000)
     source_unix = seconds + nanoseconds / 1_000_000_000
     age = wall_now - source_unix
-    if (
-        age < -LIGHTNING_SOURCE_FUTURE_SKEW_S
-        or age > LIGHTNING_SOURCE_MAX_AGE_S
-    ):
+    if age < -LIGHTNING_SOURCE_FUTURE_SKEW_S or age > LIGHTNING_SOURCE_MAX_AGE_S:
         raise ValueError("lightning time is stale or in the future")
     observed_at = monotonic_now - max(0.0, age)
     return LightningStrike(latitude, longitude, observed_at)

@@ -130,15 +130,15 @@ def test_the_skill_quotes_no_stale_line_count():
 def test_the_siren_timings_match_the_code():
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps"))
-    import skystrip
+    from apps.skystrip_app import limits as sky_limits
 
     skill = _skill()
-    assert f"every {skystrip.SIREN_RETRIGGER_S:.0f}s" in skill, (
+    assert f"every {sky_limits.SIREN_RETRIGGER_S:.0f}s" in skill, (
         f"the skill's retrigger interval is not SIREN_RETRIGGER_S "
-        f"({skystrip.SIREN_RETRIGGER_S})")
-    assert f"for a {skystrip.SIREN_SECONDS}s" in skill, (
+        f"({sky_limits.SIREN_RETRIGGER_S})")
+    assert f"for a {sky_limits.SIREN_SECONDS}s" in skill, (
         f"the skill's clip length is not SIREN_SECONDS "
-        f"({skystrip.SIREN_SECONDS})")
+        f"({sky_limits.SIREN_SECONDS})")
 
 
 def test_the_mistakes_table_does_not_contradict_the_font_law():

@@ -11,7 +11,13 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import config as sky_config
+from apps.skystrip_app import lightning as sky_lightning
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app.providers import lightning as sky_providers_lightning
+import time
 
 
 WALL_NOW = 1_800_000_000.0
@@ -19,20 +25,20 @@ MONOTONIC_NOW = 50_000.0
 
 
 def test_skystrip_reexports_the_extracted_lightning_boundary():
-    import skystrip_lightning
+    from apps.skystrip_app import lightning as skystrip_lightning
 
-    assert skystrip._LightningStrike is skystrip_lightning.LightningStrike
-    assert skystrip._lzw_decode is skystrip_lightning._lzw_decode
-    assert skystrip._decode_lightning_payload is (
+    assert sky_lightning.LightningStrike is skystrip_lightning.LightningStrike
+    assert sky_lightning._lzw_decode is skystrip_lightning._lzw_decode
+    assert sky_lightning._decode_lightning_payload is (
         skystrip_lightning._decode_lightning_payload
     )
-    assert skystrip._parse_lightning_strike is (
+    assert sky_lightning.parse_lightning_strike is (
         skystrip_lightning.parse_lightning_strike
     )
 
 
 def test_lightning_module_has_no_runtime_or_device_dependencies():
-    import skystrip_lightning
+    from apps.skystrip_app import lightning as skystrip_lightning
 
     source_names = set(skystrip_lightning.__dict__)
     assert "asyncio" not in source_names
@@ -74,9 +80,9 @@ def _lzw_encode(text: str) -> str:
 
 
 def test_blank_lightning_endpoint_is_the_safe_default():
-    assert skystrip._validate_lightning_ws_endpoint(None) is None
-    assert skystrip._validate_lightning_ws_endpoint("") is None
-    assert skystrip._validate_lightning_ws_endpoint("   ") is None
+    assert sky_config._validate_lightning_ws_endpoint(None) is None
+    assert sky_config._validate_lightning_ws_endpoint("") is None
+    assert sky_config._validate_lightning_ws_endpoint("   ") is None
 
     import tomllib
 
@@ -101,7 +107,7 @@ def test_secure_websocket_endpoint_may_carry_env_only_credentials():
         "wss://user:password@relay.example/lightning?token=secret",
         "wss://relay.example/private-capability-path",
     ):
-        assert skystrip._validate_lightning_ws_endpoint(endpoint) == endpoint
+        assert sky_config._validate_lightning_ws_endpoint(endpoint) == endpoint
 
     for invalid in (
         "ws://relay.example/lightning",
@@ -114,7 +120,7 @@ def test_secure_websocket_endpoint_may_carry_env_only_credentials():
         "wss://relay.example/lightning\n",
     ):
         with pytest.raises(ValueError, match="secure WebSocket URL") as error:
-            skystrip._validate_lightning_ws_endpoint(invalid)
+            sky_config._validate_lightning_ws_endpoint(invalid)
         assert invalid not in str(error.value)
 
 
@@ -122,16 +128,16 @@ def test_invalid_config_fails_closed_without_disclosing_the_value(
     caplog, tmp_path,
 ):
     secret = "ws://relay.example/lightning?token=do-not-print"
-    config = skystrip.parse_runtime_config(
+    config = sky_config.parse_runtime_config(
         {"SKYSTRIP_LIGHTNING_WS": secret}, tmp_path,
     )
     assert config.lightning_ws is None
-    previous_config = skystrip.RUNTIME_CONFIG
+    previous_config = sky_settings.RUNTIME_CONFIG
     try:
         with caplog.at_level(logging.ERROR, logger="skystrip"):
-            skystrip.apply_runtime_config(config)
+            sky_settings.apply_runtime_config(config)
     finally:
-        skystrip.apply_runtime_config(previous_config)
+        sky_settings.apply_runtime_config(previous_config)
     assert "live lightning is disabled" in caplog.text
     assert secret not in caplog.text
     assert "do-not-print" not in caplog.text
@@ -141,7 +147,7 @@ def test_plain_and_legacy_lzw_strikes_preserve_source_age():
     plain = _payload()
     expected_observed = MONOTONIC_NOW - 2.25
     for raw in (plain.encode(), _lzw_encode(plain)):
-        strike = skystrip._parse_lightning_strike(
+        strike = sky_lightning.parse_lightning_strike(
             raw,
             wall_now=WALL_NOW,
             monotonic_now=MONOTONIC_NOW,
@@ -170,7 +176,7 @@ def test_plain_and_legacy_lzw_strikes_preserve_source_age():
 def test_malformed_or_out_of_domain_coordinates_are_rejected(field, value):
     values = {"lat": 51.5074, "lon": -0.1278, field: value}
     with pytest.raises(ValueError, match="coordinates"):
-        skystrip._parse_lightning_strike(
+        sky_lightning.parse_lightning_strike(
             _payload(lat=values["lat"], lon=values["lon"]),
             wall_now=WALL_NOW,
             monotonic_now=MONOTONIC_NOW,
@@ -193,7 +199,7 @@ def test_timestamp_must_be_a_bounded_integer_nanosecond_epoch(timestamp):
     # Pass an explicit null rather than letting _payload create its default.
     raw = json.dumps({"time": timestamp, "lat": 51.5074, "lon": -0.1278})
     with pytest.raises(ValueError, match="time"):
-        skystrip._parse_lightning_strike(
+        sky_lightning.parse_lightning_strike(
             raw,
             wall_now=WALL_NOW,
             monotonic_now=MONOTONIC_NOW,
@@ -201,11 +207,11 @@ def test_timestamp_must_be_a_bounded_integer_nanosecond_epoch(timestamp):
 
 
 def test_stale_and_future_strikes_are_rejected_before_queueing():
-    stale = _payload(age_s=skystrip.LIGHTNING_SOURCE_MAX_AGE_S + 0.001)
-    future = _payload(age_s=-skystrip.LIGHTNING_SOURCE_FUTURE_SKEW_S - 0.001)
+    stale = _payload(age_s=sky_lightning.LIGHTNING_SOURCE_MAX_AGE_S + 0.001)
+    future = _payload(age_s=-sky_lightning.LIGHTNING_SOURCE_FUTURE_SKEW_S - 0.001)
     for raw in (stale, future):
         with pytest.raises(ValueError, match="stale or in the future"):
-            skystrip._parse_lightning_strike(
+            sky_lightning.parse_lightning_strike(
                 raw,
                 wall_now=WALL_NOW,
                 monotonic_now=MONOTONIC_NOW,
@@ -221,7 +227,7 @@ def test_stale_and_future_strikes_are_rejected_before_queueing():
 )
 def test_local_clock_inputs_must_be_finite(wall_now, monotonic_now):
     with pytest.raises(ValueError, match="clocks must be finite"):
-        skystrip._parse_lightning_strike(
+        sky_lightning.parse_lightning_strike(
             _payload(),
             wall_now=wall_now,
             monotonic_now=monotonic_now,
@@ -232,14 +238,14 @@ def test_lzw_expansion_and_dictionary_work_are_bounded():
     # A, AA, AAA, ... is the classic quadratic expansion path.
     expanding = "A" + "".join(chr(code) for code in range(256, 280))
     with pytest.raises(ValueError, match="budget"):
-        skystrip._lzw_decode(
+        sky_lightning._lzw_decode(
             expanding,
             max_output_chars=32,
             max_entries=1_000,
         )
 
     with pytest.raises(ValueError, match="budget"):
-        skystrip._lzw_decode(
+        sky_lightning._lzw_decode(
             "A" * 20,
             max_output_chars=1_000,
             max_entries=260,
@@ -253,9 +259,9 @@ async def test_disabled_listener_never_opens_a_connection(monkeypatch):
     def unexpected_connect(*_args, **_kwargs):
         raise AssertionError("disabled lightning attempted a connection")
 
-    monkeypatch.setattr(skystrip, "LIGHTNING_WS", None)
+    monkeypatch.setattr(sky_settings, "LIGHTNING_WS", None)
     monkeypatch.setattr(websockets, "connect", unexpected_connect)
-    await skystrip.listen_lightning(skystrip.SkyState())
+    await sky_providers_lightning.listen_lightning(sky_model.SkyState())
 
 
 @pytest.mark.asyncio
@@ -301,26 +307,26 @@ async def test_listener_uses_bounded_contract_and_enqueues_valid_source_time(
     async def stop_after_close(_delay):
         raise asyncio.CancelledError
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     before = asyncio.get_running_loop().time()
-    monkeypatch.setattr(skystrip, "LIGHTNING_WS", endpoint)
-    monkeypatch.setattr(skystrip, "LAT", 51.5074)
-    monkeypatch.setattr(skystrip, "LON", -0.1278)
-    monkeypatch.setattr(skystrip.time, "time", lambda: WALL_NOW)
+    monkeypatch.setattr(sky_settings, "LIGHTNING_WS", endpoint)
+    monkeypatch.setattr(sky_settings, "LAT", 51.5074)
+    monkeypatch.setattr(sky_settings, "LON", -0.1278)
+    monkeypatch.setattr(time, "time", lambda: WALL_NOW)
     monkeypatch.setattr(websockets, "connect", connect)
-    monkeypatch.setattr(skystrip.asyncio, "sleep", stop_after_close)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_close)
 
     with caplog.at_level(logging.WARNING, logger="skystrip"):
         with pytest.raises(asyncio.CancelledError):
-            await skystrip.listen_lightning(state)
+            await sky_providers_lightning.listen_lightning(state)
 
     assert calls == [((endpoint,), {
         "open_timeout": 10,
-        "max_size": skystrip.LIGHTNING_FRAME_MAX_BYTES,
-        "max_queue": skystrip.LIGHTNING_WS_MAX_QUEUE,
-        "logger": skystrip.LIGHTNING_TRANSPORT_LOGGER,
+        "max_size": sky_lightning.LIGHTNING_FRAME_MAX_BYTES,
+        "max_queue": sky_limits.LIGHTNING_WS_MAX_QUEUE,
+        "logger": sky_providers_lightning.LIGHTNING_TRANSPORT_LOGGER,
     })]
-    assert connection.sent == [skystrip.LIGHTNING_SUBSCRIPTION]
+    assert connection.sent == [sky_limits.LIGHTNING_SUBSCRIPTION]
     event = state.flash_queue.get_nowait()
     assert event.distance_km == pytest.approx(0.0)
     assert before - 2.1 <= event.observed_at <= before - 1.9
@@ -350,13 +356,13 @@ async def test_connection_errors_never_log_the_endpoint_or_exception_text(
     async def stop_after_log(_delay):
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(skystrip, "LIGHTNING_WS", endpoint)
+    monkeypatch.setattr(sky_settings, "LIGHTNING_WS", endpoint)
     monkeypatch.setattr(websockets, "connect", fail_connect)
-    monkeypatch.setattr(skystrip.asyncio, "sleep", stop_after_log)
+    monkeypatch.setattr(asyncio, "sleep", stop_after_log)
 
     with caplog.at_level(logging.WARNING, logger="skystrip"):
         with pytest.raises(asyncio.CancelledError):
-            await skystrip.listen_lightning(skystrip.SkyState())
+            await sky_providers_lightning.listen_lightning(sky_model.SkyState())
     assert "RuntimeError" in caplog.text
     assert endpoint not in caplog.text
     assert secret_exception not in caplog.text

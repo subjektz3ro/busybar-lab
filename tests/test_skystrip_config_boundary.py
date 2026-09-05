@@ -10,6 +10,10 @@ from pathlib import Path
 
 import pytest
 
+import asyncio
+from apps.skystrip_app import config as sky_config
+from apps.skystrip_app import settings as sky_settings
+
 
 REPO = Path(__file__).resolve().parents[1]
 APP_DIR = REPO / "apps"
@@ -37,26 +41,17 @@ def _clean_environment() -> dict[str, str]:
     }
 
 
-def test_skystrip_reexports_the_extracted_configuration_boundary():
-    sys.path.insert(0, str(APP_DIR))
-    import skystrip
-    import skystrip_config
+def test_runtime_settings_use_the_pure_configuration_owner():
+    from typing import get_type_hints
 
-    assert skystrip.SkystripConfig is skystrip_config.SkystripConfig
-    assert (
-        skystrip.DEFAULT_SKYSTRIP_CONFIG
-        is skystrip_config.DEFAULT_SKYSTRIP_CONFIG
-    )
-    assert skystrip.parse_runtime_config is skystrip_config.parse_runtime_config
-    assert skystrip.resolve_state_root is skystrip_config.resolve_state_root
-    assert skystrip._validate_lightning_ws_endpoint is (
-        skystrip_config._validate_lightning_ws_endpoint
-    )
+    assert sky_settings._config is sky_config
+    assert get_type_hints(sky_settings.configure_runtime)["return"] is (
+        sky_config.SkystripConfig)
 
 
 def test_configuration_module_is_pure_and_accepts_an_explicit_mapping(tmp_path):
     sys.path.insert(0, str(APP_DIR))
-    import skystrip_config
+    from apps.skystrip_app import config as skystrip_config
 
     values = {
         "SKYSTRIP_LAT": "51.5074",
@@ -76,11 +71,21 @@ def test_configuration_module_is_pure_and_accepts_an_explicit_mapping(tmp_path):
 def test_package_import_resolves_the_same_support_boundaries():
     probe = """
 import json
-import apps.skystrip as skystrip
+from apps.skystrip_app import cli as sky_cli
+from apps.skystrip_app import config as sky_config
+from apps.skystrip_app import lightning as sky_lightning
+from apps.skystrip_app import runtime as sky_runtime
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app.audio import report_assets as sky_audio_report_assets
+from apps.skystrip_app.providers import radar as sky_providers_radar
+from apps.skystrip_app.providers import weather as sky_providers_weather
+from apps.skystrip_app.render import scene as sky_render_scene
+from busybar_dev import load_env
+import asyncio
 print(json.dumps({
-    "config": skystrip.SkystripConfig.__module__,
-    "strike": skystrip._LightningStrike.__module__,
-    "timezone": str(skystrip.ZoneInfo("UTC")),
+    "config": sky_config.SkystripConfig.__module__,
+    "strike": sky_lightning.LightningStrike.__module__,
+    "timezone": str(sky_config.ZoneInfo("UTC")),
 }))
 """
     result = subprocess.run(
@@ -93,8 +98,8 @@ print(json.dumps({
     )
 
     assert json.loads(result.stdout) == {
-        "config": "apps.skystrip_config",
-        "strike": "apps.skystrip_lightning",
+        "config": "apps.skystrip_app.config",
+        "strike": "apps.skystrip_app.lightning",
         "timezone": "UTC",
     }
 
@@ -107,22 +112,32 @@ from unittest.mock import patch
 
 sys.path.insert(0, {str(APP_DIR)!r})
 with patch("busybar_dev.load_env") as load_env:
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
+    from apps.skystrip_app import config as sky_config
+    from apps.skystrip_app import lightning as sky_lightning
+    from apps.skystrip_app import runtime as sky_runtime
+    from apps.skystrip_app import settings as sky_settings
+    from apps.skystrip_app.audio import report_assets as sky_audio_report_assets
+    from apps.skystrip_app.providers import radar as sky_providers_radar
+    from apps.skystrip_app.providers import weather as sky_providers_weather
+    from apps.skystrip_app.render import scene as sky_render_scene
+    from busybar_dev import load_env
+    import asyncio
     print(json.dumps({{
         "load_calls": load_env.call_count,
-        "latitude": skystrip.LAT,
-        "longitude": skystrip.LON,
-        "located": skystrip.LOCATION_SET,
-        "timezone": str(skystrip.TZ),
-        "units": skystrip.UNITS,
-        "style": skystrip.STYLE,
-        "voice": skystrip.REPORT_VOICE,
-        "christmas": skystrip.CHRISTMAS_WINDOW,
-        "station": skystrip.NWS_STATION,
-        "user_agent": skystrip.NWS_UA["User-Agent"],
-        "lightning": skystrip.LIGHTNING_WS,
-        "state_root": str(skystrip.STATE_ROOT),
-        "scenes": list(skystrip.ENABLED_SCENES),
+        "latitude": sky_settings.LAT,
+        "longitude": sky_settings.LON,
+        "located": sky_settings.LOCATION_SET,
+        "timezone": str(sky_settings.TZ),
+        "units": sky_settings.UNITS,
+        "style": sky_settings.STYLE,
+        "voice": sky_settings.REPORT_VOICE,
+        "christmas": sky_settings.CHRISTMAS_WINDOW,
+        "station": sky_settings.NWS_STATION,
+        "user_agent": sky_settings.NWS_UA["User-Agent"],
+        "lightning": sky_settings.LIGHTNING_WS,
+        "state_root": str(sky_settings.STATE_ROOT),
+        "scenes": list(sky_settings.ENABLED_SCENES),
     }}))
 """
     env = _clean_environment()
@@ -178,7 +193,17 @@ import os
 import sys
 
 sys.path.insert(0, {str(APP_DIR)!r})
-import skystrip
+from apps.skystrip_app import cli as sky_cli
+from apps.skystrip_app import config as sky_config
+from apps.skystrip_app import lightning as sky_lightning
+from apps.skystrip_app import runtime as sky_runtime
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app.audio import report_assets as sky_audio_report_assets
+from apps.skystrip_app.providers import radar as sky_providers_radar
+from apps.skystrip_app.providers import weather as sky_providers_weather
+from apps.skystrip_app.render import scene as sky_render_scene
+from busybar_dev import load_env
+import asyncio
 
 calls = []
 def fake_load_env():
@@ -199,27 +224,27 @@ def fake_load_env():
     }})
     return {{}}
 
-skystrip.load_env = fake_load_env
-before_name = skystrip.report_asset_name("same report")
-config = skystrip.configure_runtime()
+sky_settings.load_env = fake_load_env
+before_name = sky_audio_report_assets.report_asset_name("same report")
+config = sky_settings.configure_runtime()
 print(json.dumps({{
     "calls": calls,
-    "frozen": config == skystrip.RUNTIME_CONFIG,
-    "latitude": skystrip.LAT,
-    "longitude": skystrip.LON,
-    "located": skystrip.LOCATION_SET,
-    "timezone": str(skystrip.TZ),
-    "units": skystrip.UNITS,
-    "style": skystrip.STYLE,
-    "voice": skystrip.REPORT_VOICE,
-    "voice_changes_cache_key": before_name != skystrip.report_asset_name("same report"),
-    "christmas": skystrip.CHRISTMAS_WINDOW,
-    "station": skystrip.NWS_STATION,
-    "user_agent": skystrip.NWS_UA["User-Agent"],
-    "lightning_enabled": skystrip.LIGHTNING_WS is not None,
-    "state_root": str(skystrip.STATE_ROOT),
-    "scene_file": str(skystrip.SCENE_FILE),
-    "scenes": list(skystrip.ENABLED_SCENES),
+    "frozen": config == sky_settings.RUNTIME_CONFIG,
+    "latitude": sky_settings.LAT,
+    "longitude": sky_settings.LON,
+    "located": sky_settings.LOCATION_SET,
+    "timezone": str(sky_settings.TZ),
+    "units": sky_settings.UNITS,
+    "style": sky_settings.STYLE,
+    "voice": sky_settings.REPORT_VOICE,
+    "voice_changes_cache_key": before_name != sky_audio_report_assets.report_asset_name("same report"),
+    "christmas": sky_settings.CHRISTMAS_WINDOW,
+    "station": sky_settings.NWS_STATION,
+    "user_agent": sky_settings.NWS_UA["User-Agent"],
+    "lightning_enabled": sky_settings.LIGHTNING_WS is not None,
+    "state_root": str(sky_settings.STATE_ROOT),
+    "scene_file": str(sky_settings.SCENE_FILE),
+    "scenes": list(sky_settings.ENABLED_SCENES),
 }}))
 """
 
@@ -255,25 +280,29 @@ print(json.dumps({{
 
 def test_mapping_parser_is_immutable_and_requires_coordinate_pairs(tmp_path):
     sys.path.insert(0, str(APP_DIR))
-    import skystrip
+    from apps.skystrip_app import config as sky_config
 
-    config = skystrip.parse_runtime_config({}, tmp_path)
+    config = sky_config.parse_runtime_config({}, tmp_path)
     with pytest.raises(AttributeError):
         config.units = "c"
 
     with pytest.raises(ValueError, match="must be configured together"):
-        skystrip.parse_runtime_config({"SKYSTRIP_LAT": "51.5074"}, tmp_path)
+        sky_config.parse_runtime_config({"SKYSTRIP_LAT": "51.5074"}, tmp_path)
 
 
 def test_cli_configures_before_warning_or_runtime(monkeypatch):
     sys.path.insert(0, str(APP_DIR))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
+    from apps.skystrip_app import config as sky_config
+    from apps.skystrip_app import runtime as sky_runtime
+    from apps.skystrip_app import settings as sky_settings
+    import asyncio
 
     events: list[str] = []
 
     def configure():
         events.append("configure")
-        return skystrip.DEFAULT_SKYSTRIP_CONFIG
+        return sky_config.DEFAULT_SKYSTRIP_CONFIG
 
     def warning():
         events.append("warning")
@@ -283,30 +312,29 @@ def test_cli_configures_before_warning_or_runtime(monkeypatch):
         events.append("run")
         coroutine.close()
 
-    monkeypatch.setattr(skystrip, "configure_runtime", configure)
-    monkeypatch.setattr(skystrip, "warn_if_unlocated", warning)
-    monkeypatch.setattr(skystrip.asyncio, "run", run_coroutine)
+    monkeypatch.setattr(sky_settings, "configure_runtime", configure)
+    monkeypatch.setattr(sky_settings, "warn_if_unlocated", warning)
+    monkeypatch.setattr(asyncio, "run", run_coroutine)
     monkeypatch.setattr(sys, "argv", ["skystrip.py", "--once"])
 
-    skystrip.main()
+    sky_cli.main()
 
     assert events == ["configure", "warning", "run"]
-    assert "Programmatic callers must do the same" in (skystrip.run.__doc__ or "")
+    assert "Programmatic callers must do the same" in (sky_runtime.run.__doc__ or "")
 
 
-def _prepare_cli(monkeypatch, skystrip, argv, events):
+def _prepare_cli(monkeypatch, argv, events):
     monkeypatch.delenv("BARKEEP_MANAGED", raising=False)
-    monkeypatch.setattr(
-        skystrip, "configure_runtime", lambda: skystrip.DEFAULT_SKYSTRIP_CONFIG
+    monkeypatch.setattr(sky_settings, "configure_runtime", lambda: sky_config.DEFAULT_SKYSTRIP_CONFIG
     )
-    monkeypatch.setattr(skystrip, "warn_if_unlocated", lambda: "")
+    monkeypatch.setattr(sky_settings, "warn_if_unlocated", lambda: "")
     monkeypatch.setattr(sys, "argv", ["skystrip.py", *argv])
 
     def run_coroutine(coroutine):
         events.append("run")
         coroutine.close()
 
-    monkeypatch.setattr(skystrip.asyncio, "run", run_coroutine)
+    monkeypatch.setattr(asyncio, "run", run_coroutine)
 
 
 @pytest.mark.parametrize(
@@ -317,13 +345,13 @@ def test_standalone_provider_modes_refuse_before_polling(
     monkeypatch, capsys, argv, providers,
 ):
     sys.path.insert(0, str(APP_DIR))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
 
     events: list[str] = []
-    _prepare_cli(monkeypatch, skystrip, argv, events)
+    _prepare_cli(monkeypatch, argv, events)
 
     with pytest.raises(SystemExit) as excinfo:
-        skystrip.main()
+        sky_cli.main()
 
     assert excinfo.value.code == 2
     assert events == []
@@ -337,11 +365,12 @@ def test_standalone_explicit_provider_opt_in_announces_before_runtime(
     monkeypatch, capsys,
 ):
     sys.path.insert(0, str(APP_DIR))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
+    import asyncio
 
     events: list[str] = []
     _prepare_cli(
-        monkeypatch, skystrip, ["--enable-network-providers"], events
+        monkeypatch, ["--enable-network-providers"], events
     )
     notices_before_runtime: list[str] = []
 
@@ -350,9 +379,9 @@ def test_standalone_explicit_provider_opt_in_announces_before_runtime(
         events.append("run")
         coroutine.close()
 
-    monkeypatch.setattr(skystrip.asyncio, "run", run_after_notice)
+    monkeypatch.setattr(asyncio, "run", run_after_notice)
 
-    skystrip.main()
+    sky_cli.main()
 
     assert events == ["run"]
     message = notices_before_runtime[0]
@@ -366,13 +395,13 @@ def test_barkeep_managed_launch_crosses_the_visible_provider_boundary(
     monkeypatch, capsys,
 ):
     sys.path.insert(0, str(APP_DIR))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
 
     events: list[str] = []
-    _prepare_cli(monkeypatch, skystrip, [], events)
+    _prepare_cli(monkeypatch, [], events)
     monkeypatch.setenv("BARKEEP_MANAGED", "1")
 
-    skystrip.main()
+    sky_cli.main()
 
     assert events == ["run"]
     assert "Weather data by Open-Meteo.com" in capsys.readouterr().err
@@ -382,7 +411,10 @@ def test_preview_neither_needs_nor_starts_provider_polling(
     monkeypatch, tmp_path,
 ):
     sys.path.insert(0, str(APP_DIR))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
+    from apps.skystrip_app.providers import radar as sky_providers_radar
+    from apps.skystrip_app.providers import weather as sky_providers_weather
+    from apps.skystrip_app.render import scene as sky_render_scene
 
     class PreviewFrame:
         def resize(self, *_args, **_kwargs):
@@ -393,18 +425,15 @@ def test_preview_neither_needs_nor_starts_provider_polling(
 
     events: list[str] = []
     output = tmp_path / "preview.png"
-    _prepare_cli(monkeypatch, skystrip, ["--preview", str(output)], events)
-    monkeypatch.setattr(
-        skystrip, "render_loop_frames", lambda *_args, **_kwargs: [PreviewFrame()]
+    _prepare_cli(monkeypatch, ["--preview", str(output)], events)
+    monkeypatch.setattr(sky_render_scene, "render_loop_frames", lambda *_args, **_kwargs: [PreviewFrame()]
     )
-    monkeypatch.setattr(
-        skystrip, "poll_nws", lambda *_args: pytest.fail("NWS/Open-Meteo polled")
+    monkeypatch.setattr(sky_providers_weather, "poll_nws", lambda *_args: pytest.fail("NWS/Open-Meteo polled")
     )
-    monkeypatch.setattr(
-        skystrip, "poll_radar", lambda *_args: pytest.fail("RainViewer polled")
+    monkeypatch.setattr(sky_providers_radar, "poll_radar", lambda *_args: pytest.fail("RainViewer polled")
     )
 
-    skystrip.main()
+    sky_cli.main()
 
     assert output.read_bytes() == b"offline preview"
     assert events == []
@@ -412,11 +441,11 @@ def test_preview_neither_needs_nor_starts_provider_polling(
 
 def test_report_notice_names_only_the_provider_that_mode_calls():
     sys.path.insert(0, str(APP_DIR))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
 
-    args = skystrip.build_parser().parse_args(
+    args = sky_cli.build_parser().parse_args(
         ["--report", "--enable-network-providers"]
     )
-    notice = skystrip._provider_notice(args)
-    assert notice == f"Skystrip data: {skystrip.OPEN_METEO_NOTICE}"
+    notice = sky_cli._provider_notice(args)
+    assert notice == f"Skystrip data: {sky_cli.OPEN_METEO_NOTICE}"
     assert "RainViewer" not in notice

@@ -17,7 +17,24 @@ import pytest
 from busylib import exceptions, types
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import alerts as sky_alerts
+from apps.skystrip_app import input as sky_input
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import selection as sky_selection
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app.audio import output as sky_audio_output
+from apps.skystrip_app.audio import report as sky_audio_report
+from apps.skystrip_app.device import alerts as sky_device_alerts
+from apps.skystrip_app.device import assets as sky_device_assets
+from apps.skystrip_app.device import scrubber as sky_device_scrubber
+from apps.skystrip_app.providers import alerts as sky_providers_alerts
+from apps.skystrip_app.render import alerts as sky_render_alerts
+from apps.skystrip_app.render import scene as sky_render_scene
+from busybar_dev import anim
+from busybar_dev.pixel_text import device_text
+from busybar_dev.pixel_text import text_width
+import httpx
 
 
 def _extreme_alert(identifier: str = "urn:alert:a", event: str = "Tornado Warning"):
@@ -142,7 +159,7 @@ class InputSequenceBar(InputBar):
 
 
 async def _run_one_input(bb: InputBar, state) -> None:
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.consumed.wait(), 0.3)
     finally:
@@ -190,7 +207,7 @@ class SnapshotInputBar(InputBar):
 
 
 async def _run_until_scene_change(bb: InputBar, state) -> None:
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(state.scene_change.wait(), 0.5)
     finally:
@@ -204,7 +221,7 @@ async def _run_until_scene_change(bb: InputBar, state) -> None:
     {"input": {"button_event": {"button": "START", "action": "PRESS"}}},
 ])
 async def test_any_available_control_acknowledges_without_also_navigating(update):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     # Model a siren that has actually committed.  Merely having an eligible
     # alert is not audio ownership: audio_stop is global on the device.
@@ -230,7 +247,7 @@ async def test_any_available_control_acknowledges_without_also_navigating(update
 @pytest.mark.parametrize("switch_position", [None, "BUSY", "CUSTOM"])
 async def test_start_fails_closed_without_off_or_a_committed_unknown_view(
         switch_position):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     state.switch_position = switch_position
     before = (state.scene_idx, state.scrub_slot, state.alert_acked)
@@ -247,24 +264,24 @@ async def test_start_fails_closed_without_off_or_a_committed_unknown_view(
 async def test_explicit_off_single_start_cycles_scene_without_snapshot(
         monkeypatch):
     """The explicit selector event remains the authoritative fast path."""
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.switch_position = "OFF"
     before = state.scene_idx
     bb = InputBar({"updates": [{"input": {"button_event": {
         "button": "START", "action": "PRESS"}}}]})
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 0)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 0)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
 
     await _run_until_scene_change(bb, state)
 
-    assert state.scene_idx == (before + 1) % len(skystrip.ENABLED_SCENES)
+    assert state.scene_idx == (before + 1) % len(sky_settings.ENABLED_SCENES)
     # InputBar intentionally has no busy_snapshot method. Reaching the scene
     # proves explicit OFF did not add a device round trip.
 
 
 async def test_start_before_off_in_one_status_message_is_not_retroactively_owned(
         monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.current_scene_file = "sky.anim"
     before = state.scene_idx
     bb = SnapshotInputBar({"updates": [
@@ -272,10 +289,10 @@ async def test_start_before_off_in_one_status_message_is_not_retroactively_owned
             "button": "START", "action": "PRESS"}}},
         {"input": {"switch_event": {"position": "OFF"}}},
     ]})
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 0)
-    monkeypatch.setattr(skystrip, "START_OWNERSHIP_SETTLE_S", 0)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 0)
+    monkeypatch.setattr(sky_limits, "START_OWNERSHIP_SETTLE_S", 0)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.consumed.wait(), 0.5)
         await asyncio.sleep(0)
@@ -289,36 +306,36 @@ async def test_start_before_off_in_one_status_message_is_not_retroactively_owned
 
 
 async def test_off_before_start_in_one_status_message_owns_the_press(monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     before = state.scene_idx
     bb = InputBar({"updates": [
         {"input": {"switch_event": {"position": "OFF"}}},
         {"input": {"button_event": {
             "button": "START", "action": "PRESS"}}},
     ]})
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 0)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 0)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
 
     await _run_until_scene_change(bb, state)
 
     assert state.switch_position == "OFF"
-    assert state.scene_idx == (before + 1) % len(skystrip.ENABLED_SCENES)
+    assert state.scene_idx == (before + 1) % len(sky_settings.ENABLED_SCENES)
 
 
 async def test_unknown_start_cycles_after_committed_view_and_not_started_snapshot(
         monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.current_scene_file = "sky.anim"  # set only after an accepted draw
     before = state.scene_idx
     bb = SnapshotInputBar({"updates": [{"input": {"button_event": {
         "button": "START", "action": "PRESS"}}}]})
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 0)
-    monkeypatch.setattr(skystrip, "START_OWNERSHIP_SETTLE_S", 0)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 0)
+    monkeypatch.setattr(sky_limits, "START_OWNERSHIP_SETTLE_S", 0)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
 
     await _run_until_scene_change(bb, state)
 
-    assert state.scene_idx == (before + 1) % len(skystrip.ENABLED_SCENES)
+    assert state.scene_idx == (before + 1) % len(sky_settings.ENABLED_SCENES)
     assert bb.snapshot_calls == 1
 
 
@@ -328,7 +345,7 @@ async def test_unknown_start_cycles_after_committed_view_and_not_started_snapsho
 ])
 async def test_unknown_double_start_report_requires_not_started_snapshot(
         monkeypatch, snapshot_type, expected_report):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.current_scene_file = "sky.anim"
     report_called = asyncio.Event()
     report_calls = 0
@@ -348,12 +365,12 @@ async def test_unknown_double_start_report_requires_not_started_snapshot(
             await asyncio.Event().wait()
 
     bb = DoublePressBar({"updates": []}, snapshot_type=snapshot_type)
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 10)
-    monkeypatch.setattr(skystrip, "START_BOUNCE_S", 0)
-    monkeypatch.setattr(skystrip, "START_OWNERSHIP_SETTLE_S", 0)
-    monkeypatch.setattr(skystrip, "weather_report", fake_weather_report)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 10)
+    monkeypatch.setattr(sky_limits, "START_BOUNCE_S", 0)
+    monkeypatch.setattr(sky_limits, "START_OWNERSHIP_SETTLE_S", 0)
+    monkeypatch.setattr(sky_audio_report, "weather_report", fake_weather_report)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.snapshot_finished.wait(), 0.5)
         if expected_report:
@@ -371,7 +388,7 @@ async def test_unknown_double_start_report_requires_not_started_snapshot(
 
 async def test_unknown_start_does_not_cycle_during_active_busy_snapshot(
         monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.current_scene_file = "sky.anim"
     before = state.scene_idx
     bb = SnapshotInputBar(
@@ -379,10 +396,10 @@ async def test_unknown_start_does_not_cycle_during_active_busy_snapshot(
             "button": "START", "action": "PRESS"}}}]},
         snapshot_type="INFINITE",
     )
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 0)
-    monkeypatch.setattr(skystrip, "START_OWNERSHIP_SETTLE_S", 0)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 0)
+    monkeypatch.setattr(sky_limits, "START_OWNERSHIP_SETTLE_S", 0)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.snapshot_finished.wait(), 0.5)
         await asyncio.sleep(0)
@@ -396,15 +413,15 @@ async def test_unknown_start_does_not_cycle_during_active_busy_snapshot(
 
 async def test_alert_first_unknown_start_acks_only_when_busy_is_not_started(
         monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     state.switch_position = None
     state.alert_drawn_generation = state.alert_generation
     state.audio_owner = "alert"
     bb = SnapshotInputBar({"updates": [{"input": {"button_event": {
         "button": "START", "action": "PRESS"}}}]})
-    monkeypatch.setattr(skystrip, "START_OWNERSHIP_SETTLE_S", 0)
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    monkeypatch.setattr(sky_limits, "START_OWNERSHIP_SETTLE_S", 0)
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.stop_called.wait(), 0.5)
         assert state.alert_acked is True
@@ -421,7 +438,7 @@ async def test_alert_first_unknown_start_acks_only_when_busy_is_not_started(
 ])
 async def test_unknown_alert_start_fails_closed_without_not_started_snapshot(
         monkeypatch, snapshot_type, error):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     state.switch_position = None
     state.alert_drawn_generation = state.alert_generation
@@ -432,8 +449,8 @@ async def test_unknown_alert_start_fails_closed_without_not_started_snapshot(
         snapshot_type=snapshot_type,
         error=error,
     )
-    monkeypatch.setattr(skystrip, "START_OWNERSHIP_SETTLE_S", 0)
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    monkeypatch.setattr(sky_limits, "START_OWNERSHIP_SETTLE_S", 0)
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.snapshot_finished.wait(), 0.5)
         await asyncio.sleep(0)
@@ -448,7 +465,7 @@ async def test_unknown_alert_start_fails_closed_without_not_started_snapshot(
 @pytest.mark.parametrize("late_position", ["BUSY", "OFF"])
 async def test_switch_event_cannot_reclassify_an_unknown_start_in_flight(
         monkeypatch, late_position):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.current_scene_file = "sky.anim"
     before = state.scene_idx
 
@@ -479,10 +496,10 @@ async def test_switch_event_cannot_reclassify_an_unknown_start_in_flight(
                 self.snapshot_finished.set()
 
     bb = RacingBar()
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 0)
-    monkeypatch.setattr(skystrip, "START_OWNERSHIP_SETTLE_S", 0)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 0)
+    monkeypatch.setattr(sky_limits, "START_OWNERSHIP_SETTLE_S", 0)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.consumed.wait(), 0.5)
         await asyncio.wait_for(bb.snapshot_finished.wait(), 0.5)
@@ -498,7 +515,7 @@ async def test_switch_event_cannot_reclassify_an_unknown_start_in_flight(
 
 async def test_status_stream_gap_revokes_explicit_off_and_pending_start(
         monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.switch_position = "OFF"
     before = state.scene_idx
 
@@ -513,9 +530,9 @@ async def test_status_stream_gap_revokes_explicit_off_and_pending_start(
             self.closed.set()
 
     bb = ClosingBar()
-    monkeypatch.setattr(skystrip, "DOUBLE_PRESS_S", 10)
-    monkeypatch.setattr(skystrip, "save_scene_idx", lambda _idx: None)
-    listening = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    monkeypatch.setattr(sky_limits, "DOUBLE_PRESS_S", 10)
+    monkeypatch.setattr(sky_selection, "save_scene_idx", lambda _idx: None)
+    listening = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.closed.wait(), 0.5)
         await asyncio.sleep(0)
@@ -536,7 +553,7 @@ async def test_status_stream_gap_revokes_explicit_off_and_pending_start(
 ])
 async def test_busy_and_custom_switch_events_never_ack_or_touch_global_audio(
         position, expected):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     before = (state.scene_idx, state.scrub_slot, state.alert_acked)
     bb = InputBar({"updates": [{"input": {"switch_event": {
@@ -586,7 +603,7 @@ class ResidentBar(InputBar):
 ])
 async def test_ack_retires_every_older_layer_and_restores_the_exact_view(
         revealed, expected):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     state.readout_gen = 3
     state.revealed = revealed
@@ -603,7 +620,7 @@ async def test_ack_retires_every_older_layer_and_restores_the_exact_view(
     bb.prime("rot3", timeout=8)
     bb.prime("alert", timeout=8)
 
-    await skystrip.acknowledge_alert(bb, state, "test")
+    await sky_device_alerts.acknowledge_alert(bb, state, "test")
 
     # Stable ids are creation-ordered.  An opaque alert created above ``sky``
     # cannot be hidden immediately by changing only its timeout, so dismissal
@@ -650,16 +667,16 @@ class GatedAlarmBar(InputBar):
 
 
 async def test_ack_during_a_gated_alarm_draw_cannot_be_overtaken_by_play():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     # A lost/late PLAY response means audio may already have committed even
     # while the alert draw is gated.  That ambiguous ownership requires STOP.
     state.audio_owner = "alert-pending"
     bb = GatedAlarmBar({"updates": [{"input": {"button_event": {
         "button": "START", "action": "PRESS"}}}]})
-    alarm = asyncio.create_task(skystrip.severe_alarm(bb, state))
+    alarm = asyncio.create_task(sky_device_alerts.severe_alarm(bb, state))
     await asyncio.wait_for(bb.alarm_draw_started.wait(), 0.3)
-    listener = asyncio.create_task(skystrip.listen_buttons(bb, state))
+    listener = asyncio.create_task(sky_input.listen_buttons(bb, state))
     try:
         await asyncio.wait_for(bb.stop_called.wait(), 0.3)
         assert bb.order == ["ALARM_START", "STOP"]
@@ -695,14 +712,14 @@ class AlarmLifecycleBar:
 
 
 async def test_warning_clear_stops_audio_after_the_last_play():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     bb = AlarmLifecycleBar()
-    alarm = asyncio.create_task(skystrip.severe_alarm(bb, state))
+    alarm = asyncio.create_task(sky_device_alerts.severe_alarm(bb, state))
     try:
         await asyncio.wait_for(bb.played.wait(), 0.3)
         _clear(state)
-        skystrip._signal_alert_change(state)
+        sky_alerts._signal_alert_change(state)
         await asyncio.wait_for(bb.stopped.wait(), 0.3)
         play_index = max(i for i, operation in enumerate(bb.order)
                          if operation == "PLAY")
@@ -713,7 +730,7 @@ async def test_warning_clear_stops_audio_after_the_last_play():
 
 
 async def test_alert_wait_cannot_clear_a_transition_racing_its_setup():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     observed = state.alert_wake_generation
 
     class RacingEvent(asyncio.Event):
@@ -722,12 +739,12 @@ async def test_alert_wait_cannot_clear_a_transition_racing_its_setup():
         def clear(self):
             if not self.fired:
                 self.fired = True
-                skystrip._signal_alert_change(state)
+                sky_alerts._signal_alert_change(state)
             super().clear()
 
     state.alert_changed = RacingEvent()
     await asyncio.wait_for(
-        skystrip._wait_for_alert_change(state, 10.0, observed),
+        sky_device_alerts._wait_for_alert_change(state, 10.0, observed),
         0.3,
     )
     assert state.alert_wake_generation == observed + 1
@@ -735,7 +752,7 @@ async def test_alert_wait_cannot_clear_a_transition_racing_its_setup():
 
 async def test_failed_alert_marquee_upload_uses_bounded_retry_backoff(
         monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     delays: list[float] = []
 
@@ -746,17 +763,17 @@ async def test_failed_alert_marquee_upload_uses_bounded_retry_backoff(
         delays.append(timeout)
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(skystrip, "ensure_alert_asset", failed_asset)
-    monkeypatch.setattr(skystrip, "_wait_for_alert_change", capture_wait)
+    monkeypatch.setattr(sky_device_assets, "ensure_alert_asset", failed_asset)
+    monkeypatch.setattr(sky_device_alerts, "_wait_for_alert_change", capture_wait)
 
     with pytest.raises(asyncio.CancelledError):
-        await skystrip.severe_alarm(object(), state)
-    assert delays == [skystrip.ALERT_ASSET_RETRY_S]
+        await sky_device_alerts.severe_alarm(object(), state)
+    assert delays == [sky_limits.ALERT_ASSET_RETRY_S]
     assert delays[0] >= 2.0
 
 
 async def test_shutdown_stop_is_serialized_after_a_cancellation_resistant_play():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
 
     class LatePlayBar(AlarmLifecycleBar):
@@ -779,7 +796,7 @@ async def test_shutdown_stop_is_serialized_after_a_cancellation_resistant_play()
                 raise
 
     bb = LatePlayBar()
-    alarm = asyncio.create_task(skystrip.severe_alarm(bb, state))
+    alarm = asyncio.create_task(sky_device_alerts.severe_alarm(bb, state))
     await asyncio.wait_for(bb.play_entered.wait(), 0.3)
     alarm.cancel()
     await asyncio.wait_for(bb.play_cancelled.wait(), 0.3)
@@ -793,7 +810,7 @@ async def test_shutdown_stop_is_serialized_after_a_cancellation_resistant_play()
 @pytest.mark.parametrize("refused_operation", ["clear", "draw"])
 async def test_ack_409_keeps_the_restore_intent_for_the_next_attempt(
         refused_operation):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     state.revealed = False
     state.scrub_slot = None
@@ -827,8 +844,8 @@ async def test_ack_409_keeps_the_restore_intent_for_the_next_attempt(
     bb.prime("rv7")
     bb.prime("alert", timeout=8)
 
-    await skystrip.acknowledge_alert(bb, state, "first")
-    await skystrip.acknowledge_alert(bb, state, "retry")
+    await sky_device_alerts.acknowledge_alert(bb, state, "first")
+    await sky_device_alerts.acknowledge_alert(bb, state, "retry")
 
     expected_attempts = (2, 1) if refused_operation == "clear" else (2, 2)
     assert (bb.clear_attempts, bb.draw_attempts) == expected_attempts, (
@@ -837,13 +854,13 @@ async def test_ack_409_keeps_the_restore_intent_for_the_next_attempt(
 
 
 async def test_multiple_input_updates_are_coalesced_into_one_readout_draw():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.switch_position = "OFF"
     state.scrub_slot = 20
     state.timeline_meta = {
-        "start": datetime.now(skystrip.TZ) - timedelta(hours=10),
+        "start": datetime.now(sky_settings.TZ) - timedelta(hours=10),
         "scene": state.scene,
-        "built": datetime.now(skystrip.TZ),
+        "built": datetime.now(sky_settings.TZ),
         "file": "timeline.anim",
     }
     bb = InputBar({"updates": [
@@ -859,13 +876,13 @@ async def test_multiple_input_updates_are_coalesced_into_one_readout_draw():
 
 
 async def test_wheel_scrubs_after_its_first_gesture_acknowledges_an_alert():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     state.scrub_slot = 20
     state.timeline_meta = {
-        "start": datetime.now(skystrip.TZ) - timedelta(hours=10),
+        "start": datetime.now(sky_settings.TZ) - timedelta(hours=10),
         "scene": state.scene,
-        "built": datetime.now(skystrip.TZ),
+        "built": datetime.now(sky_settings.TZ),
         "file": "timeline.anim",
     }
     turn = {"updates": [{"input": {"encoder_event": {"delta": 1}}}]}
@@ -880,35 +897,35 @@ async def test_wheel_scrubs_after_its_first_gesture_acknowledges_an_alert():
 
 
 def test_acknowledged_alert_allows_the_time_machine_reveal_gate():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.scrub_slot = 20
     state.scrub_touched = 10.0
     state.timeline_meta = {"file": "timeline.anim"}
     state.visual_alert = _severe_thunderstorm_alert()
     state.weather.severe = True
 
-    assert not skystrip._scrub_reveal_ready(
-        state, 10.0 + skystrip.REVEAL_REST_S + 1
+    assert not sky_device_scrubber._scrub_reveal_ready(
+        state, 10.0 + sky_limits.REVEAL_REST_S + 1
     )
 
     state.alert_acked = True
 
-    assert skystrip._scrub_reveal_ready(
-        state, 10.0 + skystrip.REVEAL_REST_S + 1
+    assert sky_device_scrubber._scrub_reveal_ready(
+        state, 10.0 + sky_limits.REVEAL_REST_S + 1
     ), "an acknowledged alert blocked every past/future scene reveal"
 
 
 async def test_rearmed_alert_aborts_an_inflight_animated_reveal(monkeypatch):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.visual_alert = _severe_thunderstorm_alert("urn:alert:old")
     state.weather.severe = True
     state.alert_acked = True
     state.scrub_slot = 20
     state.reveal_pending = True
     state.timeline_meta = {
-        "start": datetime.now(skystrip.TZ) - timedelta(hours=10),
+        "start": datetime.now(sky_settings.TZ) - timedelta(hours=10),
         "scene": state.scene,
-        "built": datetime.now(skystrip.TZ),
+        "built": datetime.now(sky_settings.TZ),
         "file": "timeline.anim",
     }
 
@@ -921,25 +938,25 @@ async def test_rearmed_alert_aborts_an_inflight_animated_reveal(monkeypatch):
             state.alert_acked = False
 
     bb = RearmingUploadBar({"updates": []})
-    monkeypatch.setattr(skystrip, "render_loop_frames", lambda *_a, **_k: [])
-    monkeypatch.setattr(skystrip.anim, "encode_anim", lambda *_a, **_k: b"anim")
+    monkeypatch.setattr(sky_render_scene, "render_loop_frames", lambda *_a, **_k: [])
+    monkeypatch.setattr(anim, "encode_anim", lambda *_a, **_k: b"anim")
 
-    await skystrip.animate_reveal(bb, state, 20, initial=True)
+    await sky_device_scrubber.animate_reveal(bb, state, 20, initial=True)
 
     assert len(bb.uploads) == 1
     uploaded_name = bb.uploads[0][1]
     assert bb.draws == [], "the future scene covered a newly re-armed alert"
-    assert bb.removals == [f"/ext/user_assets/{skystrip.APP_NAME}/{uploaded_name}"]
+    assert bb.removals == [f"/ext/user_assets/{sky_limits.APP_NAME}/{uploaded_name}"]
     assert state.revealed is False
     assert state.reveal_pending is False
 
 
 async def test_unacknowledged_alert_blocks_a_racing_scrub_readout():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     bb = InputBar({"updates": []})
 
-    await skystrip.draw_scrub_readout(bb, state, "TMW 3:00 PM")
+    await sky_device_scrubber.draw_scrub_readout(bb, state, "TMW 3:00 PM")
 
     assert bb.draws == [], "a stale wheel readout covered the active alert card"
 
@@ -947,13 +964,13 @@ async def test_unacknowledged_alert_blocks_a_racing_scrub_readout():
 def test_new_extreme_episode_rearms_after_the_previous_episode_was_acked():
     previous = _extreme_alert("urn:alert:a")
     replacement = _extreme_alert("urn:alert:b")
-    state = skystrip.SkyState()
-    skystrip._apply_alert_selection(state, previous, previous, (previous,))
+    state = sky_model.SkyState()
+    sky_alerts._apply_alert_selection(state, previous, previous, (previous,))
     state.alert_acked = True
     alert_generation = state.alert_generation
     audio_generation = state.audio_generation
 
-    skystrip._apply_alert_selection(
+    sky_alerts._apply_alert_selection(
         state, replacement, replacement, (replacement,))
 
     assert state.visual_alert is replacement
@@ -970,23 +987,23 @@ async def test_fresh_non_extreme_warning_never_issues_a_global_audio_stop():
     Severe Thunderstorm Warning arrived or was acknowledged could silence a
     BUSY/CUSTOM session even though Skystrip never sounded its siren.
     """
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     warning = _severe_thunderstorm_alert()
 
-    skystrip._apply_alert_selection(state, warning, None, (warning,))
+    sky_alerts._apply_alert_selection(state, warning, None, (warning,))
 
     # Generation invalidation is local and safe; the global STOP is not.
     assert state.audio_generation > 0
     assert state.audio_stop_pending is False
     bb = InputBar({"updates": []})
-    await skystrip.acknowledge_alert(bb, state, "test")
+    await sky_device_alerts.acknowledge_alert(bb, state, "test")
     assert bb.stops == 0
     assert bb.plays == []
 
 
 async def test_definitively_refused_play_does_not_create_global_stop_intent():
     """HTTP 409 means PLAY did not commit; STOP would target another owner."""
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
 
     class RefusedPlayBar:
         async def audio_play(self, *, application_name: str, path: str):
@@ -994,7 +1011,7 @@ async def test_definitively_refused_play_does_not_create_global_stop_intent():
                 "Not played due to low priority", status_code=409)
 
     with pytest.raises(exceptions.BusyBarAPIError) as caught:
-        await skystrip._play_audio(
+        await sky_audio_output._play_audio(
             RefusedPlayBar(),
             state,
             "siren.snd",
@@ -1017,7 +1034,7 @@ async def test_cap_deadline_clears_before_the_next_http_request_can_hang(
         expires=deadline,
         ends=deadline,
     )
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.active_alerts = (expiring,)
     state.visual_alert = expiring
     state.siren_alert = expiring
@@ -1046,12 +1063,12 @@ async def test_cap_deadline_clears_before_the_next_http_request_can_hang(
             await asyncio.Event().wait()
 
     monkeypatch.setattr(
-        skystrip.httpx,
+        httpx,
         "AsyncClient",
         lambda **_kwargs: HangingClient(),
     )
-    monkeypatch.setattr(skystrip, "datetime", ControlledDatetime)
-    poller = asyncio.create_task(skystrip.poll_alerts(state))
+    monkeypatch.setattr(sky_providers_alerts, "datetime", ControlledDatetime)
+    poller = asyncio.create_task(sky_providers_alerts.poll_alerts(state))
     try:
         await asyncio.wait_for(get_entered.wait(), 0.3)
         # The request began while the alert was active. Advance the CAP clock
@@ -1070,7 +1087,7 @@ async def test_cap_deadline_clears_before_the_next_http_request_can_hang(
 async def test_outside_point_coverage_clears_alerts_without_cap_request(
         monkeypatch):
     """A failed NWS point lookup is the boundary for every NWS feature."""
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     _arm(state)
     alert = state.visual_alert
     assert alert is not None
@@ -1091,12 +1108,12 @@ async def test_outside_point_coverage_clears_alerts_without_cap_request(
             raise AssertionError("CAP must stand down outside /points coverage")
 
     monkeypatch.setattr(
-        skystrip.httpx,
+        httpx,
         "AsyncClient",
         lambda **_kwargs: NoRequestClient(),
     )
     poller = asyncio.create_task(
-        skystrip.poll_alerts(state, wait_for_point_check=True))
+        sky_providers_alerts.poll_alerts(state, wait_for_point_check=True))
     try:
         for _ in range(20):
             if state.alert_known:
@@ -1115,7 +1132,7 @@ async def test_outside_point_coverage_clears_alerts_without_cap_request(
 
 async def test_managed_cap_poll_waits_for_initial_point_coverage(monkeypatch):
     """Startup cannot briefly present CAP before `/points` defines locality."""
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     request_started = asyncio.Event()
 
     class HangingClient:
@@ -1130,12 +1147,12 @@ async def test_managed_cap_poll_waits_for_initial_point_coverage(monkeypatch):
             await asyncio.Event().wait()
 
     monkeypatch.setattr(
-        skystrip.httpx,
+        httpx,
         "AsyncClient",
         lambda **_kwargs: HangingClient(),
     )
     poller = asyncio.create_task(
-        skystrip.poll_alerts(state, wait_for_point_check=True))
+        sky_providers_alerts.poll_alerts(state, wait_for_point_check=True))
     try:
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -1151,7 +1168,7 @@ async def test_managed_cap_poll_waits_for_initial_point_coverage(monkeypatch):
 
 async def test_point_coverage_loss_fences_an_inflight_cap_response(monkeypatch):
     """A late CAP response cannot re-arm after `/points` says unsupported."""
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.nws_point_covered = True
     state.nws_point_checked.set()
     request_started = asyncio.Event()
@@ -1177,12 +1194,12 @@ async def test_point_coverage_loss_fences_an_inflight_cap_response(monkeypatch):
             return LateResponse()
 
     monkeypatch.setattr(
-        skystrip.httpx,
+        httpx,
         "AsyncClient",
         lambda **_kwargs: DelayedClient(),
     )
     poller = asyncio.create_task(
-        skystrip.poll_alerts(state, wait_for_point_check=True))
+        sky_providers_alerts.poll_alerts(state, wait_for_point_check=True))
     try:
         await asyncio.wait_for(request_started.wait(), 0.3)
         state.nws_point_covered = False
@@ -1203,7 +1220,7 @@ async def test_point_coverage_loss_fences_an_inflight_cap_response(monkeypatch):
 
 def _source_columns_seen(text: str, frame_count: int, box_width: int) -> set[int]:
     """Independently map each marquee viewport back to source columns."""
-    width = skystrip.text_width(text)
+    width = text_width(text)
     cycle = width + 8
     seen: set[int] = set()
     for index in range(frame_count):
@@ -1222,18 +1239,18 @@ def test_alert_marquee_exposes_every_source_column_and_stays_on_panel():
         expires=datetime.now().astimezone() + timedelta(days=1, minutes=37),
         ends=datetime.now().astimezone() + timedelta(days=1, minutes=37),
     )
-    frames = skystrip.alert_animation_frames(alert)
-    event = skystrip.device_text(alert.event)
-    expiry = skystrip.alert_expiry_label(alert)
-    box_width = skystrip.W - 4
+    frames = sky_render_alerts.alert_animation_frames(alert)
+    event = device_text(alert.event)
+    expiry = sky_render_alerts.alert_expiry_label(alert)
+    box_width = sky_limits.W - 4
 
     assert frames
     assert all(frame.size == (72, 16) for frame in frames)
     assert _source_columns_seen(event, len(frames), box_width) == set(
-        range(skystrip.text_width(event))
+        range(text_width(event))
     )
     assert _source_columns_seen(expiry, len(frames), box_width) == set(
-        range(skystrip.text_width(expiry))
+        range(text_width(expiry))
     )
     # The final composed pixels retain both complete semantic rows; neither
     # can be silently clipped out by a misplaced y coordinate.

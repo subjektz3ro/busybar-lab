@@ -14,7 +14,14 @@ from __future__ import annotations
 
 import pytest
 
-from apps import skystrip as S
+from apps.skystrip_app import config as sky_config
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app.audio import report_genz as sky_audio_report_genz
+from apps.skystrip_app.audio import report_plain as sky_audio_report_plain
+from apps.skystrip_app.render import atmosphere as sky_render_atmosphere
+from apps.skystrip_app.render import scene as sky_render_scene
 
 # Public landmark fixture: Chicago O'Hare International Airport (KORD), not a
 # home or operator location.
@@ -34,15 +41,13 @@ def _chicago(monkeypatch):
     """
     from astral import Observer
 
-    monkeypatch.setattr(
-        S,
-        "OBSERVER",
+    monkeypatch.setattr(sky_settings, "OBSERVER",
         Observer(
             latitude=CHICAGO_OHARE_LATITUDE,
             longitude=CHICAGO_OHARE_LONGITUDE,
         ),
     )
-    monkeypatch.setattr(S, "TZ", S.ZoneInfo("America/Chicago"))
+    monkeypatch.setattr(sky_settings, "TZ", sky_config.ZoneInfo("America/Chicago"))
 
 # api.weather.gov OpenAPI, 36 values.
 NWS_PRESENT_WEATHER = frozenset({
@@ -67,15 +72,15 @@ UNTREATED = frozenset({
 
 
 def _classified() -> frozenset[str]:
-    obscurations = frozenset().union(*S.OBS_OBSCURATION_WORDS.values())
-    return frozenset(S.OBS_RAIN_WORDS | S.OBS_SNOW_WORDS
-                     | S.OBS_THUNDER_WORDS | S.OBS_FOG_WORDS | obscurations)
+    obscurations = frozenset().union(*sky_weather.OBS_OBSCURATION_WORDS.values())
+    return frozenset(sky_weather.OBS_RAIN_WORDS | sky_weather.OBS_SNOW_WORDS
+                     | sky_weather.OBS_THUNDER_WORDS | sky_weather.OBS_FOG_WORDS | obscurations)
 
 
 def test_every_vocabulary_entry_is_a_real_feed_value():
     """`small_hail` sat in OBS_PRECIP_WORDS and is not in the enum. A value
     the feed never sends is dead weight that reads as coverage."""
-    invented = _classified() | S.OBS_PRECIP_WORDS
+    invented = _classified() | sky_weather.OBS_PRECIP_WORDS
     assert invented <= NWS_PRESENT_WEATHER, sorted(
         invented - NWS_PRESENT_WEATHER)
 
@@ -98,7 +103,7 @@ class TestTheDefectsThisAuditFound:
 
     @staticmethod
     def _obs(*weather: str, text: str = "") -> dict:
-        return S._parse_obs({
+        return sky_weather._parse_obs({
             "textDescription": text,
             "presentWeather": [{"weather": w} for w in weather],
         })
@@ -141,18 +146,18 @@ class TestTheDefectsThisAuditFound:
         `rain_showers`, `snow_showers` and `sleet`, so an hour of real snow
         showers returned "no observation covers this moment"."""
         for value in ("rain_showers", "snow_showers", "sleet"):
-            assert value in S.OBS_PRECIP_WORDS, value
+            assert value in sky_weather.OBS_PRECIP_WORDS, value
 
     def test_hail_is_classified_the_same_way_by_both_paths(self):
         """Hail was in the past-slot vocabulary and in none of the live ones,
         so an observation of hail alone drew a clear sky on the bar while the
         Time Machine recorded precipitation for the same hour."""
         assert self._obs("hail")["rain"] is True
-        assert "hail" in S.OBS_PRECIP_WORDS
+        assert "hail" in sky_weather.OBS_PRECIP_WORDS
 
     def test_blowing_snow_colours_the_scene_but_is_not_falling_precipitation(self):
         assert self._obs("blowing_snow")["snow"] is True
-        assert "blowing_snow" not in S.OBS_PRECIP_WORDS
+        assert "blowing_snow" not in sky_weather.OBS_PRECIP_WORDS
 
 
 class TestTheWmoCodes:
@@ -162,7 +167,7 @@ class TestTheWmoCodes:
         """45 and 48 were absent, which is the model-side half of the same
         gap: Open-Meteo could say "fog" and the scene would not show it."""
         for code in (45, 48):
-            assert S._wmo_phenomena(code)[3] is True, code
+            assert sky_weather._wmo_phenomena(code)[3] is True, code
 
     @pytest.mark.parametrize("code,expected", [
         (0, (False, False, False, False)),    # clear sky
@@ -181,12 +186,12 @@ class TestTheWmoCodes:
         (99, (False, False, True, False)),    # thunderstorm with heavy hail
     ])
     def test_the_documented_code_set(self, code, expected):
-        assert S._wmo_phenomena(code) == expected
+        assert sky_weather._wmo_phenomena(code) == expected
 
     def test_a_missing_or_absurd_code_claims_nothing(self):
-        assert S._wmo_phenomena(None) == (False, False, False, False)
-        assert S._wmo_phenomena(500) == (False, False, False, False)
-        assert S._wmo_phenomena("rain") == (False, False, False, False)
+        assert sky_weather._wmo_phenomena(None) == (False, False, False, False)
+        assert sky_weather._wmo_phenomena(500) == (False, False, False, False)
+        assert sky_weather._wmo_phenomena("rain") == (False, False, False, False)
 
 
 def test_reported_fog_reaches_the_pixels():
@@ -194,17 +199,17 @@ def test_reported_fog_reaches_the_pixels():
     saying "fog" is direct evidence and must not need them to agree."""
     from datetime import datetime, timezone
 
-    clear = S.WeatherState(temp_c=14.0, humidity=60.0, visibility_m=16000.0)
-    foggy = S.WeatherState(temp_c=14.0, humidity=60.0, visibility_m=16000.0,
+    clear = sky_weather.WeatherState(temp_c=14.0, humidity=60.0, visibility_m=16000.0)
+    foggy = sky_weather.WeatherState(temp_c=14.0, humidity=60.0, visibility_m=16000.0,
                            fog=True)
     when = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
 
     def ground_rows(image):
         px = image.load()
-        return [px[x, y] for x in range(S.W) for y in range(10, 16)]
+        return [px[x, y] for x in range(sky_limits.W) for y in range(10, 16)]
 
-    assert ground_rows(S.render_scene(when, clear, seed=3)) != ground_rows(
-        S.render_scene(when, foggy, seed=3))
+    assert ground_rows(sky_render_scene.render_scene(when, clear, seed=3)) != ground_rows(
+        sky_render_scene.render_scene(when, foggy, seed=3))
 
 
 def test_low_visibility_still_outweighs_a_bare_fog_flag():
@@ -213,16 +218,16 @@ def test_low_visibility_still_outweighs_a_bare_fog_flag():
     from datetime import datetime, timezone
 
     when = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
-    patchy = S.WeatherState(temp_c=14.0, humidity=60.0,
+    patchy = sky_weather.WeatherState(temp_c=14.0, humidity=60.0,
                             visibility_m=16000.0, fog=True)
-    dense = S.WeatherState(temp_c=14.0, humidity=60.0,
+    dense = sky_weather.WeatherState(temp_c=14.0, humidity=60.0,
                            visibility_m=400.0, fog=True)
 
-    clear = S.WeatherState(temp_c=14.0, humidity=60.0, visibility_m=16000.0)
+    clear = sky_weather.WeatherState(temp_c=14.0, humidity=60.0, visibility_m=16000.0)
 
     def ground(wx):
-        px = S.render_scene(when, wx, seed=3).load()
-        return [px[x, y] for x in range(S.W) for y in range(12, 15)]
+        px = sky_render_scene.render_scene(when, wx, seed=3).load()
+        return [px[x, y] for x in range(sky_limits.W) for y in range(12, 15)]
 
     def moved(wx):
         """How far the ground rows shift from the unfogged scene.
@@ -247,7 +252,7 @@ class TestTheObscurations:
 
     @staticmethod
     def _kind(*weather: str, text: str = "") -> str:
-        return S._parse_obs({
+        return sky_weather._parse_obs({
             "textDescription": text,
             "presentWeather": [{"weather": w} for w in weather],
         })["obscuration"]
@@ -289,10 +294,10 @@ class TestTheObscurations:
         palette put haze and dust one channel apart and they were the same
         colour on the strip."""
         import itertools
-        for a, b in itertools.combinations(S.OBSCURATION_TINT, 2):
+        for a, b in itertools.combinations(sky_render_atmosphere.OBSCURATION_TINT, 2):
             deltas = [abs(x - y) / max(x, y, 1)
-                      for x, y in zip(S.OBSCURATION_TINT[a],
-                                      S.OBSCURATION_TINT[b])]
+                      for x, y in zip(sky_render_atmosphere.OBSCURATION_TINT[a],
+                                      sky_render_atmosphere.OBSCURATION_TINT[b])]
             clear = sum(1 for d in deltas if d >= 0.30)
             assert clear >= 2, f"{a}/{b} only separates on {clear} channel(s)"
 
@@ -319,11 +324,11 @@ class TestTheObscurationNeverLightsTheNightSky:
                 cloud_frac=0.05)
 
     def _lit(self, when, kind):
-        image = S.render_scene(
-            when, S.WeatherState(**self.BASE, obscuration=kind),
+        image = sky_render_scene.render_scene(
+            when, sky_weather.WeatherState(**self.BASE, obscuration=kind),
             seed=5, scene="skyline")
         px = image.load()
-        return sum(1 for x in range(S.W) for y in range(S.H)
+        return sum(1 for x in range(sky_limits.W) for y in range(sky_limits.H)
                    if sum(px[x, y]) > 30)
 
     @pytest.mark.parametrize("kind", ["haze", "smoke", "dust", "ash"])
@@ -332,17 +337,17 @@ class TestTheObscurationNeverLightsTheNightSky:
 
     @pytest.mark.parametrize("kind", ["haze", "smoke", "dust", "ash"])
     def test_the_night_sky_is_never_filled(self, kind):
-        assert self._lit(self.NIGHT, kind) < S.W * S.H * 0.5
+        assert self._lit(self.NIGHT, kind) < sky_limits.W * sky_limits.H * 0.5
 
     def test_the_moon_is_swallowed(self):
         """You cannot see the moon through heavy smoke, and the scene
         should not pretend otherwise."""
         def moon_pixels(kind):
-            image = S.render_scene(
-                self.NIGHT, S.WeatherState(**self.BASE, obscuration=kind),
+            image = sky_render_scene.render_scene(
+                self.NIGHT, sky_weather.WeatherState(**self.BASE, obscuration=kind),
                 seed=5, scene="skyline")
             px = image.load()
-            return sum(1 for x in range(S.W) for y in range(0, 8)
+            return sum(1 for x in range(sky_limits.W) for y in range(0, 8)
                        if px[x, y][0] > 150 and px[x, y][2] > 140)
         assert moon_pixels("") > 0, "the clear night should show a moon"
         assert moon_pixels("smoke") == 0
@@ -351,11 +356,11 @@ class TestTheObscurationNeverLightsTheNightSky:
         """The other half of the model: at noon there IS sunlight to
         scatter, so the air glows and distance dissolves into it."""
         def sky(kind):
-            image = S.render_scene(
-                self.DAY, S.WeatherState(**self.BASE, obscuration=kind),
+            image = sky_render_scene.render_scene(
+                self.DAY, sky_weather.WeatherState(**self.BASE, obscuration=kind),
                 seed=5, scene="skyline")
             px = image.load()
-            rows = [px[x, y] for x in range(S.W) for y in range(0, 5)]
+            rows = [px[x, y] for x in range(sky_limits.W) for y in range(0, 5)]
             return tuple(sum(c[i] for c in rows) / len(rows)
                          for i in range(3))
         clear, smoky = sky(""), sky("smoke")
@@ -365,12 +370,12 @@ class TestTheObscurationNeverLightsTheNightSky:
     def test_the_clock_stays_legible_through_the_worst_of_it(self):
         """The status ink is a readout, not weather. It is baked after the
         obscuration for exactly this reason."""
-        image = S.render_scene(
-            self.DAY, S.WeatherState(**self.BASE, obscuration="smoke"),
+        image = sky_render_scene.render_scene(
+            self.DAY, sky_weather.WeatherState(**self.BASE, obscuration="smoke"),
             seed=5, scene="skyline")
         px = image.load()
-        ink = [px[x, y] for x in range(S.STATUS_CARD_W)
-               for y in range(0, 7) if px[x, y] == S.CLOCK_INK]
+        ink = [px[x, y] for x in range(sky_limits.STATUS_CARD_W)
+               for y in range(0, 7) if px[x, y] == sky_settings.CLOCK_INK]
         assert ink, "the clock must survive a smoke day"
 
 
@@ -379,44 +384,44 @@ def test_every_style_names_the_obscuration():
     contradiction the listener can see out the window."""
     from datetime import datetime, timezone
 
-    when = datetime(2026, 8, 30, 18, 0, tzinfo=timezone.utc).astimezone(S.TZ)
-    wx = S.WeatherState(temp_c=33.0, cloud_frac=0.05, obscuration="smoke")
-    original = S.STYLE
+    when = datetime(2026, 8, 30, 18, 0, tzinfo=timezone.utc).astimezone(sky_settings.TZ)
+    wx = sky_weather.WeatherState(temp_c=33.0, cloud_frac=0.05, obscuration="smoke")
+    original = sky_settings.STYLE
     try:
         for style in ("plain", "chicago", "genz"):
-            S.STYLE = style
-            spoken = S._compose_report(wx, None, when, None).lower()
+            sky_settings.STYLE = style
+            spoken = sky_audio_report_plain._compose_report(wx, None, when, None).lower()
             assert "smoke" in spoken, style
             assert "clear skies" not in spoken, style
     finally:
-        S.STYLE = original
+        sky_settings.STYLE = original
 
 
 def test_genz_plays_smoke_and_ash_straight():
     """Wildfire smoke and volcanic ash are somebody's emergency upwind.
     The bit landing there is the same misfire as joking under a warning."""
-    original = S.STYLE
-    S.STYLE = "genz"
+    original = sky_settings.STYLE
+    sky_settings.STYLE = "genz"
     try:
         for kind in ("smoke", "ash"):
-            pool = S.GENZ_CONDITIONS[f"obscured_{kind}"]
+            pool = sky_audio_report_genz.GENZ_CONDITIONS[f"obscured_{kind}"]
             for line in pool:
                 assert "cooked" not in line.lower(), line
                 assert "crashing out" not in line.lower(), line
                 assert "giving" not in line.lower(), line
     finally:
-        S.STYLE = original
+        sky_settings.STYLE = original
 
 
 def test_every_tint_declares_a_transmission():
-    assert set(S.OBSCURATION_TINT) == set(S.OBSCURATION_TRANSMISSION)
+    assert set(sky_render_atmosphere.OBSCURATION_TINT) == set(sky_render_atmosphere.OBSCURATION_TRANSMISSION)
 
 
 def test_ash_is_the_densest_and_haze_the_thinnest():
     """Density is what separates an ashfall from a haze. With one shared
     transmission, ash's dark tint let the blue sky through and the scene
     read as a mildly dim afternoon rather than as an ashfall."""
-    t = S.OBSCURATION_TRANSMISSION
+    t = sky_render_atmosphere.OBSCURATION_TRANSMISSION
     assert t["ash"] < t["dust"] < t["haze"]
     assert t["ash"] < t["smoke"] < t["haze"]
 
@@ -429,9 +434,9 @@ def test_ash_kills_the_blue_of_a_daytime_sky():
                 cloud_frac=0.05)
 
     def blueness(kind):
-        px = S.render_scene(when, S.WeatherState(**base, obscuration=kind),
+        px = sky_render_scene.render_scene(when, sky_weather.WeatherState(**base, obscuration=kind),
                             seed=5, scene="skyline").load()
-        rows = [px[x, y] for x in range(S.STATUS_CARD_W + 2, S.W)
+        rows = [px[x, y] for x in range(sky_limits.STATUS_CARD_W + 2, sky_limits.W)
                 for y in range(0, 5)]
         red = sum(c[0] for c in rows) / len(rows)
         blue = sum(c[2] for c in rows) / len(rows)

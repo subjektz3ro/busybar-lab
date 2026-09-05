@@ -89,10 +89,12 @@ jobs:
       # computed and dropped in render paths.
       - name: Lint
         run: uv run ruff check --output-format github .
-      # Scoped explicitly in pyproject.toml to every first-party package and
-      # app entry point. New apps must opt into that gate deliberately.
+      # Whole-directory coverage includes new app entry points and helpers.
       - name: Type check
         run: uv run mypy
+      # Node is provided by the Ubuntu runner image; no npm dependencies.
+      - name: Frontend behavior
+        run: node --test tests/frontend/*.test.cjs
 
   # Keep the export boundary independent of lint/type failures. These checks
   # must still report if a PR accidentally tracks owner data or breaks deploy.

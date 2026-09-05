@@ -7,11 +7,14 @@ import math
 import sys
 import threading
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from types import ModuleType
 from typing import cast
 
+from astral import Observer
 from PIL import Image
 
 from busybar_viz.models import (
@@ -27,6 +30,7 @@ from busybar_viz.models import (
     SignalEvent,
     ensure_rgb_frames,
 )
+from busybar_viz.sources import app_source_paths
 
 _RENDER_LOCK = threading.RLock()
 
@@ -46,12 +50,33 @@ def _find_checkout(start: Path | None = None) -> Path:
     )
 
 
+@dataclass(frozen=True)
+class _SkystripRenderers:
+    """Checkout-local production owners, without importing device or provider I/O."""
+
+    settings: ModuleType
+    config: ModuleType
+    weather: ModuleType
+    limits: ModuleType
+    scene: ModuleType
+    effects: ModuleType
+    status: ModuleType
+    art: ModuleType
+    primitives: ModuleType
+
+
 @lru_cache(maxsize=1)
-def _skystrip():
-    apps_path = str(_find_checkout() / "apps")
-    if apps_path not in sys.path:
-        sys.path.insert(0, apps_path)
-    return importlib.import_module("skystrip")
+def _skystrip() -> _SkystripRenderers:
+    root = str(_find_checkout())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    prefix = "apps.skystrip_app"
+    return _SkystripRenderers(
+        **{name: importlib.import_module(f"{prefix}.{name}")
+           for name in ("settings", "config", "weather", "limits")},
+        **{name: importlib.import_module(f"{prefix}.render.{name}")
+           for name in ("scene", "effects", "status", "art", "primitives")},
+    )
 
 
 @contextmanager
@@ -60,38 +85,38 @@ def _deterministic_skystrip():
 
     module = _skystrip()
     replacements = {
-        "OBSERVER": module.Observer(latitude=0.0, longitude=0.0),
-        "TZ": module.ZoneInfo("UTC"),
+        "OBSERVER": Observer(latitude=0.0, longitude=0.0),
+        "TZ": module.config.ZoneInfo("UTC"),
         "UNITS": "f",
-        "CLOCK_INK": module.STATUS_INKS["orange"],
+        "CLOCK_INK": module.config.STATUS_INKS["orange"],
         "STYLE": "plain",
         "CHRISTMAS_WINDOW": "off",
         "CHRISTMAS_FORCED": False,
     }
     with _RENDER_LOCK:
-        previous = {name: getattr(module, name) for name in replacements}
+        previous = {name: getattr(module.settings, name) for name in replacements}
         try:
             for name, value in replacements.items():
-                setattr(module, name, value)
+                setattr(module.settings, name, value)
             yield module
         finally:
             for name, value in previous.items():
-                setattr(module, name, value)
+                setattr(module.settings, name, value)
 
 
 def _status_points(module, now: datetime, phase: float, temp_c: float):
     if phase >= 0.7:
         text = f"{round(temp_c * 9 / 5 + 32)}°"
     else:
-        text = module.clock_str(now)
+        text = module.status.clock_str(now)
     points: set[tuple[int, int]] = set()
     # Mirrors _bake_status: text centered in the corner's reserved span.
     # The ink cells are the flash-invariant foreground; the shadow around
     # them is deliberately translucent scene and must NOT be pinned here.
-    text_w = sum(len(module.DIGITS_3X5[ch][0]) + 1 for ch in text) - 1
-    cursor = max(1, (module.STATUS_CARD_W - text_w) // 2)
+    text_w = sum(len(module.art.DIGITS_3X5[ch][0]) + 1 for ch in text) - 1
+    cursor = max(1, (module.limits.STATUS_CARD_W - text_w) // 2)
     for character in text:
-        glyph = module.DIGITS_3X5[character]
+        glyph = module.art.DIGITS_3X5[character]
         for row_index, row in enumerate(glyph):
             for column_index, bit in enumerate(row):
                 if bit == "1":
@@ -126,20 +151,20 @@ def _lightning_segment(request: RenderRequest) -> RenderedSegment:
 
     with _deterministic_skystrip() as module:
         now = datetime(2026, 1, 15, 6, 0, tzinfo=timezone.utc)
-        weather = module.WeatherState(
+        weather = module.weather.WeatherState(
             cloud_frac=0.65,
             temp_c=10.0,
             humidity=50.0,
             visibility_m=16_000.0,
         )
         seed, phase0, scene = 17, 0.20, "house"
-        rendered = module.render_lightning_segment(
+        rendered = module.effects.render_lightning_segment(
             now, weather, seed, phase0=phase0, scene=scene, dist_km=distance,
         )
         frames = list(ensure_rgb_frames(rendered.frames))
-        loop_duration_s = module.ANIM_FRAMES / module.ANIM_FPS
+        loop_duration_s = module.limits.ANIM_FRAMES / module.limits.ANIM_FPS
         phase_step = 1.0 / (loop_duration_s * rendered.fps)
-        baselines = tuple(module.render_scene(
+        baselines = tuple(module.scene.render_scene(
             now,
             weather,
             seed,
@@ -148,11 +173,11 @@ def _lightning_segment(request: RenderRequest) -> RenderedSegment:
             lightning=0.0,
         ).convert("RGB") for index in range(len(frames)))
         if fault == "white_wash":
-            frames[1] = Image.new("RGB", (module.W, module.H), (255, 255, 255))
+            frames[1] = Image.new("RGB", (module.limits.W, module.limits.H), (255, 255, 255))
 
         foreground = {
-            *((x, y) for x, y, _color in module.HOUSE_SPRITE),
-            *((x, module.H - 1) for x in range(module.W)),
+            *((x, y) for x, y, _color in module.art.HOUSE_SPRITE),
+            *((x, module.limits.H - 1) for x in range(module.limits.W)),
             *_status_points(module, now, phase0, weather.temp_c),
         }
         signals: tuple[SignalEvent, ...] = ()
@@ -162,7 +187,7 @@ def _lightning_segment(request: RenderRequest) -> RenderedSegment:
                 kind="top_led.pulse",
                 value=rendered.led_notification_color,
             ),)
-        near = distance <= module.STRIKE_NEAR_KM
+        near = distance <= module.limits.STRIKE_NEAR_KM
         return RenderedSegment(
             displays=(DisplayTrack(
                 "front",
@@ -213,7 +238,8 @@ def _lightning_segment(request: RenderRequest) -> RenderedSegment:
                 "The animation fills its native lease with advancing scene frames.",
                 "Top-LED evidence is logical intent, not physical observation.",
             ),
-            source_paths=("apps/skystrip.py", "busybar_viz/adapters/skystrip.py"),
+            source_paths=(*app_source_paths(_find_checkout()),
+                          "busybar_viz/adapters/skystrip.py"),
         )
 
 
@@ -251,7 +277,7 @@ def _status_clock(request: RenderRequest) -> RenderedSegment:
     with _deterministic_skystrip() as module:
         minute = int(round((hour - int(hour)) * 60)) % 60
         now = datetime(2026, 6, 15, int(hour), minute, tzinfo=timezone.utc)
-        weather = module.WeatherState(
+        weather = module.weather.WeatherState(
             cloud_frac=cloud, temp_c=20.0, humidity=50.0,
             visibility_m=16_000.0,
         )
@@ -264,36 +290,36 @@ def _status_clock(request: RenderRequest) -> RenderedSegment:
             # check nobody should trust.
             def legacy_status(px, now_, wx_, phase, scene="house",
                               scrubbed_=False, **kwargs):
-                text = module.clock_str(now_)
+                text = module.status.clock_str(now_)
                 cursor = 2
                 for character in text:
-                    glyph = module.DIGITS_3X5[character]
+                    glyph = module.art.DIGITS_3X5[character]
                     for row_index, row in enumerate(glyph):
                         for column, bit in enumerate(row):
-                            if bit == "1" and 0 <= cursor + column < module.W:
+                            if bit == "1" and 0 <= cursor + column < module.limits.W:
                                 px[cursor + column, 1 + row_index] = (224, 160, 70)
                     cursor += len(glyph[0]) + 1
 
-            original = module._bake_status
-            module._bake_status = legacy_status
+            original = module.status._bake_status
+            module.status._bake_status = legacy_status
             try:
-                frames = ensure_rgb_frames(module.render_loop_frames(
+                frames = ensure_rgb_frames(module.scene.render_loop_frames(
                     now, weather, seed=17, scene="house", scrubbed=scrubbed,
                 ))
             finally:
-                module._bake_status = original
+                module.status._bake_status = original
         else:
-            frames = ensure_rgb_frames(module.render_loop_frames(
+            frames = ensure_rgb_frames(module.scene.render_loop_frames(
                 now, weather, seed=17, scene="house", scrubbed=scrubbed,
             ))
-        fps = max(1, round(len(frames) * module.ANIM_FPS / module.ANIM_FRAMES))
+        fps = max(1, round(len(frames) * module.limits.ANIM_FPS / module.limits.ANIM_FRAMES))
 
         if fault == "legacy_amber":
             ink = (224, 160, 70)
         elif scrubbed:
-            ink = module.STATUS_INK_SCRUBBED
+            ink = module.status.STATUS_INK_SCRUBBED
         else:
-            ink = cast(tuple[int, int, int], module.STATUS_INKS["orange"])
+            ink = cast(tuple[int, int, int], module.config.STATUS_INKS["orange"])
 
         # The box the clock is drawn into, plus the one-pixel margin its
         # outline needs. Declared as a rect rather than the glyph points so the
@@ -302,6 +328,8 @@ def _status_clock(request: RenderRequest) -> RenderedSegment:
             displays=(DisplayTrack(
                 "front", frames, fps, Confidence.SOURCE_EXACT,
             ),),
+            source_paths=(*app_source_paths(_find_checkout()),
+                          "busybar_viz/adapters/skystrip.py"),
             evidence_level=EvidenceLevel.RENDERER_VERIFIED,
             regions=(
                 RegionSpec("status-clock", rect=(1, 0, 22, 6)),
@@ -338,7 +366,7 @@ def _thunder_loop(request: RenderRequest) -> RenderedSegment:
         raise ValueError("the Skystrip thunder-loop scenario does not accept inputs")
     with _deterministic_skystrip() as module:
         now = datetime(2026, 1, 15, 6, 0, tzinfo=timezone.utc)
-        weather = module.WeatherState(
+        weather = module.weather.WeatherState(
             cloud_frac=1.0,
             thunder=True,
             rain=True,
@@ -347,10 +375,10 @@ def _thunder_loop(request: RenderRequest) -> RenderedSegment:
             humidity=50.0,
             visibility_m=16_000.0,
         )
-        frames = ensure_rgb_frames(module.render_loop_frames(
+        frames = ensure_rgb_frames(module.scene.render_loop_frames(
             now, weather, seed=17, scene="house",
         ))
-        fps = max(1, round(len(frames) * module.ANIM_FPS / module.ANIM_FRAMES))
+        fps = max(1, round(len(frames) * module.limits.ANIM_FPS / module.limits.ANIM_FRAMES))
         return RenderedSegment(
             displays=(DisplayTrack(
                 "front", frames, fps, Confidence.SOURCE_EXACT,
@@ -374,7 +402,8 @@ def _thunder_loop(request: RenderRequest) -> RenderedSegment:
             notes=(
                 "Observed-thunder loops contain rain but no synthetic sheet lightning.",
             ),
-            source_paths=("apps/skystrip.py", "busybar_viz/adapters/skystrip.py"),
+            source_paths=(*app_source_paths(_find_checkout()),
+                          "busybar_viz/adapters/skystrip.py"),
         )
 
 

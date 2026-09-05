@@ -411,6 +411,12 @@ Digests deliberately do not use artifact ids — those also hash the request
 and tool sources, and a baseline should fail only when what the panel would
 show changed.
 
+Production-backed app artifacts inventory checkout app/helper Python and
+shipped raster assets, not just the thin launcher. This is conservative:
+an unrelated app-source edit may change artifact identity without changing
+pixels. Owner configuration, state and caches are excluded from this source
+inventory. The pixel baseline remains the behavior gate across such moves.
+
 ```bash
 uv run busybar-viz baseline check --json     # CI's pixel-drift gate
 uv run busybar-viz baseline update           # accept current pixels, all scenarios

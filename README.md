@@ -18,6 +18,10 @@ or use their data, animation, interaction, and audio patterns as inspiration
 for a new app. **Hello** and the generated app template are smaller examples
 to start from.
 
+**Firmware 1.2.3:** Skystrip and DSN mitigate Auto-brightness washout by
+switching Auto to fixed 35% at startup. Existing manual settings are preserved.
+See [known issues](docs/known-issues.md) for details and the opt-out.
+
 ## Start a new app
 
 After completing the [Quickstart](#quickstart), the first command creates an

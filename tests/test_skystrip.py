@@ -1,9 +1,8 @@
 """Guards for skystrip's host-side logic.
 
-The app is 3700 lines that no other test imports, so the import itself is the
-most valuable assertion here: it catches a missing import or a NameError at
-module scope, which on the Pi means a crash loop with the display dark.
-Everything device- or network-facing stays out of these tests.
+Rendering, weather policy and CLI tests call their production package owners.
+Device and provider operations use deterministic fakes; no test here needs a
+bar, a provider connection or an owner's configuration.
 """
 
 import asyncio
@@ -16,13 +15,53 @@ import pytest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import cli as sky_cli
+from apps.skystrip_app import config as sky_config
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import runtime as sky_runtime
+from apps.skystrip_app import selection as sky_selection
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app import weather_timeline as sky_weather_timeline
+from apps.skystrip_app.device import assets as sky_device_assets
+from apps.skystrip_app.device import display as sky_device_display
+from apps.skystrip_app.providers import lightning as sky_providers_lightning
+from apps.skystrip_app.providers import radar as sky_providers_radar
+from apps.skystrip_app.providers import weather as sky_providers_weather
+from apps.skystrip_app.render import art as sky_render_art
+from apps.skystrip_app.render import backroads as sky_render_backroads
+from apps.skystrip_app.render import effects as sky_render_effects
+from apps.skystrip_app.render import grove as sky_render_grove
+from apps.skystrip_app.render import lakefront as sky_render_lakefront
+from apps.skystrip_app.render import precipitation as sky_render_precipitation
+from apps.skystrip_app.render import scene as sky_render_scene
+from apps.skystrip_app.render import season as sky_render_season
+from apps.skystrip_app.render import traffic as sky_render_traffic
+from apps.skystrip_app.render import vegetation as sky_render_vegetation
+from astral import Observer
+from busybar_dev.device import is_refusal as _is_refusal
+import httpx
+import os
 
 
-def test_module_imports_and_exposes_its_feed_surface():
-    for name in ("apply_rain", "poll_radar", "poll_nws", "push_scene",
-                 "sweep_stale_assets", "_coalesce_flashes", "run"):
-        assert hasattr(skystrip, name), f"skystrip lost {name}"
+def test_runtime_operations_have_explicit_owners():
+    from apps.skystrip_app import weather_state as sky_weather_state
+    from apps.skystrip_app.device import assets
+    from apps.skystrip_app.providers import lightning
+
+    for owner, name in (
+        (sky_weather_state, "apply_rain"),
+        (sky_providers_radar, "poll_radar"),
+        (sky_providers_weather, "poll_nws"),
+        (sky_device_display, "push_scene"),
+        (assets, "sweep_stale_assets"),
+        (lightning, "_coalesce_flashes"),
+        (sky_runtime, "run"),
+    ):
+        operation = getattr(owner, name)
+        assert callable(operation)
+        assert operation.__module__ == owner.__name__
 
 
 async def test_once_draws_local_snapshot_without_starting_provider_pollers(
@@ -52,14 +91,14 @@ async def test_once_draws_local_snapshot_without_starting_provider_pollers(
     async def pushed(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(skystrip, "poll_nws", forbidden_nws)
-    monkeypatch.setattr(skystrip, "poll_radar", forbidden_radar)
-    monkeypatch.setattr(skystrip, "connect_with_retry", connected)
-    monkeypatch.setattr(skystrip, "push_scene", pushed)
-    monkeypatch.setattr(skystrip, "render_loop_frames", lambda *_a, **_k: [])
-    monkeypatch.setattr(skystrip, "load_scene_idx", lambda: 0)
+    monkeypatch.setattr(sky_providers_weather, "poll_nws", forbidden_nws)
+    monkeypatch.setattr(sky_providers_radar, "poll_radar", forbidden_radar)
+    monkeypatch.setattr(sky_runtime, "connect_with_retry", connected)
+    monkeypatch.setattr(sky_device_display, "push_scene", pushed)
+    monkeypatch.setattr(sky_render_scene, "render_loop_frames", lambda *_a, **_k: [])
+    monkeypatch.setattr(sky_selection, "load_scene_idx", lambda: 0)
 
-    await skystrip.run(once=True)
+    await sky_runtime.run(once=True)
 
     assert provider_calls == []
 
@@ -68,22 +107,22 @@ def test_coalesce_flashes_keeps_the_nearest_and_empties_the_queue():
     q = asyncio.Queue()
     for d in (40.0, 3.0, 22.0, 11.0):
         q.put_nowait(d)
-    assert skystrip._coalesce_flashes(q, 18.0) == 3.0
+    assert sky_providers_lightning._coalesce_flashes(q, 18.0) == 3.0
     assert q.empty()
 
 
 def test_coalesce_flashes_is_a_noop_on_an_empty_queue():
     q = asyncio.Queue()
-    assert skystrip._coalesce_flashes(q, 7.5) == 7.5
+    assert sky_providers_lightning._coalesce_flashes(q, 7.5) == 7.5
 
 
 def test_lightning_queue_is_bounded_and_overflow_collapses_the_burst():
-    state = skystrip.SkyState()
-    assert state.flash_queue.maxsize == skystrip.FLASH_QUEUE_MAX
+    state = sky_model.SkyState()
+    assert state.flash_queue.maxsize == sky_limits.FLASH_QUEUE_MAX
 
-    for distance in range(10, 10 + skystrip.FLASH_QUEUE_MAX):
+    for distance in range(10, 10 + sky_limits.FLASH_QUEUE_MAX):
         state.flash_queue.put_nowait(float(distance))
-    skystrip._enqueue_flash(state.flash_queue, 3.0)
+    sky_providers_lightning._enqueue_flash(state.flash_queue, 3.0)
 
     assert state.flash_queue.qsize() == 1
     assert state.flash_queue.get_nowait() == 3.0
@@ -91,7 +130,7 @@ def test_lightning_queue_is_bounded_and_overflow_collapses_the_burst():
 
 def test_weather_state_replace_preserves_the_warning_name():
     """An observation refresh must not downgrade the alarm banner."""
-    wx = skystrip.WeatherState(severe=True, severe_event="Tornado Warning")
+    wx = sky_weather.WeatherState(severe=True, severe_event="Tornado Warning")
     obs = {"cloud_frac": 1.0, "rain": True, "snow": False, "thunder": True,
            "wind_kmh": 30.0, "wind_dir": 180, "temp_c": 21.0,
            "humidity": 88.0, "visibility_m": 8000.0}
@@ -107,14 +146,14 @@ def test_weather_state_replace_preserves_the_warning_name():
 ])
 def test_sweep_matches_every_versioned_family(name):
     """A family missing from this regex leaks on the device forever."""
-    assert skystrip.GENERATION_FILES.match(name), name
+    assert sky_device_assets.GENERATION_FILES.match(name), name
 
 
 @pytest.mark.parametrize("name", [
     "house.png", "siren.snd", "flock_0.png", "sky_a.png", "notes.txt",
 ])
 def test_sweep_spares_durable_assets(name):
-    assert not skystrip.GENERATION_FILES.match(name), name
+    assert not sky_device_assets.GENERATION_FILES.match(name), name
 
 
 def test_refusal_detection_reads_the_real_busylib_attribute():
@@ -123,10 +162,10 @@ def test_refusal_detection_reads_the_real_busylib_attribute():
 
     refused = exceptions.BusyBarAPIError("Not drawn due to low priority",
                                          status_code=409)
-    assert skystrip._is_refusal(refused)
+    assert _is_refusal(refused)
     broken = exceptions.BusyBarAPIError("Failed to open file for writing",
                                         status_code=508)
-    assert not skystrip._is_refusal(broken)
+    assert not _is_refusal(broken)
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -140,33 +179,33 @@ def test_refusal_detection_reads_the_real_busylib_attribute():
 ])
 def test_enabled_scenes_parsing(tmp_path, raw, expected):
     values = {} if raw is None else {"SKYSTRIP_SCENES": raw}
-    got = skystrip.parse_runtime_config(values, tmp_path).enabled_scenes
-    assert got == (skystrip.SCENES if expected is None else expected)
+    got = sky_config.parse_runtime_config(values, tmp_path).enabled_scenes
+    assert got == (sky_config.SCENES if expected is None else expected)
     assert got, "an empty set would divide by zero on the first button press"
 
 
 def test_cycling_wraps_inside_the_enabled_set(monkeypatch):
-    monkeypatch.setattr(skystrip, "ENABLED_SCENES", ("house", "forest"))
-    state = skystrip.SkyState()
+    monkeypatch.setattr(sky_settings, "ENABLED_SCENES", ("house", "forest"))
+    state = sky_model.SkyState()
     seen = []
     for _ in range(4):
         seen.append(state.scene)
-        state.scene_idx = (state.scene_idx + 1) % len(skystrip.ENABLED_SCENES)
+        state.scene_idx = (state.scene_idx + 1) % len(sky_settings.ENABLED_SCENES)
     assert seen == ["house", "forest", "house", "forest"]
 
 
 def test_disabled_saved_scene_resumes_at_the_first_enabled(monkeypatch, tmp_path):
     scene_file = tmp_path / ".skystrip_scene"
-    monkeypatch.setattr(skystrip, "SCENE_FILE", scene_file)
-    monkeypatch.setattr(skystrip, "ENABLED_SCENES", ("skyline", "grove"))
+    monkeypatch.setattr(sky_settings, "SCENE_FILE", scene_file)
+    monkeypatch.setattr(sky_settings, "ENABLED_SCENES", ("skyline", "grove"))
 
     scene_file.write_text("grove")                 # still enabled: resumed
-    assert skystrip.load_scene_idx() == 1
+    assert sky_selection.load_scene_idx() == 1
 
     scene_file.write_text("lakefront")             # switched off since: reset
-    assert skystrip.load_scene_idx() == 0
+    assert sky_selection.load_scene_idx() == 0
 
-    assert skystrip.save_scene_idx(1) is True      # saves the NAME, not an index
+    assert sky_selection.save_scene_idx(1) is True      # saves the NAME, not an index
     assert scene_file.read_text() == "grove"
     assert list(tmp_path.glob("*.tmp")) == []
 
@@ -176,15 +215,15 @@ def test_scene_save_is_atomic_and_reports_a_failed_publish(
     scene_file = tmp_path / "state" / "skystrip-scene"
     scene_file.parent.mkdir()
     scene_file.write_text("house")
-    monkeypatch.setattr(skystrip, "SCENE_FILE", scene_file)
-    monkeypatch.setattr(skystrip, "ENABLED_SCENES", ("house", "grove"))
+    monkeypatch.setattr(sky_settings, "SCENE_FILE", scene_file)
+    monkeypatch.setattr(sky_settings, "ENABLED_SCENES", ("house", "grove"))
 
     def fail_replace(_source, _destination):
         raise OSError("read-only test boundary")
 
-    monkeypatch.setattr(skystrip.os, "replace", fail_replace)
+    monkeypatch.setattr(os, "replace", fail_replace)
     with caplog.at_level("WARNING", logger="skystrip"):
-        assert skystrip.save_scene_idx(1) is False
+        assert sky_selection.save_scene_idx(1) is False
 
     assert scene_file.read_text() == "house", "failed publish changed good state"
     assert list(scene_file.parent.glob(".skystrip-scene.*.tmp")) == []
@@ -192,22 +231,22 @@ def test_scene_save_is_atomic_and_reports_a_failed_publish(
 
 
 def test_scene_state_defaults_to_the_managed_state_directory():
-    assert skystrip.SCENE_FILE.name == "skystrip-scene"
-    assert skystrip.SCENE_FILE.parent == skystrip.REPO_ROOT / "state"
-    assert skystrip.DEFAULT_SKYSTRIP_CONFIG.state_root == (
-        skystrip.REPO_ROOT / "state"
+    assert sky_settings.SCENE_FILE.name == "skystrip-scene"
+    assert sky_settings.SCENE_FILE.parent == sky_config.REPO_ROOT / "state"
+    assert sky_config.DEFAULT_SKYSTRIP_CONFIG.state_root == (
+        sky_config.REPO_ROOT / "state"
     )
 
 
 def test_malformed_state_root_cannot_crash_module_startup(tmp_path):
-    path, warning = skystrip.resolve_state_root("\x00bad", tmp_path)
+    path, warning = sky_config.resolve_state_root("\x00bad", tmp_path)
     assert path == tmp_path / "state"
     assert "BUSYBAR_STATE_DIR is unusable" in warning
 
 
 def test_blank_env_values_do_not_crash_config_parsing(tmp_path):
     """A per-app override may now be explicitly blank; float("") must not run."""
-    config = skystrip.parse_runtime_config({
+    config = sky_config.parse_runtime_config({
         "SKYSTRIP_LAT": "",
         "SKYSTRIP_LON": "",
         "SKYSTRIP_TZ": "",
@@ -225,14 +264,14 @@ def test_blank_env_values_do_not_crash_config_parsing(tmp_path):
 
 def test_invalid_units_fail_fast_in_runtime_config(tmp_path):
     with pytest.raises(ValueError, match="SKYSTRIP_UNITS must be 'f' or 'c'"):
-        skystrip.parse_runtime_config({"SKYSTRIP_UNITS": "kelvin"}, tmp_path)
+        sky_config.parse_runtime_config({"SKYSTRIP_UNITS": "kelvin"}, tmp_path)
 
 
 def test_invalid_timezone_fails_with_bounded_config_error(tmp_path):
     with pytest.raises(
         ValueError, match="SKYSTRIP_TZ must be a valid IANA timezone"
     ):
-        skystrip.parse_runtime_config({"SKYSTRIP_TZ": "A" * 300}, tmp_path)
+        sky_config.parse_runtime_config({"SKYSTRIP_TZ": "A" * 300}, tmp_path)
 
 
 def test_an_unset_location_defaults_to_nowhere_and_says_so(
@@ -244,21 +283,21 @@ def test_an_unset_location_defaults_to_nowhere_and_says_so(
 
     0,0 is in the Gulf of Guinea. Nobody's window looks out on it, which is
     the point — but obviously-wrong is only useful if it also SAYS so."""
-    unlocated = skystrip.parse_runtime_config({}, tmp_path)
+    unlocated = sky_config.parse_runtime_config({}, tmp_path)
     assert unlocated.latitude == 0.0 and unlocated.longitude == 0.0
     assert unlocated.location_set is False
-    monkeypatch.setattr(skystrip, "LOCATION_SET", unlocated.location_set)
-    warning = skystrip.warn_if_unlocated()
+    monkeypatch.setattr(sky_settings, "LOCATION_SET", unlocated.location_set)
+    warning = sky_settings.warn_if_unlocated()
     assert "SKYSTRIP_LAT" in warning and "SKYSTRIP_LON" in warning
     assert "not yours" in warning       # says it is wrong, not just what it is
 
-    located = skystrip.parse_runtime_config({
+    located = sky_config.parse_runtime_config({
         "SKYSTRIP_LAT": "51.5074",
         "SKYSTRIP_LON": "-0.1278",
     }, tmp_path)
     assert located.location_set is True
-    monkeypatch.setattr(skystrip, "LOCATION_SET", located.location_set)
-    assert skystrip.warn_if_unlocated() == "", "configured installs must stay quiet"
+    monkeypatch.setattr(sky_settings, "LOCATION_SET", located.location_set)
+    assert sky_settings.warn_if_unlocated() == "", "configured installs must stay quiet"
 
 
 def test_a_malformed_coordinate_is_a_clear_exit_not_a_traceback(
@@ -273,7 +312,7 @@ def test_a_malformed_coordinate_is_a_clear_exit_not_a_traceback(
         sys, "argv", ["skystrip.py", "--preview", str(tmp_path / "x.png")])
 
     with pytest.raises(SystemExit) as excinfo:
-        skystrip.main()
+        sky_cli.main()
 
     assert "SKYSTRIP_LAT" in str(excinfo.value)
 
@@ -296,14 +335,14 @@ def test_scrubbed_weather_carries_snow_depth():
     ground snow is invisible in exactly the view that prompted this work --
     the README GIFs are time-machine renders."""
     from datetime import datetime
-    target = datetime(2026, 1, 15, 9, 0, tzinfo=skystrip.TZ)
-    state = skystrip.SkyState()
+    target = datetime(2026, 1, 15, 9, 0, tzinfo=sky_settings.TZ)
+    state = sky_model.SkyState()
     state.hourly = [(target, {
         "temp": -4.0, "cloud": 80, "precip": 0.0, "prob": 0, "code": 71,
         "wind": 10.0, "wdir": 270.0, "rh": 80.0, "vis": 16000.0,
         "snow_depth": 0.18,
     })]
-    wx = skystrip.wx_at(state, target)
+    wx = sky_weather_timeline.wx_at(state, target)
     assert wx.snow_depth_m == 0.18
 
 
@@ -311,14 +350,14 @@ def test_snow_depth_defaults_to_zero_when_the_feed_omits_it():
     """Open-Meteo can return null rows; a missing key must not crash the
     Time Machine or fabricate snow."""
     from datetime import datetime
-    target = datetime(2026, 7, 4, 12, 0, tzinfo=skystrip.TZ)
-    state = skystrip.SkyState()
+    target = datetime(2026, 7, 4, 12, 0, tzinfo=sky_settings.TZ)
+    state = sky_model.SkyState()
     state.hourly = [(target, {
         "temp": 28.0, "cloud": 10, "precip": 0.0, "prob": 0, "code": 0,
         "wind": 8.0, "wdir": 180.0, "rh": 40.0, "vis": 16000.0,
     })]
-    assert skystrip.wx_at(state, target).snow_depth_m == 0.0
-    assert skystrip.WeatherState().snow_depth_m == 0.0
+    assert sky_weather_timeline.wx_at(state, target).snow_depth_m == 0.0
+    assert sky_weather.WeatherState().snow_depth_m == 0.0
 
 
 async def test_live_nowcast_writes_snow_depth_to_the_live_weather(monkeypatch):
@@ -360,20 +399,20 @@ async def test_live_nowcast_writes_snow_depth_to_the_live_weather(monkeypatch):
             kw["transport"] = httpx_mod.MockTransport(handler)
             super().__init__(*a, **kw)
 
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", _MockClient)
-    monkeypatch.setattr(skystrip, "NWS_STATION", "")
+    monkeypatch.setattr(httpx, "AsyncClient", _MockClient)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "")
     # These live on the function object and persist across calls in the same
     # process; clear them so this test doesn't depend on what ran before it.
-    monkeypatch.delattr(skystrip.poll_nws, "_hourly_due", raising=False)
-    monkeypatch.delattr(skystrip.poll_nws, "_forecast_due", raising=False)
+    monkeypatch.delattr(sky_providers_weather.poll_nws, "_hourly_due", raising=False)
+    monkeypatch.delattr(sky_providers_weather.poll_nws, "_forecast_due", raising=False)
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     assert state.weather.snow_depth_m == 0.0
 
     with pytest.raises(asyncio.TimeoutError):
         # poll_nws loops forever; one real iteration completes well inside
         # this timeout and then blocks on OBS_INTERVAL_S's sleep (300s).
-        await asyncio.wait_for(skystrip.poll_nws(state), timeout=5)
+        await asyncio.wait_for(sky_providers_weather.poll_nws(state), timeout=5)
 
     assert state.weather.snow_depth_m == 0.22, \
         "nowcast reached temp_c but not snow_depth_m -- ground snow is " \
@@ -418,16 +457,16 @@ async def test_pinned_station_cannot_supply_history_outside_point_coverage(
             kwargs["transport"] = httpx_mod.MockTransport(handler)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", _MockClient)
-    monkeypatch.setattr(skystrip, "NWS_STATION", "KPIN")
+    monkeypatch.setattr(httpx, "AsyncClient", _MockClient)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "KPIN")
     for attr in ("_hourly_due", "_forecast_due", "_obs_history_due"):
-        monkeypatch.delattr(skystrip.poll_nws, attr, raising=False)
+        monkeypatch.delattr(sky_providers_weather.poll_nws, attr, raising=False)
 
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.obs_history = [
         (datetime.now(timezone.utc), {"rain": True, "snow": False})
     ]
-    poller = asyncio.create_task(skystrip.poll_nws(state))
+    poller = asyncio.create_task(sky_providers_weather.poll_nws(state))
     try:
         await asyncio.wait_for(state.weather_ready.wait(), timeout=1.0)
         await asyncio.sleep(0)
@@ -482,13 +521,13 @@ async def test_station_discovery_404_does_not_reclassify_a_covered_point(
             kwargs["transport"] = httpx_mod.MockTransport(handler)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", _MockClient)
-    monkeypatch.setattr(skystrip, "NWS_STATION", "")
+    monkeypatch.setattr(httpx, "AsyncClient", _MockClient)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "")
     for attr in ("_hourly_due", "_forecast_due", "_obs_history_due"):
-        monkeypatch.delattr(skystrip.poll_nws, attr, raising=False)
+        monkeypatch.delattr(sky_providers_weather.poll_nws, attr, raising=False)
 
-    state = skystrip.SkyState()
-    poller = asyncio.create_task(skystrip.poll_nws(state))
+    state = sky_model.SkyState()
+    poller = asyncio.create_task(sky_providers_weather.poll_nws(state))
     try:
         await asyncio.wait_for(state.weather_ready.wait(), timeout=1.0)
         await asyncio.sleep(0)
@@ -508,17 +547,17 @@ async def test_station_discovery_404_does_not_reclassify_a_covered_point(
     (0.25, 3), (2.0, 3),           # deep, and an implausible depth
 ])
 def test_snow_tier_boundaries(depth, tier):
-    assert skystrip.snow_tier(depth) == tier
+    assert sky_render_precipitation.snow_tier(depth) == tier
 
 
 def test_snow_tier_survives_a_missing_reading():
     """Open-Meteo returns null for some rows; None must read as bare ground
     rather than raising inside the render loop."""
-    assert skystrip.snow_tier(None) == 0
+    assert sky_render_precipitation.snow_tier(None) == 0
 
 
 def _blank():
-    img = Image.new("RGB", (skystrip.W, 16), (0, 0, 0))
+    img = Image.new("RGB", (sky_limits.W, 16), (0, 0, 0))
     return img, img.load()
 
 
@@ -528,50 +567,50 @@ def test_settle_snow_never_fills_a_row():
     a preview PNG, which is why this is a test and not a note."""
     for tier in (1, 2, 3):
         img, px = _blank()
-        tops = {x: 14 for x in range(skystrip.W)}
-        skystrip.settle_snow(px, tops, tier)
+        tops = {x: 14 for x in range(sky_limits.W)}
+        sky_render_precipitation.settle_snow(px, tops, tier)
         for y in range(16):
-            lit = sum(1 for x in range(skystrip.W) if px[x, y] != (0, 0, 0))
-            assert lit < skystrip.W, f"tier {tier} filled row {y} solid"
+            lit = sum(1 for x in range(sky_limits.W) if px[x, y] != (0, 0, 0))
+            assert lit < sky_limits.W, f"tier {tier} filled row {y} solid"
 
 
 def test_settle_snow_never_fills_a_row_even_at_an_unknown_tier():
     """The fallback must be the safest tier, not the most dangerous one:
     a fully lit row IS the haze failure this helper exists to prevent."""
     img, px = _blank()
-    tops = {x: 14 for x in range(skystrip.W)}
-    skystrip.settle_snow(px, tops, 99)
+    tops = {x: 14 for x in range(sky_limits.W)}
+    sky_render_precipitation.settle_snow(px, tops, 99)
     for y in range(16):
-        lit = sum(1 for x in range(skystrip.W) if px[x, y] != (0, 0, 0))
-        assert lit < skystrip.W
+        lit = sum(1 for x in range(sky_limits.W) if px[x, y] != (0, 0, 0))
+        assert lit < sky_limits.W
 
 
 def test_settle_snow_is_denser_the_deeper_it_gets():
     counts = []
     for tier in (1, 2, 3):
         img, px = _blank()
-        tops = {x: 14 for x in range(skystrip.W)}
-        skystrip.settle_snow(px, tops, tier)
-        counts.append(sum(1 for y in range(16) for x in range(skystrip.W)
+        tops = {x: 14 for x in range(sky_limits.W)}
+        sky_render_precipitation.settle_snow(px, tops, tier)
+        counts.append(sum(1 for y in range(16) for x in range(sky_limits.W)
                           if px[x, y] != (0, 0, 0)))
     assert counts[0] < counts[1] < counts[2], counts
 
 
 def test_settle_snow_draws_nothing_at_tier_zero():
     img, px = _blank()
-    skystrip.settle_snow(px, {x: 14 for x in range(skystrip.W)}, 0)
+    sky_render_precipitation.settle_snow(px, {x: 14 for x in range(sky_limits.W)}, 0)
     assert all(px[x, y] == (0, 0, 0)
-               for y in range(16) for x in range(skystrip.W))
+               for y in range(16) for x in range(sky_limits.W))
 
 
 def test_settle_snow_follows_an_uneven_surface():
     """Rooftops and banks are not one flat row; snow must sit on whatever
     the scene passes rather than assuming y=14."""
     img, px = _blank()
-    tops = {x: (10 if x < 20 else 14) for x in range(skystrip.W)}
-    skystrip.settle_snow(px, tops, 3)
+    tops = {x: (10 if x < 20 else 14) for x in range(sky_limits.W)}
+    sky_render_precipitation.settle_snow(px, tops, 3)
     assert any(px[x, 10] != (0, 0, 0) for x in range(20))
-    assert all(px[x, 10] == (0, 0, 0) for x in range(20, skystrip.W))
+    assert all(px[x, 10] == (0, 0, 0) for x in range(20, sky_limits.W))
 
 
 def test_settle_snow_is_deterministic():
@@ -579,8 +618,8 @@ def test_settle_snow_is_deterministic():
     out = []
     for _ in range(2):
         img, px = _blank()
-        skystrip.settle_snow(px, {x: 14 for x in range(skystrip.W)}, 2)
-        out.append([px[x, y] for y in range(16) for x in range(skystrip.W)])
+        sky_render_precipitation.settle_snow(px, {x: 14 for x in range(sky_limits.W)}, 2)
+        out.append([px[x, y] for y in range(16) for x in range(sky_limits.W)])
     assert out[0] == out[1]
 
 
@@ -591,9 +630,9 @@ def test_surface_tops_finds_the_first_solid_pixel_per_column():
     sky = {(0, 0, 0)}
     for x in range(10):
         px[x, 6] = (90, 90, 90)      # a tall building
-    for x in range(10, skystrip.W):
+    for x in range(10, sky_limits.W):
         px[x, 14] = (40, 50, 30)     # ordinary ground
-    tops = skystrip.surface_tops(px, range(skystrip.W), range(16), sky)
+    tops = sky_render_precipitation.surface_tops(px, range(sky_limits.W), range(16), sky)
     assert tops[0] == 6
     assert tops[40] == 14
 
@@ -602,7 +641,7 @@ def test_surface_tops_omits_columns_that_are_all_sky():
     """A gap in the skyline must get no snow floating in mid-air."""
     img, px = _blank()
     px[5, 12] = (90, 90, 90)
-    tops = skystrip.surface_tops(px, range(skystrip.W), range(16), {(0, 0, 0)})
+    tops = sky_render_precipitation.surface_tops(px, range(sky_limits.W), range(16), {(0, 0, 0)})
     assert tops == {5: 12}
 
 
@@ -610,9 +649,9 @@ def test_string_lights_leaves_gaps_between_bulbs():
     """A continuous lit line is the haze failure: LEDs are 1.23mm lit on a
     2.2mm pitch, so an unbroken run reads as a smear, not as lights."""
     img, px = _blank()
-    points = [(x, 5) for x in range(skystrip.W)]
-    skystrip.string_lights(px, points, 0.0)
-    lit = [x for x in range(skystrip.W) if px[x, 5] != (0, 0, 0)]
+    points = [(x, 5) for x in range(sky_limits.W)]
+    sky_render_season.string_lights(px, points, 0.0)
+    lit = [x for x in range(sky_limits.W) if px[x, 5] != (0, 0, 0)]
     assert lit, "drew no bulbs at all"
     assert len(lit) < len(points) / 2, "bulbs are too dense to read as a string"
 
@@ -622,7 +661,7 @@ def test_string_lights_uses_separable_hues():
     panel. The point of a light string is that the colours differ. Includes
     the wraparound pair (last next to first) since the palette cycles, and a
     string longer than three bulbs puts them adjacent."""
-    for a, b in zip(skystrip.XMAS_BULBS, skystrip.XMAS_BULBS[1:] + skystrip.XMAS_BULBS[:1]):
+    for a, b in zip(sky_render_season.XMAS_BULBS, sky_render_season.XMAS_BULBS[1:] + sky_render_season.XMAS_BULBS[:1]):
         assert max(abs(p - q) for p, q in zip(a, b)) >= 76, (a, b)  # 30% of 255
 
 
@@ -639,11 +678,11 @@ def test_xmas_bulbs_do_not_collide_with_a_scene_colour():
     which is a false positive waiting to happen, not a guarantee. Pin the
     absence of the collision directly, against every colour a scene can
     legitimately paint a window."""
-    scene_colours = {skystrip.WINDOW_WARM, skystrip.WINDOW_COOL}
-    for bulb in skystrip.XMAS_BULBS:
+    scene_colours = {sky_render_art.WINDOW_WARM, sky_render_art.WINDOW_COOL}
+    for bulb in sky_render_season.XMAS_BULBS:
         assert bulb not in scene_colours, \
             f"{bulb} collides with a window/lamp colour"
-    assert skystrip.XMAS_TREE not in scene_colours
+    assert sky_render_season.XMAS_TREE not in scene_colours
 
 
 def test_string_lights_twinkle_is_seamless_across_the_loop():
@@ -651,11 +690,11 @@ def test_string_lights_twinkle_is_seamless_across_the_loop():
     frames. A twinkle that does not close its cycle jumps at the seam."""
     img0, px0 = _blank()
     img1, px1 = _blank()
-    points = [(x, 5) for x in range(0, skystrip.W, 2)]
-    skystrip.string_lights(px0, points, 0.0)
-    skystrip.string_lights(px1, points, 1.0)
-    assert [px0[x, 5] for x in range(skystrip.W)] == \
-           [px1[x, 5] for x in range(skystrip.W)]
+    points = [(x, 5) for x in range(0, sky_limits.W, 2)]
+    sky_render_season.string_lights(px0, points, 0.0)
+    sky_render_season.string_lights(px1, points, 1.0)
+    assert [px0[x, 5] for x in range(sky_limits.W)] == \
+           [px1[x, 5] for x in range(sky_limits.W)]
 
 
 def test_string_lights_follows_an_uneven_line():
@@ -665,20 +704,20 @@ def test_string_lights_follows_an_uneven_line():
     even when nothing is drawn at all."""
     img, px = _blank()
     points = [(10, 8), (11, 7), (12, 7), (13, 8), (14, 9)]
-    skystrip.string_lights(px, points, 0.0)
+    sky_render_season.string_lights(px, points, 0.0)
     drew = 0
     for i, (x, y) in enumerate(points):
-        if i % skystrip.XMAS_SPACING == 0:
+        if i % sky_render_season.XMAS_SPACING == 0:
             assert px[x, y] != (0, 0, 0), f"no bulb at point {i} ({x},{y})"
             drew += 1
-        for other in range(skystrip.H):
+        for other in range(sky_limits.H):
             if other != y:
                 assert px[x, other] == (0, 0, 0), f"bulb off the line at {x}"
     assert drew, "the test asserted nothing"
 
 
 def test_snowdepth_flag_reaches_the_preview_weather():
-    parser = skystrip.build_parser()
+    parser = sky_cli.build_parser()
     args = parser.parse_args(["--preview", "x.png", "--snowdepth", "0.3"])
     assert args.snowdepth == 0.3
     assert parser.parse_args(["--preview", "x.png"]).snowdepth == 0.0
@@ -700,15 +739,15 @@ def test_house_scene_puts_snow_on_the_ground(monkeypatch):
     # SKYSTRIP_LAT exported in the shell -- OBSERVER would carry a real
     # coordinate here, elev would land somewhere golden-hour or night skews
     # _ambient(), and this exact-color comparison would flake.
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    # UTC, not skystrip.TZ: with OBSERVER at 0,0 this puts the sun overhead,
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    # UTC, not sky_settings.TZ: with OBSERVER at 0,0 this puts the sun overhead,
     # which is what keeps _ambient() the identity regardless of local .env.
     when = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
-    bare = skystrip.WeatherState(temp_c=-2.0, snow_depth_m=0.0)
-    deep = skystrip.WeatherState(temp_c=-2.0, snow_depth_m=0.30)
-    a = skystrip.render_scene(when, bare, 0, scene="house")
-    b = skystrip.render_scene(when, deep, 0, scene="house")
+    bare = sky_weather.WeatherState(temp_c=-2.0, snow_depth_m=0.0)
+    deep = sky_weather.WeatherState(temp_c=-2.0, snow_depth_m=0.30)
+    a = sky_render_scene.render_scene(when, bare, 0, scene="house")
+    b = sky_render_scene.render_scene(when, deep, 0, scene="house")
     assert a != b, "snow depth changed nothing on the ground"
 
     # Detecting the snow needs more care than it looks, and two earlier
@@ -729,10 +768,10 @@ def test_house_scene_puts_snow_on_the_ground(monkeypatch):
     # is overhead,
     # the tint is skipped, and settle_snow's colours land untouched.
     pb = b.load()
-    snow_colors = {skystrip.SNOW_LIT, skystrip.SNOW_SHADE}
-    ground = sum(1 for x in range(skystrip.W) if pb[x, 14] in snow_colors)
+    snow_colors = {sky_render_art.SNOW_LIT, sky_render_art.SNOW_SHADE}
+    ground = sum(1 for x in range(sky_limits.W) if pb[x, 14] in snow_colors)
     assert ground > 0, "deep snow drew nothing on the ground row"
-    assert ground < skystrip.W, "ground row filled solid: reads as haze"
+    assert ground < sky_limits.W, "ground row filled solid: reads as haze"
 
 
 def test_house_snow_never_floats_above_the_tuft(monkeypatch):
@@ -750,15 +789,15 @@ def test_house_snow_never_floats_above_the_tuft(monkeypatch):
     check would pass even with the floating-snow bug back in place.
     """
     from datetime import datetime
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    when = datetime(2026, 1, 15, 12, 0, tzinfo=skystrip.TZ)
-    snow_colors = {skystrip.SNOW_LIT, skystrip.SNOW_SHADE}
-    wx = skystrip.WeatherState(temp_c=-2.0, snow_depth_m=0.12,  # tier 2
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    when = datetime(2026, 1, 15, 12, 0, tzinfo=sky_settings.TZ)
+    snow_colors = {sky_render_art.SNOW_LIT, sky_render_art.SNOW_SHADE}
+    wx = sky_weather.WeatherState(temp_c=-2.0, snow_depth_m=0.12,  # tier 2
                                 wind_kmh=10.0, wind_dir=90.0)
     for i in range(8):
         phase = i / 8
-        px = skystrip.render_scene(when, wx, 0, phase=phase,
+        px = sky_render_scene.render_scene(when, wx, 0, phase=phase,
                                     scene="house").load()
         for x in range(2, 47):
             assert px[x, 12] not in snow_colors, \
@@ -773,11 +812,11 @@ def test_scene_responds_to_settled_snow(scene):
     lakefront are last because their "ground" is least like ground:
     rooftops, and banks-not-water."""
     from datetime import datetime
-    when = datetime(2026, 1, 15, 12, 0, tzinfo=skystrip.TZ)
-    bare = skystrip.WeatherState(temp_c=-2.0, snow_depth_m=0.0)
-    deep = skystrip.WeatherState(temp_c=-2.0, snow_depth_m=0.30)
-    assert (skystrip.render_scene(when, bare, 0, scene=scene)
-            != skystrip.render_scene(when, deep, 0, scene=scene)), \
+    when = datetime(2026, 1, 15, 12, 0, tzinfo=sky_settings.TZ)
+    bare = sky_weather.WeatherState(temp_c=-2.0, snow_depth_m=0.0)
+    deep = sky_weather.WeatherState(temp_c=-2.0, snow_depth_m=0.30)
+    assert (sky_render_scene.render_scene(when, bare, 0, scene=scene)
+            != sky_render_scene.render_scene(when, deep, 0, scene=scene)), \
         f"{scene} ignored settled snow"
 
 
@@ -800,14 +839,14 @@ def test_snow_never_lands_on_open_water(monkeypatch):
     water exclusion look intact when it isn't.
     """
     from datetime import datetime
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    when = datetime(2026, 1, 15, 12, 0, tzinfo=skystrip.TZ)
-    wx = skystrip.WeatherState(temp_c=-2.0, snow_depth_m=0.40)
-    px = skystrip.render_scene(when, wx, 0, scene="lakefront").load()
-    snow_colors = {skystrip.SNOW_LIT, skystrip.SNOW_SHADE}
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    when = datetime(2026, 1, 15, 12, 0, tzinfo=sky_settings.TZ)
+    wx = sky_weather.WeatherState(temp_c=-2.0, snow_depth_m=0.40)
+    px = sky_render_scene.render_scene(when, wx, 0, scene="lakefront").load()
+    snow_colors = {sky_render_art.SNOW_LIT, sky_render_art.SNOW_SHADE}
     for y in (13, 14, 15):
-        for x in range(skystrip.BEND_WATER_END[y]):
+        for x in range(sky_render_lakefront.BEND_WATER_END[y]):
             assert px[x, y] not in snow_colors, \
                 f"snow settled on open water at ({x},{y})"
 
@@ -818,8 +857,8 @@ def test_snow_never_lands_on_open_water(monkeypatch):
 ])
 def test_is_winter(month, winter):
     from datetime import datetime
-    assert skystrip.is_winter(
-        datetime(2026, month, 15, 12, 0, tzinfo=skystrip.TZ)) is winter
+    assert sky_render_grove.is_winter(
+        datetime(2026, month, 15, 12, 0, tzinfo=sky_settings.TZ)) is winter
 
 
 @pytest.mark.parametrize("window,month,day,expected", [
@@ -837,17 +876,17 @@ def test_is_winter(month, winter):
     ("dec20-jan1", 6,  15, False),
 ])
 def test_christmas_windows(monkeypatch, window, month, day, expected):
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", window)
-    when = datetime(2026, month, day, 12, 0, tzinfo=skystrip.TZ)
-    assert skystrip.is_christmas(when) is expected
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", window)
+    when = datetime(2026, month, day, 12, 0, tzinfo=sky_settings.TZ)
+    assert sky_render_season.is_christmas(when) is expected
 
 
 def test_an_unknown_christmas_window_is_off_not_a_crash(monkeypatch):
     """A hand-edited config.env can hold anything. An unrecognised value must
     not put the app into a crash loop with the display dark."""
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "sometime in winter")
-    assert skystrip.is_christmas(
-        datetime(2026, 12, 25, 12, 0, tzinfo=skystrip.TZ)) is False
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "sometime in winter")
+    assert sky_render_season.is_christmas(
+        datetime(2026, 12, 25, 12, 0, tzinfo=sky_settings.TZ)) is False
 
 
 def test_christmas_is_declared_in_the_registry():
@@ -868,12 +907,12 @@ def test_the_christmas_window_tolerates_case_and_whitespace(tmp_path, raw):
     """A hand-edited env file is the one place this is set without a UI to
     validate it, and an unrecognised value fails silently -- the
     decorations just never appear."""
-    config = skystrip.parse_runtime_config({"SKYSTRIP_CHRISTMAS": raw}, tmp_path)
+    config = sky_config.parse_runtime_config({"SKYSTRIP_CHRISTMAS": raw}, tmp_path)
     assert config.christmas_window == "dec24-26"
 
 
 def test_christmas_preview_flag_overrides_the_date():
-    parser = skystrip.build_parser()
+    parser = sky_cli.build_parser()
     assert parser.parse_args(["--preview", "x.png"]).christmas is None
     assert parser.parse_args(["--preview", "x.png", "--christmas"]).christmas is True
     assert parser.parse_args(["--preview", "x.png",
@@ -881,14 +920,14 @@ def test_christmas_preview_flag_overrides_the_date():
 
 
 def test_forced_christmas_overrides_the_window(monkeypatch):
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "off")
-    monkeypatch.setattr(skystrip, "CHRISTMAS_FORCED", True)
-    assert skystrip.is_christmas(
-        datetime(2026, 7, 4, 12, 0, tzinfo=skystrip.TZ)) is True
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "dec25")
-    monkeypatch.setattr(skystrip, "CHRISTMAS_FORCED", False)
-    assert skystrip.is_christmas(
-        datetime(2026, 12, 25, 12, 0, tzinfo=skystrip.TZ)) is False
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "off")
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_FORCED", True)
+    assert sky_render_season.is_christmas(
+        datetime(2026, 7, 4, 12, 0, tzinfo=sky_settings.TZ)) is True
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "dec25")
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_FORCED", False)
+    assert sky_render_season.is_christmas(
+        datetime(2026, 12, 25, 12, 0, tzinfo=sky_settings.TZ)) is False
 
 
 def test_the_christmas_window_is_evaluated_in_local_time(monkeypatch):
@@ -896,15 +935,15 @@ def test_the_christmas_window_is_evaluated_in_local_time(monkeypatch):
     UTC instant, a naive predicate would turn the lights on and off on the
     wrong evening -- and nothing would look broken, just early."""
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "dec25")
-    monkeypatch.setattr(skystrip, "CHRISTMAS_FORCED", None)
-    local_eve = datetime(2026, 12, 24, 19, 0, tzinfo=skystrip.TZ)
-    assert skystrip.is_christmas(local_eve) is False
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "dec25")
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_FORCED", None)
+    local_eve = datetime(2026, 12, 24, 19, 0, tzinfo=sky_settings.TZ)
+    assert sky_render_season.is_christmas(local_eve) is False
     # the same instant, expressed in UTC, must agree
-    assert skystrip.is_christmas(local_eve.astimezone(timezone.utc)) is False
-    local_day = datetime(2026, 12, 25, 19, 0, tzinfo=skystrip.TZ)
-    assert skystrip.is_christmas(local_day) is True
-    assert skystrip.is_christmas(local_day.astimezone(timezone.utc)) is True
+    assert sky_render_season.is_christmas(local_eve.astimezone(timezone.utc)) is False
+    local_day = datetime(2026, 12, 25, 19, 0, tzinfo=sky_settings.TZ)
+    assert sky_render_season.is_christmas(local_day) is True
+    assert sky_render_season.is_christmas(local_day.astimezone(timezone.utc)) is True
 
 
 def test_the_house_wears_lights_at_christmas(monkeypatch):
@@ -912,17 +951,17 @@ def test_the_house_wears_lights_at_christmas(monkeypatch):
     scrubbed) -- see test_house_scene_puts_snow_on_the_ground.
     """
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "dec24-26")
-    wx = skystrip.WeatherState(temp_c=-2.0)
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "dec24-26")
+    wx = sky_weather.WeatherState(temp_c=-2.0)
     # UTC noon at 0,0 keeps _ambient() the identity, so bulb colours land
     # unshaded and can be compared exactly. Pinning OBSERVER alone is not
     # enough: TZ comes from .env, which this worktree has.
     xmas = datetime(2026, 12, 25, 12, 0, tzinfo=timezone.utc)
     plain = datetime(2026, 12, 18, 12, 0, tzinfo=timezone.utc)
-    a = skystrip.render_scene(xmas, wx, 0, scene="house")
-    b = skystrip.render_scene(plain, wx, 0, scene="house")
+    a = sky_render_scene.render_scene(xmas, wx, 0, scene="house")
+    b = sky_render_scene.render_scene(plain, wx, 0, scene="house")
     assert a != b, "Christmas changed nothing"
 
     # "Something changed" is not sufficient -- render_scene paints a sky
@@ -944,11 +983,11 @@ def test_the_house_wears_lights_at_christmas(monkeypatch):
     # 0.0) and use THAT as the expected colour -- so this test is checking
     # "render_scene hung the real string on the real roofline", not
     # "render_scene's twinkle matches my arithmetic".
-    eaves = [(x, skystrip.HOUSE_TOP[x]) for x in sorted(skystrip.HOUSE_TOP)]
-    lit_points = eaves[::skystrip.XMAS_SPACING]
-    ref = Image.new("RGB", (skystrip.W, skystrip.H))
+    eaves = [(x, sky_render_art.HOUSE_TOP[x]) for x in sorted(sky_render_art.HOUSE_TOP)]
+    lit_points = eaves[::sky_render_season.XMAS_SPACING]
+    ref = Image.new("RGB", (sky_limits.W, sky_limits.H))
     refpx = ref.load()
-    skystrip.string_lights(refpx, eaves, 0.0)
+    sky_render_season.string_lights(refpx, eaves, 0.0)
     expected = [(x, y, refpx[x, y]) for x, y in lit_points]
     assert all(c != (0, 0, 0) for _, _, c in expected), \
         "test setup produced no reference bulb colours"
@@ -972,9 +1011,9 @@ def test_roofline_is_derived_from_the_sprite():
     first time the artwork moves. Keys off HOUSE_TOP: the lights use the
     same silhouette moonlight already reads, rather than a second copy of
     the same derivation under a different name."""
-    for x, y in skystrip.HOUSE_TOP.items():
-        assert (x, y) in {(px, py) for px, py, _ in skystrip.HOUSE_SPRITE}
-        assert all(py >= y for px, py, _ in skystrip.HOUSE_SPRITE if px == x)
+    for x, y in sky_render_art.HOUSE_TOP.items():
+        assert (x, y) in {(px, py) for px, py, _ in sky_render_art.HOUSE_SPRITE}
+        assert all(py >= y for px, py, _ in sky_render_art.HOUSE_SPRITE if px == x)
 
 
 def test_a_lit_tree_stands_at_christmas(monkeypatch):
@@ -991,31 +1030,31 @@ def test_a_lit_tree_stands_at_christmas(monkeypatch):
     BACKROADS_TREE) instead.
     """
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "dec24-26")
-    wx = skystrip.WeatherState(temp_c=-2.0)
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "dec24-26")
+    wx = sky_weather.WeatherState(temp_c=-2.0)
     # UTC noon at 0,0 keeps _ambient() the identity (see
     # test_house_scene_puts_snow_on_the_ground), so the tree and its bulbs
     # land unshaded and are byte-for-byte comparable to a reference render.
     xmas = datetime(2026, 12, 25, 12, 0, tzinfo=timezone.utc)
     plain = datetime(2026, 12, 18, 12, 0, tzinfo=timezone.utc)
-    anchors = {"lakefront": skystrip.LAKEFRONT_TREE,
-              "backroads": skystrip.BACKROADS_TREE}
-    decor = set(skystrip.XMAS_BULBS) | {skystrip.XMAS_TREE}
+    anchors = {"lakefront": sky_render_lakefront.LAKEFRONT_TREE,
+              "backroads": sky_render_backroads.BACKROADS_TREE}
+    decor = set(sky_render_season.XMAS_BULBS) | {sky_render_season.XMAS_TREE}
 
     for scene, (bx, by) in anchors.items():
-        a = skystrip.render_scene(xmas, wx, 0, scene=scene)
-        b = skystrip.render_scene(plain, wx, 0, scene=scene)
+        a = sky_render_scene.render_scene(xmas, wx, 0, scene=scene)
+        b = sky_render_scene.render_scene(plain, wx, 0, scene=scene)
         assert a != b, f"{scene} ignored Christmas"
 
         # Render the same tree fresh on a blank canvas at the same phase
         # render_scene used (its default, 0.0), rather than hand-deriving
         # the bulb swell -- same reasoning as the string_lights reference
         # in test_the_house_wears_lights_at_christmas.
-        ref = Image.new("RGB", (skystrip.W, skystrip.H))
+        ref = Image.new("RGB", (sky_limits.W, sky_limits.H))
         refpx = ref.load()
-        skystrip.draw_lit_tree(refpx, bx, by, 0.0)
+        sky_render_season.draw_lit_tree(refpx, bx, by, 0.0)
         footprint = [(bx + dx, by - 3 + dy)
                     for dx, dy in ((0, 0), (-1, 1), (0, 1), (1, 1),
                                    (-1, 2), (0, 2), (1, 2))] + [(bx, by)]
@@ -1067,22 +1106,22 @@ def test_forest_and_grove_render_identically_with_christmas_on_and_off(
     is_christmas() answers -- not weather, season, moon phase, or any
     other date-driven effect a plain-vs-xmas date pair would also pick up.
     """
-    wx = skystrip.WeatherState(temp_c=-2.0)
-    now = datetime(2026, 12, 25, 18, 0, tzinfo=skystrip.TZ)
+    wx = sky_weather.WeatherState(temp_c=-2.0)
+    now = datetime(2026, 12, 25, 18, 0, tzinfo=sky_settings.TZ)
     for scene in ("forest", "grove"):
-        monkeypatch.setattr(skystrip, "CHRISTMAS_FORCED", True)
-        on = skystrip.render_scene(now, wx, 0, scene=scene)
-        monkeypatch.setattr(skystrip, "CHRISTMAS_FORCED", False)
-        off = skystrip.render_scene(now, wx, 0, scene=scene)
+        monkeypatch.setattr(sky_settings, "CHRISTMAS_FORCED", True)
+        on = sky_render_scene.render_scene(now, wx, 0, scene=scene)
+        monkeypatch.setattr(sky_settings, "CHRISTMAS_FORCED", False)
+        off = sky_render_scene.render_scene(now, wx, 0, scene=scene)
         assert on == off, (
             f"{scene} changed when Christmas was forced on -- forest and "
             f"grove must ship with no Christmas treatment at all")
 
 
 def _traffic_band(when, wx):
-    top, rows = skystrip.TRAFFIC_BAND_TOP, skystrip.TRAFFIC_BAND_ROWS
-    scene = skystrip.render_scene(when, wx, 1, phase=0.0, scene="backroads")
-    return scene.crop((0, top, skystrip.W, top + rows))
+    top, rows = sky_render_traffic.TRAFFIC_BAND_TOP, sky_render_traffic.TRAFFIC_BAND_ROWS
+    scene = sky_render_scene.render_scene(when, wx, 1, phase=0.0, scene="backroads")
+    return scene.crop((0, top, sky_limits.W, top + rows))
 
 
 def _cycles_per_loop(fn, n: int = 400) -> int:
@@ -1109,9 +1148,9 @@ def test_everything_that_bends_moves_on_one_wind(wind):
     Wind speed may set how HARD the grass glints. It may not set the
     rate: there is one front, and everything reads it.
     """
-    front = _cycles_per_loop(lambda ph: skystrip.verge_gust(41, ph))
+    front = _cycles_per_loop(lambda ph: sky_render_vegetation.verge_gust(41, ph))
     glint = _cycles_per_loop(
-        lambda ph: skystrip.verge_shimmer(41, 1, ph, wind, 1.0))
+        lambda ph: sky_render_vegetation.verge_shimmer(41, 1, ph, wind, 1.0))
     assert front == 1, f"the front itself is not one crossing: {front}"
     assert glint == front, (
         f"at {wind} km/h the grass glints {glint} times per loop while the "
@@ -1133,21 +1172,21 @@ def test_one_gust_front_crosses_the_whole_lane_in_order():
     """
     from datetime import timezone
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    wx = skystrip.WeatherState(wind_kmh=22.0, wind_dir=200.0, cloud_frac=0.2)
-    frames = skystrip.render_loop_frames(when, wx, 1, scene="backroads")
+    wx = sky_weather.WeatherState(wind_kmh=22.0, wind_dir=200.0, cloud_frac=0.2)
+    frames = sky_render_scene.render_loop_frames(when, wx, 1, scene="backroads")
 
     def crown_centroid(px, tx):
         # Genuinely green: the status clock's orange (255,130,0) also has
         # more green than blue, and the leftmost poplar's window reaches
         # into the clock corner.
-        xs = [x for x in range(max(0, tx - 5), min(skystrip.W, tx + 6))
+        xs = [x for x in range(max(0, tx - 5), min(sky_limits.W, tx + 6))
               for y in (4, 5)
               if max(px[x, y]) > 40
               and px[x, y][1] > px[x, y][0] and px[x, y][1] > px[x, y][2]]
         return sum(xs) / len(xs) if xs else None
 
     peaks = []
-    for tx in skystrip.BACKROADS_POPLARS:
+    for tx in sky_render_backroads.BACKROADS_POPLARS:
         offsets = []
         for i, f in enumerate(frames):
             c = crown_centroid(f.load(), tx)
@@ -1166,9 +1205,9 @@ def test_one_gust_front_crosses_the_whole_lane_in_order():
 
 def test_the_gust_front_is_gone_at_both_ends_of_the_loop():
     """A front still half-on-screen at phase 0 jumps the loop seam."""
-    for x in (0, skystrip.W - 1):
+    for x in (0, sky_limits.W - 1):
         for phase in (0.0, 1.0):
-            assert skystrip.verge_gust(x, phase) < 0.004, (
+            assert sky_render_vegetation.verge_gust(x, phase) < 0.004, (
                 f"x={x} phase={phase}: the gust is still visible at the "
                 f"seam, so the loop join will pop")
 
@@ -1183,13 +1222,13 @@ def test_the_road_is_a_dark_ribbon_with_sparse_marks():
     """
     from datetime import timezone
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    wx = skystrip.WeatherState(wind_kmh=10.0, cloud_frac=0.2)
-    px = skystrip.render_scene(
+    wx = sky_weather.WeatherState(wind_kmh=10.0, cloud_frac=0.2)
+    px = sky_render_scene.render_scene(
         when, wx, 1, phase=0.0, scene="backroads").load()
-    row = skystrip._road_R(0)
-    bright = [x for x in range(skystrip.W) if max(px[x, row]) > 170]
-    assert len(bright) < skystrip.W * 0.34, (
-        f"{len(bright)}/{skystrip.W} road pixels are bright — that is a "
+    row = sky_render_backroads._road_R(0)
+    bright = [x for x in range(sky_limits.W) if max(px[x, row]) > 170]
+    assert len(bright) < sky_limits.W * 0.34, (
+        f"{len(bright)}/{sky_limits.W} road pixels are bright — that is a "
         f"dither, not a dashed centre line")
     assert bright, "the road lost its markings entirely"
 
@@ -1209,12 +1248,12 @@ def test_traffic_has_left_the_scene_loop():
     """
     from datetime import timezone
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    wx = skystrip.WeatherState(wind_kmh=22.0, wind_dir=200.0)
-    top, rows = skystrip.TRAFFIC_BAND_TOP, skystrip.TRAFFIC_BAND_ROWS
-    frames = skystrip.render_loop_frames(when, wx, 1, scene="backroads")
-    first = frames[0].crop((0, top, skystrip.W, top + rows)).tobytes()
+    wx = sky_weather.WeatherState(wind_kmh=22.0, wind_dir=200.0)
+    top, rows = sky_render_traffic.TRAFFIC_BAND_TOP, sky_render_traffic.TRAFFIC_BAND_ROWS
+    frames = sky_render_scene.render_loop_frames(when, wx, 1, scene="backroads")
+    first = frames[0].crop((0, top, sky_limits.W, top + rows)).tobytes()
     for i, f in enumerate(frames[1:], 1):
-        assert f.crop((0, top, skystrip.W, top + rows)).tobytes() == first, (
+        assert f.crop((0, top, sky_limits.W, top + rows)).tobytes() == first, (
             f"frame {i}: the traffic band moved; it must stay still")
 
 
@@ -1224,11 +1263,11 @@ def test_an_episode_starts_and_ends_with_an_empty_road():
     import random as _random
     from datetime import timezone
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    band = _traffic_band(when, skystrip.WeatherState())
+    band = _traffic_band(when, sky_weather.WeatherState())
     for trial in range(6):
         rng = _random.Random(trial)
-        plan = skystrip.plan_traffic(rng, 12, False, 3)
-        frames = skystrip.traffic_episode_frames(band, plan, False, (1, 1, 1))
+        plan = sky_render_traffic.plan_traffic(rng, 12, False, 3)
+        frames = sky_render_traffic.traffic_episode_frames(band, plan, False, (1, 1, 1))
         assert frames[0].tobytes() == band.tobytes(), (
             f"trial {trial}: a vehicle is already on the road in frame 0")
         assert frames[-1].tobytes() == band.tobytes(), (
@@ -1242,7 +1281,7 @@ def test_no_two_episodes_are_alike():
     signatures = set()
     for trial in range(8):
         rng = _random.Random(trial)
-        plan = skystrip.plan_traffic(rng, 12, False, 2)
+        plan = sky_render_traffic.plan_traffic(rng, 12, False, 2)
         signatures.add(tuple(
             (v["kind"], round(v["speed"], 3), round(v["entry_s"], 2), v["far"])
             for v in plan))
@@ -1254,10 +1293,10 @@ def test_a_passing_car_goes_behind_the_poplar_trunks():
     import random as _random
     from datetime import timezone
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    band = _traffic_band(when, skystrip.WeatherState())
-    trunks = frozenset((x, 1) for x in skystrip.BACKROADS_POPLARS)
-    plan = skystrip.plan_traffic(_random.Random(3), 12, False, 3)
-    frames = skystrip.traffic_episode_frames(band, plan, False, (1, 1, 1),
+    band = _traffic_band(when, sky_weather.WeatherState())
+    trunks = frozenset((x, 1) for x in sky_render_backroads.BACKROADS_POPLARS)
+    plan = sky_render_traffic.plan_traffic(_random.Random(3), 12, False, 3)
+    frames = sky_render_traffic.traffic_episode_frames(band, plan, False, (1, 1, 1),
                                              trunks)
     for i, frame in enumerate(frames):
         for p in trunks:
@@ -1268,12 +1307,12 @@ def test_a_passing_car_goes_behind_the_poplar_trunks():
 def test_traffic_thins_out_overnight():
     """A country road by the clock: rush hums, the small hours are a lone
     pair of headlights."""
-    rush = skystrip.traffic_density(8)[0]
-    midday = skystrip.traffic_density(12)[0]
-    evening = skystrip.traffic_density(20)[0]
-    night = skystrip.traffic_density(2)[0]
+    rush = sky_render_traffic.traffic_density(8)[0]
+    midday = sky_render_traffic.traffic_density(12)[0]
+    evening = sky_render_traffic.traffic_density(20)[0]
+    night = sky_render_traffic.traffic_density(2)[0]
     assert rush < midday < evening < night
-    assert skystrip.traffic_density(8)[1] > skystrip.traffic_density(2)[1]
+    assert sky_render_traffic.traffic_density(8)[1] > sky_render_traffic.traffic_density(2)[1]
 
 
 def test_the_lane_can_be_suppressed_for_a_foreground_mask():
@@ -1285,14 +1324,14 @@ def test_the_lane_can_be_suppressed_for_a_foreground_mask():
     """
     from datetime import timezone
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    wx = skystrip.WeatherState()
-    with_lane = skystrip.render_scene(when, wx, 1, phase=0.0, scene="backroads")
-    without = skystrip.render_scene(when, wx, 1, phase=0.0, scene="backroads",
+    wx = sky_weather.WeatherState()
+    with_lane = sky_render_scene.render_scene(when, wx, 1, phase=0.0, scene="backroads")
+    without = sky_render_scene.render_scene(when, wx, 1, phase=0.0, scene="backroads",
                                     lane=False)
     assert with_lane != without, "lane=False changed nothing"
-    differing = {x for x in range(skystrip.W) for y in range(skystrip.H)
+    differing = {x for x in range(sky_limits.W) for y in range(sky_limits.H)
                  if with_lane.getpixel((x, y)) != without.getpixel((x, y))}
-    for trunk_x in skystrip.BACKROADS_POPLARS:
+    for trunk_x in sky_render_backroads.BACKROADS_POPLARS:
         assert trunk_x in differing, f"poplar at {trunk_x} survived lane=False"
 
 
@@ -1302,13 +1341,13 @@ def test_a_passing_freight_never_paints_over_the_foreground_trees():
     or a boxcar slices a tree crown in half as it goes by."""
     import random as _random
 
-    band = skystrip.Image.new("RGB", (skystrip.W, 6), (10, 20, 40))
+    band = Image.new("RGB", (sky_limits.W, 6), (10, 20, 40))
     crown = {(30, 3), (31, 3), (32, 3), (31, 4), (31, 5)}
     px = band.load()
     for x, y in crown:
         px[x, y] = (58, 118, 44)
 
-    frames = skystrip._freight_frames(band, night=False,
+    frames = sky_render_effects._freight_frames(band, night=False,
                                       rng=_random.Random(7),
                                       foreground=frozenset(crown))
     assert len(frames) > 20
@@ -1329,14 +1368,14 @@ def _poplar_columns_by_row(monkeypatch, when, wx):
     difference IS the trees. That avoids asserting against foliage colours
     the renderer computes itself, which would only restate the code.
     """
-    with_trees = skystrip.render_scene(when, wx, 1, phase=0.0,
+    with_trees = sky_render_scene.render_scene(when, wx, 1, phase=0.0,
                                        scene="backroads").load()
-    monkeypatch.setattr(skystrip, "BACKROADS_POPLARS", ())
-    without = skystrip.render_scene(when, wx, 1, phase=0.0,
+    monkeypatch.setattr(sky_render_backroads, "BACKROADS_POPLARS", ())
+    without = sky_render_scene.render_scene(when, wx, 1, phase=0.0,
                                     scene="backroads").load()
     rows = {}
-    for y in range(skystrip.H):
-        rows[y] = [x for x in range(skystrip.W)
+    for y in range(sky_limits.H):
+        rows[y] = [x for x in range(sky_limits.W)
                    if with_trees[x, y] != without[x, y]]
     return rows
 
@@ -1351,15 +1390,15 @@ def test_a_poplar_crosses_the_traffic_band_as_a_trunk_not_a_wall(monkeypatch):
     with its trunk; its crown belongs in the air.
     """
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    monkeypatch.setattr(skystrip, "TZ", skystrip.ZoneInfo("UTC"))
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "TZ", sky_config.ZoneInfo("UTC"))
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    wx = skystrip.WeatherState()
-    lane = skystrip.BACKROADS_POPLARS
+    wx = sky_weather.WeatherState()
+    lane = sky_render_backroads.BACKROADS_POPLARS
     rows = _poplar_columns_by_row(monkeypatch, when, wx)
 
-    road = skystrip._road_R(0)
+    road = sky_render_backroads._road_R(0)
     for y in (road - 2, road - 1, road):        # the rows cars occupy
         painted = rows[y]
         assert len(painted) <= 2 * len(lane), (
@@ -1375,17 +1414,17 @@ def test_a_car_is_never_completely_swallowed_by_the_lane(monkeypatch):
     """The user-facing property: on a road this short, no gap between
     occluders may be wide enough to hide a whole car."""
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    monkeypatch.setattr(skystrip, "TZ", skystrip.ZoneInfo("UTC"))
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "TZ", sky_config.ZoneInfo("UTC"))
     when = datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
-    wx = skystrip.WeatherState()
+    wx = sky_weather.WeatherState()
     rows = _poplar_columns_by_row(monkeypatch, when, wx)
 
-    body_row = skystrip._road_R(0) - 1
+    body_row = sky_render_backroads._road_R(0) - 1
     occluded = set(rows[body_row])
     longest = run = 0
-    for x in range(skystrip.W):
+    for x in range(sky_limits.W):
         run = run + 1 if x in occluded else 0
         longest = max(longest, run)
     assert longest <= 2, (
@@ -1396,19 +1435,19 @@ def test_a_car_is_never_completely_swallowed_by_the_lane(monkeypatch):
 def test_the_roadside_tree_never_stands_in_the_road(monkeypatch):
     """Same rule as settled snow: the road is not ground you decorate."""
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "dec24-26")
-    wx = skystrip.WeatherState(temp_c=-2.0)
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "dec24-26")
+    wx = sky_weather.WeatherState(temp_c=-2.0)
     xmas = datetime(2026, 12, 25, 12, 0, tzinfo=timezone.utc)
-    decor = set(skystrip.XMAS_BULBS) | {skystrip.XMAS_TREE}
+    decor = set(sky_render_season.XMAS_BULBS) | {sky_render_season.XMAS_TREE}
     for ph in (0.0, 0.25, 0.5, 0.75):
-        px = skystrip.render_scene(xmas, wx, 0, phase=ph,
+        px = sky_render_scene.render_scene(xmas, wx, 0, phase=ph,
                                    scene="backroads").load()
-        for x in range(skystrip.W):
-            y = round(skystrip._road_R(x))
+        for x in range(sky_limits.W):
+            y = round(sky_render_backroads._road_R(x))
             for dy in (0, 1):
-                if 0 <= y + dy < skystrip.H:
+                if 0 <= y + dy < sky_limits.H:
                     assert px[x, y + dy] not in decor, \
                         f"decoration standing in the road at ({x},{y + dy})"
 
@@ -1429,16 +1468,16 @@ def test_the_lakefront_tree_never_stands_on_open_water(monkeypatch):
     anchor happened to be chosen correctly once.
     """
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "dec24-26")
-    wx = skystrip.WeatherState(temp_c=-2.0)
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "dec24-26")
+    wx = sky_weather.WeatherState(temp_c=-2.0)
     xmas = datetime(2026, 12, 25, 12, 0, tzinfo=timezone.utc)
-    decor = set(skystrip.XMAS_BULBS) | {skystrip.XMAS_TREE}
+    decor = set(sky_render_season.XMAS_BULBS) | {sky_render_season.XMAS_TREE}
     for ph in (0.0, 0.25, 0.5, 0.75):
-        px = skystrip.render_scene(xmas, wx, 0, phase=ph,
+        px = sky_render_scene.render_scene(xmas, wx, 0, phase=ph,
                                    scene="lakefront").load()
-        for y, water_end in skystrip.BEND_WATER_END.items():
+        for y, water_end in sky_render_lakefront.BEND_WATER_END.items():
             for x in range(water_end):
                 assert px[x, y] not in decor, \
                     f"decoration standing on open water at ({x},{y})"
@@ -1469,14 +1508,14 @@ def test_the_skyline_shows_holiday_windows(monkeypatch):
     between festive and dirty.
     """
     from datetime import timezone
-    monkeypatch.setattr(skystrip, "OBSERVER",
-                        skystrip.Observer(latitude=0.0, longitude=0.0))
-    monkeypatch.setattr(skystrip, "CHRISTMAS_WINDOW", "dec24-26")
-    wx = skystrip.WeatherState(temp_c=-2.0)
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_WINDOW", "dec24-26")
+    wx = sky_weather.WeatherState(temp_c=-2.0)
     xmas = datetime(2026, 12, 25, 20, 0, tzinfo=timezone.utc)   # after dark
     plain = datetime(2026, 12, 18, 20, 0, tzinfo=timezone.utc)
-    a = skystrip.render_scene(xmas, wx, 0, scene="skyline")
-    b = skystrip.render_scene(plain, wx, 0, scene="skyline")
+    a = sky_render_scene.render_scene(xmas, wx, 0, scene="skyline")
+    b = sky_render_scene.render_scene(plain, wx, 0, scene="skyline")
     assert a != b, "skyline ignored Christmas"
 
     pa, pb = a.load(), b.load()
@@ -1491,26 +1530,26 @@ def test_the_skyline_shows_holiday_windows(monkeypatch):
     # colours through _shade() would pass here only because amb happens to be
     # the identity at this hour, and would fail spuriously the moment anyone
     # moved the test's clock.
-    festive_colors = {skystrip.XMAS_BULBS[0], skystrip.XMAS_BULBS[1]}
+    festive_colors = {sky_render_season.XMAS_BULBS[0], sky_render_season.XMAS_BULBS[1]}
 
     # Confirm the premise first: the plain frame must actually show lit
     # (warm/cool) windows at this hour, or every assertion below would
     # pass vacuously on a dark, unlit tower.
-    window_colors = {skystrip.WINDOW_WARM, skystrip.WINDOW_COOL}
+    window_colors = {sky_render_art.WINDOW_WARM, sky_render_art.WINDOW_COOL}
     lit_window_count_b = sum(
-        1 for x in range(skystrip.W) for y in range(skystrip.H)
+        1 for x in range(sky_limits.W) for y in range(sky_limits.H)
         if pb[x, y] in window_colors)
     assert lit_window_count_b > 0, \
         "test setup produced no lit windows -- pick a darker hour"
 
-    festive_hits_a = sum(1 for x in range(skystrip.W) for y in range(skystrip.H)
+    festive_hits_a = sum(1 for x in range(sky_limits.W) for y in range(sky_limits.H)
                          if pa[x, y] in festive_colors)
     assert festive_hits_a > 0, "no windows turned red or green at Christmas"
 
     # And the plain frame must show none of those same bulb colours
     # anywhere in the frame -- proving the difference IS the recolouring,
     # not some unrelated frame-to-frame variation (moonlight, beacons).
-    festive_hits_b = sum(1 for x in range(skystrip.W) for y in range(skystrip.H)
+    festive_hits_b = sum(1 for x in range(sky_limits.W) for y in range(sky_limits.H)
                          if pb[x, y] in festive_colors)
     assert festive_hits_b == 0, \
         "non-Christmas frame already shows red/green bulb colours"
@@ -1535,10 +1574,10 @@ def test_the_skyline_shows_holiday_windows(monkeypatch):
     # in the frame. Recolouring swaps a warm/cool pixel for a festive one
     # 1-for-1, so that count is invariant; adding a new lit window (even
     # one column over, landing on facade rather than black) grows it.
-    window_style = {skystrip.WINDOW_WARM, skystrip.WINDOW_COOL, *festive_colors}
-    styled_a = sum(1 for x in range(skystrip.W) for y in range(skystrip.H)
+    window_style = {sky_render_art.WINDOW_WARM, sky_render_art.WINDOW_COOL, *festive_colors}
+    styled_a = sum(1 for x in range(sky_limits.W) for y in range(sky_limits.H)
                   if pa[x, y] in window_style)
-    styled_b = sum(1 for x in range(skystrip.W) for y in range(skystrip.H)
+    styled_b = sum(1 for x in range(sky_limits.W) for y in range(sky_limits.H)
                   if pb[x, y] in window_style)
     assert styled_a == styled_b, \
         "Christmas lit extra windows instead of recolouring"
@@ -1548,11 +1587,11 @@ def test_the_skyline_shows_holiday_windows(monkeypatch):
     # decoration). Which windows are lit at all is independent of phase
     # (win_rng is seeded from `seed`/building index only), so if the
     # festive choice were phase-dependent this would catch it.
-    a_mid = skystrip.render_scene(xmas, wx, 0, phase=0.5, scene="skyline")
+    a_mid = sky_render_scene.render_scene(xmas, wx, 0, phase=0.5, scene="skyline")
     pa_mid = a_mid.load()
-    festive_a = {(x, y) for x in range(skystrip.W) for y in range(skystrip.H)
+    festive_a = {(x, y) for x in range(sky_limits.W) for y in range(sky_limits.H)
                 if pa[x, y] in festive_colors}
-    festive_a_mid = {(x, y) for x in range(skystrip.W) for y in range(skystrip.H)
+    festive_a_mid = {(x, y) for x in range(sky_limits.W) for y in range(sky_limits.H)
                      if pa_mid[x, y] in festive_colors}
     assert festive_a == festive_a_mid, \
         "festive windows moved between phases -- not seeded independently"
@@ -1565,13 +1604,13 @@ def test_the_skyline_shows_holiday_windows(monkeypatch):
 # drop count paid for; it is now a guarantee, and intensity rides elsewhere.
 
 def _rain_wx(tier=1, **kw):
-    return skystrip.WeatherState(rain=True, rain_tier=tier, **kw)
+    return sky_weather.WeatherState(rain=True, rain_tier=tier, **kw)
 
 
 def _drop_columns(wx, seed, phase=0.0):
     img, px = _blank()
-    skystrip.draw_rain(px, wx, seed, phase)
-    return {x for x in range(skystrip.W) for y in range(skystrip.H)
+    sky_render_precipitation.draw_rain(px, wx, seed, phase)
+    return {x for x in range(sky_limits.W) for y in range(sky_limits.H)
             if px[x, y] != (0, 0, 0)}
 
 
@@ -1580,11 +1619,11 @@ def test_rain_fills_every_column_bucket_at_every_tier():
     ~3% of the time and looked one-sided ~38% of the time -- and the seed is
     frozen for ten minutes, so it never averaged out."""
     for tier in (0, 1, 2):
-        drops = skystrip.RAIN_TIERS[tier][0]
+        drops = sky_render_art.RAIN_TIERS[tier][0]
         for seed in range(200):
             cols = _drop_columns(_rain_wx(tier), seed)
             for i in range(drops):
-                lo, hi = i * skystrip.W // drops, (i + 1) * skystrip.W // drops
+                lo, hi = i * sky_limits.W // drops, (i + 1) * sky_limits.W // drops
                 assert any(lo <= c < hi for c in cols), \
                     f"tier {tier} seed {seed}: no drop in columns {lo}-{hi}"
 
@@ -1594,7 +1633,7 @@ def test_rain_never_leaves_half_the_panel_dry():
     for tier in (0, 1, 2):
         for seed in range(200):
             cols = _drop_columns(_rain_wx(tier), seed)
-            left = sum(1 for c in cols if c < skystrip.W // 2)
+            left = sum(1 for c in cols if c < sky_limits.W // 2)
             right = len(cols) - left
             assert left and right, f"tier {tier} seed {seed}: one side bare"
 
@@ -1602,8 +1641,8 @@ def test_rain_never_leaves_half_the_panel_dry():
 def test_rain_column_gaps_stay_bounded():
     """A bucket can be occupied at its edges and still leave a visible hole."""
     for tier in (0, 1, 2):
-        drops = skystrip.RAIN_TIERS[tier][0]
-        bucket = skystrip.W / drops
+        drops = sky_render_art.RAIN_TIERS[tier][0]
+        bucket = sky_limits.W / drops
         for seed in range(100):
             cols = sorted(_drop_columns(_rain_wx(tier), seed))
             gaps = [b - a for a, b in zip(cols, cols[1:])]
@@ -1616,8 +1655,8 @@ def test_rain_loop_seam_is_invisible():
     once every eight seconds. This is what pins RAIN_TIERS to 4/8/16."""
     for tier in (0, 1, 2):
         start, end = _blank(), _blank()
-        skystrip.draw_rain(start[1], _rain_wx(tier), 3, 0.0)
-        skystrip.draw_rain(end[1], _rain_wx(tier), 3, 1.0)
+        sky_render_precipitation.draw_rain(start[1], _rain_wx(tier), 3, 0.0)
+        sky_render_precipitation.draw_rain(end[1], _rain_wx(tier), 3, 1.0)
         assert start[0].tobytes() == end[0].tobytes(), \
             f"tier {tier}: phase 1.0 does not land back on phase 0.0"
 
@@ -1626,8 +1665,8 @@ def test_rain_falls_at_a_constant_rate():
     """A jitter in the per-frame step reads as stuttering rain. int() on an
     inexact i/n phase gave tier 2 a 2-3-4 step instead of a steady 3."""
     for tier in (0, 1, 2):
-        crossings = skystrip.RAIN_TIERS[tier][1]
-        span = skystrip.H - 1
+        crossings = sky_render_art.RAIN_TIERS[tier][1]
+        span = sky_limits.H - 1
         steps = set()
         for i in range(80):
             a = round((i / 80) * crossings * span)
@@ -1646,7 +1685,7 @@ def test_streak_clears_the_contrast_floor_on_every_sky():
     that is perfectly spread and still invisible. Brightness deltas under
     ~30% per channel do not read on this panel."""
     for label, sky in SKIES.items():
-        streak = skystrip._streak_color(sky)
+        streak = sky_render_precipitation._streak_color(sky)
         for chan, (b, s) in enumerate(zip(sky, streak)):
             delta = (s - b) / max(b, 1)
             assert abs(delta) >= 0.30, \
@@ -1656,8 +1695,8 @@ def test_streak_clears_the_contrast_floor_on_every_sky():
 def test_streak_flips_polarity_rather_than_always_brightening():
     """Bright sky -> darker rain; night -> brighter. One direction cannot
     serve both."""
-    assert sum(skystrip._streak_color(SKIES["clear"])) < sum(SKIES["clear"])
-    assert sum(skystrip._streak_color(SKIES["night"])) > sum(SKIES["night"])
+    assert sum(sky_render_precipitation._streak_color(SKIES["clear"])) < sum(SKIES["clear"])
+    assert sum(sky_render_precipitation._streak_color(SKIES["night"])) > sum(SKIES["night"])
 
 
 def test_rain_intensity_rises_with_tier():
@@ -1665,11 +1704,11 @@ def test_rain_intensity_rises_with_tier():
     carries intensity now, and it must be strictly ordered."""
     flux = [drops * crossings
             for drops, crossings, _ in
-            (skystrip.RAIN_TIERS[t] for t in (0, 1, 2))]
+            (sky_render_art.RAIN_TIERS[t] for t in (0, 1, 2))]
     assert flux[0] < flux[1] < flux[2], flux
-    speeds = [skystrip.RAIN_TIERS[t][1] for t in (0, 1, 2)]
+    speeds = [sky_render_art.RAIN_TIERS[t][1] for t in (0, 1, 2)]
     assert speeds[0] < speeds[1] < speeds[2], speeds
-    lengths = [skystrip.RAIN_TIERS[t][2] for t in (0, 1, 2)]
+    lengths = [sky_render_art.RAIN_TIERS[t][2] for t in (0, 1, 2)]
     assert lengths[0] < lengths[1] < lengths[2], lengths
 
 
@@ -1679,54 +1718,54 @@ def test_rain_never_fills_a_row():
         for seed in range(50):
             for phase in (0.0, 0.25, 0.5, 0.75):
                 img, px = _blank()
-                skystrip.draw_rain(px, _rain_wx(tier, wind_kmh=30), seed, phase)
-                for y in range(skystrip.H):
-                    lit = sum(1 for x in range(skystrip.W)
+                sky_render_precipitation.draw_rain(px, _rain_wx(tier, wind_kmh=30), seed, phase)
+                for y in range(sky_limits.H):
+                    lit = sum(1 for x in range(sky_limits.W)
                               if px[x, y] != (0, 0, 0))
-                    assert lit < skystrip.W, f"tier {tier} row {y} solid"
+                    assert lit < sky_limits.W, f"tier {tier} row {y} solid"
 
 
 def test_a_storm_is_never_a_drizzle():
     """Storms floor the tier rather than pinning it. Pinning to 2 erased the
     observed intensity once scrubbing began replaying real history -- a
     station reporting plain "Thunderstorms and Rain" drew as a downpour."""
-    storm = skystrip.WeatherState(rain=False, thunder=True)
+    storm = sky_weather.WeatherState(rain=False, thunder=True)
     assert storm.stormy
-    assert skystrip.is_raining(storm)
-    assert skystrip._rain_tier(storm) == 1          # moderate, not pinned up
-    assert skystrip._rain_tier(
-        skystrip.WeatherState(rain=True, rain_tier=0, thunder=True)) == 1
-    assert skystrip._rain_tier(
-        skystrip.WeatherState(rain=True, rain_tier=2, thunder=True)) == 2
+    assert sky_render_precipitation.is_raining(storm)
+    assert sky_render_precipitation._rain_tier(storm) == 1          # moderate, not pinned up
+    assert sky_render_precipitation._rain_tier(
+        sky_weather.WeatherState(rain=True, rain_tier=0, thunder=True)) == 1
+    assert sky_render_precipitation._rain_tier(
+        sky_weather.WeatherState(rain=True, rain_tier=2, thunder=True)) == 2
 
 
 def test_snow_suppresses_rain():
-    both = skystrip.WeatherState(rain=True, snow=True)
-    assert not skystrip.is_raining(both)
+    both = sky_weather.WeatherState(rain=True, snow=True)
+    assert not sky_render_precipitation.is_raining(both)
 
 
 def test_an_out_of_range_tier_does_not_crash():
     """rain_tier arrives from a remote radar feed, so bound it at the edge."""
     for tier in (-1, 3, 99):
-        assert skystrip._rain_tier(_rain_wx(tier)) in (0, 1, 2)
+        assert sky_render_precipitation._rain_tier(_rain_wx(tier)) in (0, 1, 2)
 
 
 def test_raining_scenes_get_the_double_rate_loop():
     """At 40 frames a downpour jumps 6 of 16 rows per frame and strobes."""
     now = datetime(2026, 8, 9, 17, 0, tzinfo=timezone.utc)
-    wet = skystrip.render_loop_frames(now, _rain_wx(2), 1, scene="house")
-    dry = skystrip.render_loop_frames(
-        now, skystrip.WeatherState(), 1, scene="house")
+    wet = sky_render_scene.render_loop_frames(now, _rain_wx(2), 1, scene="house")
+    dry = sky_render_scene.render_loop_frames(
+        now, sky_weather.WeatherState(), 1, scene="house")
     assert len(wet) == 80, len(wet)
-    assert len(dry) == skystrip.ANIM_FRAMES, len(dry)
+    assert len(dry) == sky_limits.ANIM_FRAMES, len(dry)
 
 
 def test_snow_keeps_the_single_rate_loop():
     """Snow drifts at 0.75 rows/frame already; it does not need the frames."""
     now = datetime(2026, 8, 9, 17, 0, tzinfo=timezone.utc)
-    snowy = skystrip.render_loop_frames(
-        now, skystrip.WeatherState(snow=True), 1, scene="house")
-    assert len(snowy) == skystrip.ANIM_FRAMES, len(snowy)
+    snowy = sky_render_scene.render_loop_frames(
+        now, sky_weather.WeatherState(snow=True), 1, scene="house")
+    assert len(snowy) == sky_limits.ANIM_FRAMES, len(snowy)
 
 
 # --- Snow -------------------------------------------------------------------
@@ -1738,20 +1777,20 @@ def test_snow_keeps_the_single_rate_loop():
 
 def _snow_columns(seed, phase=0.0):
     img, px = _blank()
-    skystrip.draw_snow(px, seed, phase)
-    return {x for x in range(skystrip.W) for y in range(skystrip.H)
+    sky_render_precipitation.draw_snow(px, seed, phase)
+    return {x for x in range(sky_limits.W) for y in range(sky_limits.H)
             if px[x, y] != (0, 0, 0)}
 
 
 def test_snow_never_leaves_half_the_panel_bare():
     for seed in range(200):
         cols = _snow_columns(seed)
-        left = sum(1 for c in cols if c < skystrip.W // 2)
+        left = sum(1 for c in cols if c < sky_limits.W // 2)
         assert left and len(cols) - left, f"seed {seed}: one side bare"
 
 
 def test_snow_column_gaps_stay_bounded():
-    bucket = skystrip.W / skystrip.SNOW_FLAKES
+    bucket = sky_limits.W / sky_render_precipitation.SNOW_FLAKES
     for seed in range(200):
         for phase in (0.0, 0.25, 0.5, 0.75):
             cols = sorted(_snow_columns(seed, phase))
@@ -1764,23 +1803,23 @@ def test_snow_loop_seam_is_invisible():
     """Both the fall and the sway must land back where they started."""
     for seed in (0, 7, 99):
         start, end = _blank(), _blank()
-        skystrip.draw_snow(start[1], seed, 0.0)
-        skystrip.draw_snow(end[1], seed, 1.0)
+        sky_render_precipitation.draw_snow(start[1], seed, 0.0)
+        sky_render_precipitation.draw_snow(end[1], seed, 1.0)
         assert start[0].tobytes() == end[0].tobytes(), f"seed {seed}: seam"
 
 
 def test_snow_falls_at_a_constant_rate():
-    span = skystrip.H - 1
-    n = skystrip.ANIM_FRAMES
-    steps = {round(((i + 1) / n) * skystrip.SNOW_CROSSINGS * span)
-             - round((i / n) * skystrip.SNOW_CROSSINGS * span)
+    span = sky_limits.H - 1
+    n = sky_limits.ANIM_FRAMES
+    steps = {round(((i + 1) / n) * sky_render_precipitation.SNOW_CROSSINGS * span)
+             - round((i / n) * sky_render_precipitation.SNOW_CROSSINGS * span)
              for i in range(n)}
     assert max(steps) - min(steps) <= 1, steps
 
 
 def test_snow_crossings_stay_a_whole_number():
     """The loop seam depends on it, exactly as rain's does."""
-    assert skystrip.SNOW_CROSSINGS == int(skystrip.SNOW_CROSSINGS)
+    assert sky_render_precipitation.SNOW_CROSSINGS == int(sky_render_precipitation.SNOW_CROSSINGS)
 
 
 def test_flakes_clear_the_contrast_floor_against_the_snow_sky():
@@ -1788,13 +1827,13 @@ def test_flakes_clear_the_contrast_floor_against_the_snow_sky():
     their contrast. A change to that dimming would silently erase them."""
     now = datetime(2026, 1, 15, 14, 0, tzinfo=timezone.utc)
     for cloud in (0.4, 0.9):
-        wx = skystrip.WeatherState(cloud_frac=cloud, snow=True, temp_c=-3.0)
-        frame = skystrip.render_scene(now, wx, 12345, phase=0.0,
+        wx = sky_weather.WeatherState(cloud_frac=cloud, snow=True, temp_c=-3.0)
+        frame = sky_render_scene.render_scene(now, wx, 12345, phase=0.0,
                                       scene="lakefront")
         p = frame.load()
         for y in (1, 4, 8):
             sky = p[36, y]
-            for chan, (b, f) in enumerate(zip(sky, skystrip.SNOW_FLAKE_COLOR)):
+            for chan, (b, f) in enumerate(zip(sky, sky_render_precipitation.SNOW_FLAKE_COLOR)):
                 delta = (f - b) / max(b, 1)
                 assert abs(delta) >= 0.30, \
                     f"cloud {cloud} row {y} channel {chan}: {delta:+.0%}"
@@ -1811,9 +1850,9 @@ def test_snow_still_suppresses_rain_in_the_composed_frame():
     now = datetime(2026, 1, 15, 14, 0, tzinfo=timezone.utc)
     frames = []
     for tier in (0, 2):
-        wx = skystrip.WeatherState(cloud_frac=0.9, rain=True, snow=True,
+        wx = sky_weather.WeatherState(cloud_frac=0.9, rain=True, snow=True,
                                    rain_tier=tier, temp_c=-3.0)
-        assert not skystrip.is_raining(wx)
-        frames.append(skystrip.render_scene(
+        assert not sky_render_precipitation.is_raining(wx)
+        frames.append(sky_render_scene.render_scene(
             now, wx, 5, phase=0.0, scene="lakefront").tobytes())
     assert frames[0] == frames[1], "rain drew underneath the snow"

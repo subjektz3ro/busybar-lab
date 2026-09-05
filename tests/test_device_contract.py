@@ -239,7 +239,11 @@ def test_skystrip_report_yields_to_a_focus_session(monkeypatch):
     import asyncio
 
     sys.path.insert(0, str(APPS))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
+    from apps.skystrip_app.audio import output as sky_audio_output
+    from apps.skystrip_app.audio import report as sky_audio_report
+    from apps.skystrip_app.audio import report_policy as sky_audio_report_policy
+    from apps.skystrip_app.providers import weather as sky_providers_weather
 
     async def done(value):
         return value
@@ -259,18 +263,18 @@ def test_skystrip_report_yields_to_a_focus_session(monkeypatch):
         # report_once polls for up to 20s waiting on live feeds; this test is
         # about the refusal, not the wait.
         monkeypatch.setattr(asyncio, "sleep", lambda *_a, **_k: real_sleep(0))
-        monkeypatch.setattr(skystrip, "aconnect", lambda *a, **k: done(Bar()))
-        monkeypatch.setattr(skystrip, "poll_nws", lambda state: real_sleep(0))
-        monkeypatch.setattr(skystrip, "_current_report_text", lambda state: "hi")
-        monkeypatch.setattr(skystrip, "_prepare_report_take",
+        monkeypatch.setattr(sky_cli, "aconnect", lambda *a, **k: done(Bar()))
+        monkeypatch.setattr(sky_providers_weather, "poll_nws", lambda state: real_sleep(0))
+        monkeypatch.setattr(sky_audio_report_policy, "_current_report_text", lambda state: "hi")
+        monkeypatch.setattr(sky_audio_report, "_prepare_report_take",
                             lambda bb, state, text: done("r.snd"))
 
         async def record(bb, state, path, owner, still_valid):
             played.append(path)
             await refuse()
 
-        monkeypatch.setattr(skystrip, "_play_audio", record)
-        await skystrip.report_once()          # must not raise
+        monkeypatch.setattr(sky_audio_output, "_play_audio", record)
+        await sky_cli.report_once()          # must not raise
 
     asyncio.run(scenario())
     assert played == ["r.snd"], "the guard must not skip the play attempt"
@@ -280,7 +284,11 @@ def test_skystrip_report_still_reports_a_real_failure(monkeypatch):
     import asyncio
 
     sys.path.insert(0, str(APPS))
-    import skystrip
+    from apps.skystrip_app import cli as sky_cli
+    from apps.skystrip_app.audio import output as sky_audio_output
+    from apps.skystrip_app.audio import report as sky_audio_report
+    from apps.skystrip_app.audio import report_policy as sky_audio_report_policy
+    from apps.skystrip_app.providers import weather as sky_providers_weather
 
     async def done(value):
         return value
@@ -292,17 +300,17 @@ def test_skystrip_report_still_reports_a_real_failure(monkeypatch):
     async def scenario():
         real_sleep = asyncio.sleep
         monkeypatch.setattr(asyncio, "sleep", lambda *_a, **_k: real_sleep(0))
-        monkeypatch.setattr(skystrip, "aconnect", lambda *a, **k: done(Bar()))
-        monkeypatch.setattr(skystrip, "poll_nws", lambda state: real_sleep(0))
-        monkeypatch.setattr(skystrip, "_current_report_text", lambda state: "hi")
-        monkeypatch.setattr(skystrip, "_prepare_report_take",
+        monkeypatch.setattr(sky_cli, "aconnect", lambda *a, **k: done(Bar()))
+        monkeypatch.setattr(sky_providers_weather, "poll_nws", lambda state: real_sleep(0))
+        monkeypatch.setattr(sky_audio_report_policy, "_current_report_text", lambda state: "hi")
+        monkeypatch.setattr(sky_audio_report, "_prepare_report_take",
                             lambda bb, state, text: done("r.snd"))
 
         async def boom(*a, **k):
             raise exceptions.BusyBarAPIError("Upload timeout", status_code=408)
 
-        monkeypatch.setattr(skystrip, "_play_audio", boom)
-        await skystrip.report_once()
+        monkeypatch.setattr(sky_audio_output, "_play_audio", boom)
+        await sky_cli.report_once()
 
     with pytest.raises(exceptions.BusyBarAPIError):
         asyncio.run(scenario())

@@ -15,7 +15,14 @@ import pytest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import limits as sky_limits
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app import weather_timeline as sky_weather_timeline
+from apps.skystrip_app.device import scrubber as sky_device_scrubber
+from apps.skystrip_app.render import scene as sky_render_scene
+from busybar_dev import anim
 
 
 class FakeBar:
@@ -33,7 +40,7 @@ class FakeBar:
 
 
 async def run_one_rebuild(state, bb, timeout=10.0):
-    task = asyncio.create_task(skystrip.build_timeline(bb, state))
+    task = asyncio.create_task(sky_device_scrubber.build_timeline(bb, state))
     try:
         async with asyncio.timeout(timeout):
             while not bb.uploads and state.timeline_meta is None:
@@ -52,28 +59,28 @@ async def test_timeline_never_mixes_scenes(monkeypatch):
     because that file is what a scrub reveals.
     """
     encoded_batches, total = [], []
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.hourly = [(None, {})]          # non-empty: the rebuild gate
     bb = FakeBar()
 
-    monkeypatch.setattr(skystrip, "ENABLED_SCENES", ("house", "skyline"))
-    monkeypatch.setattr(skystrip, "wx_at",
-                        lambda st, t: skystrip.WeatherState())
+    monkeypatch.setattr(sky_settings, "ENABLED_SCENES", ("house", "skyline"))
+    monkeypatch.setattr(sky_weather_timeline, "wx_at",
+                        lambda st, t: sky_weather.WeatherState())
 
     def fake_encode(frames, **kw):
         # Exactly the frames that went into THIS file — a discarded render
         # never reaches encode, so slicing beats a running buffer.
-        encoded_batches.append(total[-skystrip.TIMELINE_SLOTS:])
+        encoded_batches.append(total[-sky_limits.TIMELINE_SLOTS:])
         return b"fake-anim"
-    monkeypatch.setattr(skystrip.anim, "encode_anim", fake_encode)
+    monkeypatch.setattr(anim, "encode_anim", fake_encode)
 
     def fake_render(now, wx, seed, phase=0.0, scene="house", scrubbed=False):
         total.append(scene)
         # Simulate the operator pressing START partway through the render.
         if len(total) == 20:
             state.scene_idx += 1
-        return Image.new("RGB", (skystrip.W, skystrip.H))
-    monkeypatch.setattr(skystrip, "render_scene", fake_render)
+        return Image.new("RGB", (sky_limits.W, sky_limits.H))
+    monkeypatch.setattr(sky_render_scene, "render_scene", fake_render)
 
     await run_one_rebuild(state, bb)
 
@@ -92,20 +99,20 @@ async def test_timeline_never_mixes_scenes(monkeypatch):
 async def test_timeline_labels_match_what_was_rendered(monkeypatch):
     """With no interference the happy path still labels honestly."""
     rendered_scenes = []
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.hourly = [(None, {})]
     bb = FakeBar()
 
-    monkeypatch.setattr(skystrip, "ENABLED_SCENES", ("house", "skyline"))
-    monkeypatch.setattr(skystrip, "wx_at",
-                        lambda st, t: skystrip.WeatherState())
-    monkeypatch.setattr(skystrip.anim, "encode_anim",
+    monkeypatch.setattr(sky_settings, "ENABLED_SCENES", ("house", "skyline"))
+    monkeypatch.setattr(sky_weather_timeline, "wx_at",
+                        lambda st, t: sky_weather.WeatherState())
+    monkeypatch.setattr(anim, "encode_anim",
                         lambda frames, **kw: b"fake-anim")
 
     def fake_render(now, wx, seed, phase=0.0, scene="house", scrubbed=False):
         rendered_scenes.append(scene)
-        return Image.new("RGB", (skystrip.W, skystrip.H))
-    monkeypatch.setattr(skystrip, "render_scene", fake_render)
+        return Image.new("RGB", (sky_limits.W, sky_limits.H))
+    monkeypatch.setattr(sky_render_scene, "render_scene", fake_render)
 
     await run_one_rebuild(state, bb)
 

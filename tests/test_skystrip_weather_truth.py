@@ -18,7 +18,15 @@ import pytest
 from busybar_dev.radar import OM_FRESH_S
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app import weather_state as sky_weather_state
+from apps.skystrip_app.audio import report_facts as sky_audio_report_facts
+from apps.skystrip_app.device import display as sky_device_display
+from apps.skystrip_app.providers import weather as sky_providers_weather
+from apps.skystrip_app.render import astronomy as sky_render_astronomy
+from astral import moon
 
 
 NOW = datetime(2026, 8, 9, 18, 0, tzinfo=timezone.utc)
@@ -39,32 +47,32 @@ NOW = datetime(2026, 8, 9, 18, 0, tzinfo=timezone.utc)
 def test_source_datetime_accepts_only_bounded_unambiguous_instants(
     value, allow_naive, expected
 ):
-    got = skystrip._source_datetime(
+    got = sky_weather_state._source_datetime(
         value, now=NOW, allow_naive_utc=allow_naive
     )
     assert got == expected
 
 
 def test_source_datetime_rejects_expired_and_implausibly_future_values():
-    stale = NOW - timedelta(seconds=skystrip.WEATHER_LEASE_S + 1)
-    future = NOW + timedelta(seconds=skystrip.SOURCE_FUTURE_SKEW_S + 1)
+    stale = NOW - timedelta(seconds=sky_weather.WEATHER_LEASE_S + 1)
+    future = NOW + timedelta(seconds=sky_weather.SOURCE_FUTURE_SKEW_S + 1)
 
-    assert skystrip._source_datetime(stale.isoformat(), now=NOW) is None
-    assert skystrip._source_datetime(future.isoformat(), now=NOW) is None
-    assert skystrip._source_datetime("2" * 65, now=NOW) is None
+    assert sky_weather_state._source_datetime(stale.isoformat(), now=NOW) is None
+    assert sky_weather_state._source_datetime(future.isoformat(), now=NOW) is None
+    assert sky_weather_state._source_datetime("2" * 65, now=NOW) is None
 
 
 def test_source_monotonic_mapping_preserves_age_even_before_host_uptime():
     source_at = NOW - timedelta(minutes=90)
 
-    mapped = skystrip._source_monotonic_at(
+    mapped = sky_weather_state._source_monotonic_at(
         source_at, wall_now=NOW, monotonic_now=120.0)
 
     assert mapped == 120.0 - 90 * 60
 
 
 def test_parse_obs_keeps_missing_measurements_unknown():
-    parsed = skystrip._parse_obs(
+    parsed = sky_weather._parse_obs(
         {
             "textDescription": "Fair",
             "presentWeather": [],
@@ -90,7 +98,7 @@ def test_parse_obs_keeps_missing_measurements_unknown():
 
 
 def test_parse_obs_treats_schema_wrong_optional_fields_as_incomplete():
-    parsed = skystrip._parse_obs(
+    parsed = sky_weather._parse_obs(
         {
             "textDescription": 42,
             "presentWeather": [],
@@ -108,7 +116,7 @@ def test_parse_obs_treats_schema_wrong_optional_fields_as_incomplete():
 
 
 def test_parse_obs_does_not_turn_absent_phenomena_fields_into_dry_evidence():
-    parsed = skystrip._parse_obs(
+    parsed = sky_weather._parse_obs(
         {
             "textDescription": None,
             "presentWeather": {"unexpected": "object"},
@@ -129,7 +137,7 @@ def test_parse_obs_does_not_turn_absent_phenomena_fields_into_dry_evidence():
 
 
 def test_parse_obs_validates_and_normalizes_a_complete_snapshot():
-    parsed = skystrip._parse_obs(
+    parsed = sky_weather._parse_obs(
         {
             "textDescription": "Thunderstorms and rain",
             "presentWeather": [{"weather": "TSRA"}],
@@ -163,58 +171,58 @@ def test_parse_obs_validates_and_normalizes_a_complete_snapshot():
 
 @pytest.mark.asyncio
 async def test_weather_gate_starts_closed_and_expires_on_monotonic_age():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     loop = asyncio.get_running_loop()
 
-    assert not skystrip.weather_is_fresh(state)
+    assert not sky_weather_state.weather_is_fresh(state)
     state.weather_ready.set()
-    assert not skystrip.weather_is_fresh(state)
+    assert not sky_weather_state.weather_is_fresh(state)
 
-    state.weather_updated_at = loop.time() - skystrip.WEATHER_LEASE_S + 1
-    assert skystrip.weather_is_fresh(state)
-    state.weather_updated_at = loop.time() - skystrip.WEATHER_LEASE_S - 1
-    assert not skystrip.weather_is_fresh(state)
+    state.weather_updated_at = loop.time() - sky_weather.WEATHER_LEASE_S + 1
+    assert sky_weather_state.weather_is_fresh(state)
+    state.weather_updated_at = loop.time() - sky_weather.WEATHER_LEASE_S - 1
+    assert not sky_weather_state.weather_is_fresh(state)
 
 
 @pytest.mark.asyncio
 async def test_freshness_lease_includes_source_age_not_just_receipt_age():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     source_at = datetime.now(timezone.utc) - timedelta(
-        seconds=skystrip.WEATHER_LEASE_S - 30
+        seconds=sky_weather.WEATHER_LEASE_S - 30
     )
 
-    skystrip._mark_weather_fresh(state, source_at)
-    assert skystrip.weather_is_fresh(state)
+    sky_weather_state._mark_weather_fresh(state, source_at)
+    assert sky_weather_state.weather_is_fresh(state)
 
     # Advancing the monotonic source-age estimate by the remaining margin
     # expires the observation.  A receipt-time lease would incorrectly leave
     # almost the full two hours here.
     state.weather_updated_at -= 31
-    assert not skystrip.weather_is_fresh(state)
+    assert not sky_weather_state.weather_is_fresh(state)
 
 
 @pytest.mark.asyncio
 async def test_committing_an_older_snapshot_shortens_the_existing_lease():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     now = datetime.now(timezone.utc)
-    skystrip._mark_weather_fresh(state, now)
+    sky_weather_state._mark_weather_fresh(state, now)
     newest = state.weather_updated_at
 
-    skystrip._mark_weather_fresh(state, now - timedelta(hours=1))
+    sky_weather_state._mark_weather_fresh(state, now - timedelta(hours=1))
 
     assert state.weather_updated_at < newest - 3599
 
 
 @pytest.mark.asyncio
 async def test_alert_restore_does_not_renew_an_expired_live_scene():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.current_scene_file = "expired-sky.anim"
     state.weather_ready.set()
     state.weather_updated_at = (
-        asyncio.get_running_loop().time() - skystrip.WEATHER_LEASE_S - 1
+        asyncio.get_running_loop().time() - sky_weather.WEATHER_LEASE_S - 1
     )
 
-    payload, restored_reveal, restored_readout = skystrip._restore_payload(state)
+    payload, restored_reveal, restored_readout = sky_device_display._restore_payload(state)
 
     # The expired sky must not come back — but the restore follows a
     # display_clear, so "draw nothing" means "go black and stay black". It
@@ -228,11 +236,11 @@ async def test_alert_restore_does_not_renew_an_expired_live_scene():
 
 @pytest.mark.asyncio
 async def test_time_machine_reveal_restores_without_stale_live_sky_under_it():
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.current_scene_file = "expired-sky.anim"
     state.weather_ready.set()
     state.weather_updated_at = (
-        asyncio.get_running_loop().time() - skystrip.WEATHER_LEASE_S - 1
+        asyncio.get_running_loop().time() - sky_weather.WEATHER_LEASE_S - 1
     )
     state.scrub_slot = 12
     state.revealed = True
@@ -243,7 +251,7 @@ async def test_time_machine_reveal_restores_without_stale_live_sky_under_it():
         "section": "s12",
     }
 
-    payload, restored_reveal, _ = skystrip._restore_payload(state)
+    payload, restored_reveal, _ = sky_device_display._restore_payload(state)
 
     assert payload is not None
     assert [element.id for element in payload.elements] == ["rv4"]
@@ -300,21 +308,21 @@ async def _poll_one_open_meteo_iteration(monkeypatch, state, current):
             kwargs["transport"] = httpx.MockTransport(handler)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", MockClient)
-    monkeypatch.setattr(skystrip, "NWS_STATION", "")
-    monkeypatch.delattr(skystrip.poll_nws, "_hourly_due", raising=False)
-    monkeypatch.delattr(skystrip.poll_nws, "_forecast_due", raising=False)
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "")
+    monkeypatch.delattr(sky_providers_weather.poll_nws, "_hourly_due", raising=False)
+    monkeypatch.delattr(sky_providers_weather.poll_nws, "_forecast_due", raising=False)
 
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(skystrip.poll_nws(state), timeout=0.3)
+        await asyncio.wait_for(sky_providers_weather.poll_nws(state), timeout=0.3)
 
 
 @pytest.mark.asyncio
 async def test_stale_open_meteo_snapshot_is_rejected_before_any_mutation(
     monkeypatch,
 ):
-    state = skystrip.SkyState()
-    state.weather = skystrip.WeatherState(
+    state = sky_model.SkyState()
+    state.weather = sky_weather.WeatherState(
         temp_c=17.0,
         cloud_frac=0.25,
         wind_kmh=5.0,
@@ -323,7 +331,7 @@ async def test_stale_open_meteo_snapshot_is_rejected_before_any_mutation(
         snow_depth_m=0.01,
     )
     stale_time = datetime.now(timezone.utc) - timedelta(
-        seconds=skystrip.WEATHER_LEASE_S + 60
+        seconds=sky_weather.WEATHER_LEASE_S + 60
     )
 
     await _poll_one_open_meteo_iteration(
@@ -345,8 +353,8 @@ async def test_stale_open_meteo_snapshot_is_rejected_before_any_mutation(
 async def test_incomplete_open_meteo_snapshot_is_atomic_and_keeps_last_good(
     monkeypatch, missing,
 ):
-    state = skystrip.SkyState()
-    state.weather = skystrip.WeatherState(
+    state = sky_model.SkyState()
+    state.weather = sky_weather.WeatherState(
         temp_c=17.0,
         cloud_frac=0.25,
         wind_kmh=5.0,
@@ -371,14 +379,14 @@ async def test_incomplete_open_meteo_snapshot_is_atomic_and_keeps_last_good(
 async def test_complete_fresh_open_meteo_snapshot_commits_once_and_opens_gate(
     monkeypatch,
 ):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
 
     await _poll_one_open_meteo_iteration(
         monkeypatch, state, _complete_current()
     )
 
     assert state.weather_ready.is_set()
-    assert skystrip.weather_is_fresh(state)
+    assert sky_weather_state.weather_is_fresh(state)
     assert state.weather.temp_c == -3.5
     assert state.weather.cloud_frac == pytest.approx(0.88)
     assert state.weather.snow is True
@@ -397,9 +405,9 @@ async def test_complete_fresh_open_meteo_snapshot_commits_once_and_opens_gate(
 async def test_cached_open_meteo_uses_source_age_and_cannot_outrank_station(
     monkeypatch,
 ):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     now_mono = asyncio.get_running_loop().time()
-    state.weather = skystrip.WeatherState(rain=True, rain_tier=2)
+    state.weather = sky_weather.WeatherState(rain=True, rain_tier=2)
     state.weather_ready.set()
     state.weather_updated_at = now_mono
     state.station_rain = True
@@ -429,7 +437,7 @@ async def test_cached_open_meteo_uses_source_age_and_cannot_outrank_station(
 async def test_outside_nws_cold_start_uses_aged_model_not_default_dry(
     monkeypatch,
 ):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     cached_at = datetime.now(timezone.utc) - timedelta(
         seconds=OM_FRESH_S + 60
     )
@@ -457,11 +465,11 @@ async def test_outside_nws_cold_start_uses_aged_model_not_default_dry(
 async def test_outside_nws_recovery_matches_cold_start_after_rain_lease_expires(
     monkeypatch,
 ):
-    state = skystrip.SkyState()
-    state.weather = skystrip.WeatherState(rain=False, rain_tier=2)
+    state = sky_model.SkyState()
+    state.weather = sky_weather.WeatherState(rain=False, rain_tier=2)
     state.rain_known = True
     state.rain_at = (
-        asyncio.get_running_loop().time() - skystrip.WEATHER_LEASE_S - 1.0
+        asyncio.get_running_loop().time() - sky_weather.WEATHER_LEASE_S - 1.0
     )
     cached_at = datetime.now(timezone.utc) - timedelta(
         seconds=OM_FRESH_S + 60
@@ -521,20 +529,20 @@ async def test_model_refreshes_phenomena_missing_from_complete_station_snapshot(
             kwargs["transport"] = httpx.MockTransport(handler)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", MockClient)
-    monkeypatch.setattr(skystrip, "NWS_STATION", "KTST")
-    monkeypatch.setattr(skystrip.poll_nws, "_hourly_due", float("inf"),
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "KTST")
+    monkeypatch.setattr(sky_providers_weather.poll_nws, "_hourly_due", float("inf"),
                         raising=False)
-    monkeypatch.setattr(skystrip.poll_nws, "_obs_history_due", float("inf"),
+    monkeypatch.setattr(sky_providers_weather.poll_nws, "_obs_history_due", float("inf"),
                         raising=False)
-    monkeypatch.setattr(skystrip.poll_nws, "_forecast_due", float("inf"),
+    monkeypatch.setattr(sky_providers_weather.poll_nws, "_forecast_due", float("inf"),
                         raising=False)
 
-    state = skystrip.SkyState()
-    state.weather = skystrip.WeatherState(snow=True, thunder=True)
+    state = sky_model.SkyState()
+    state.weather = sky_weather.WeatherState(snow=True, thunder=True)
 
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(skystrip.poll_nws(state), timeout=0.3)
+        await asyncio.wait_for(sky_providers_weather.poll_nws(state), timeout=0.3)
 
     assert state.station_rain is None
     assert state.station_at is None
@@ -575,19 +583,19 @@ async def test_partial_station_cannot_renew_stale_phenomena_when_model_fails(
             kwargs["transport"] = httpx.MockTransport(handler)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", MockClient)
-    monkeypatch.setattr(skystrip, "NWS_STATION", "KTST")
-    monkeypatch.setattr(skystrip.poll_nws, "_hourly_due", float("inf"),
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "KTST")
+    monkeypatch.setattr(sky_providers_weather.poll_nws, "_hourly_due", float("inf"),
                         raising=False)
-    monkeypatch.setattr(skystrip.poll_nws, "_obs_history_due", float("inf"),
+    monkeypatch.setattr(sky_providers_weather.poll_nws, "_obs_history_due", float("inf"),
                         raising=False)
-    monkeypatch.setattr(skystrip.poll_nws, "_forecast_due", float("inf"),
+    monkeypatch.setattr(sky_providers_weather.poll_nws, "_forecast_due", float("inf"),
                         raising=False)
 
     now = asyncio.get_running_loop().time()
-    stale_at = now - skystrip.WEATHER_LEASE_S - 1.0
-    state = skystrip.SkyState()
-    state.weather = skystrip.WeatherState(
+    stale_at = now - sky_weather.WEATHER_LEASE_S - 1.0
+    state = sky_model.SkyState()
+    state.weather = sky_weather.WeatherState(
         temp_c=25.0,
         rain=True,
         rain_tier=2,
@@ -606,12 +614,12 @@ async def test_partial_station_cannot_renew_stale_phenomena_when_model_fails(
     state.snow_depth_at = stale_at
 
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(skystrip.poll_nws(state), timeout=0.3)
+        await asyncio.wait_for(sky_providers_weather.poll_nws(state), timeout=0.3)
 
     # Numeric station truth is still useful and refreshes the base-weather
     # lease, but its absent phenomena envelope cannot renew old storm effects.
     assert state.weather.temp_c == 15.0
-    assert skystrip.weather_is_fresh(state)
+    assert sky_weather_state.weather_is_fresh(state)
     assert state.weather.rain is False
     assert state.weather.rain_tier == 1
     assert state.rain_src == "unavailable"
@@ -633,7 +641,7 @@ async def test_cross_feed_await_keeps_last_fused_snapshot_until_one_commit(
     om_entered = asyncio.Event()
     release_om = asyncio.Event()
     station_source_time = datetime.now(timezone.utc) - timedelta(
-        seconds=skystrip.WEATHER_LEASE_S - 60
+        seconds=sky_weather.WEATHER_LEASE_S - 60
     )
     observation = {
         "timestamp": station_source_time.isoformat(),
@@ -675,13 +683,13 @@ async def test_cross_feed_await_keeps_last_fused_snapshot_until_one_commit(
             kwargs["transport"] = httpx.MockTransport(handler)
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(skystrip.httpx, "AsyncClient", MockClient)
-    monkeypatch.setattr(skystrip, "NWS_STATION", "KTST")
-    monkeypatch.delattr(skystrip.poll_nws, "_hourly_due", raising=False)
-    monkeypatch.delattr(skystrip.poll_nws, "_forecast_due", raising=False)
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "KTST")
+    monkeypatch.delattr(sky_providers_weather.poll_nws, "_hourly_due", raising=False)
+    monkeypatch.delattr(sky_providers_weather.poll_nws, "_forecast_due", raising=False)
 
-    state = skystrip.SkyState()
-    state.weather = skystrip.WeatherState(
+    state = sky_model.SkyState()
+    state.weather = sky_weather.WeatherState(
         temp_c=25.0,
         cloud_frac=0.10,
         wind_kmh=4.0,
@@ -694,7 +702,7 @@ async def test_cross_feed_await_keeps_last_fused_snapshot_until_one_commit(
     state.weather_updated_at = asyncio.get_running_loop().time()
     original_mark = state.weather_updated_at
 
-    poller = asyncio.create_task(skystrip.poll_nws(state))
+    poller = asyncio.create_task(sky_providers_weather.poll_nws(state))
     try:
         await asyncio.wait_for(om_entered.wait(), 0.3)
         # NWS is validated and staged, but Open-Meteo is still in flight.  No
@@ -730,7 +738,7 @@ async def test_cross_feed_await_keeps_last_fused_snapshot_until_one_commit(
         source_age = (
             asyncio.get_running_loop().time() - state.weather_updated_at
         )
-        remaining_lease = skystrip.WEATHER_LEASE_S - source_age
+        remaining_lease = sky_weather.WEATHER_LEASE_S - source_age
         assert 0 < remaining_lease <= 61
         if open_meteo_succeeds:
             assert state.weather.snow_depth_m == pytest.approx(0.22)
@@ -749,9 +757,9 @@ async def test_cross_feed_await_keeps_last_fused_snapshot_until_one_commit(
 def test_moon_age_converts_astrals_28_day_index_to_a_synodic_month(
     monkeypatch,
 ):
-    monkeypatch.setattr(skystrip.moon, "phase", lambda _day: 14.0)
+    monkeypatch.setattr(moon, "phase", lambda _day: 14.0)
 
-    assert skystrip._moon_age_days(date(2026, 8, 9)) == pytest.approx(
+    assert sky_render_astronomy._moon_age_days(date(2026, 8, 9)) == pytest.approx(
         29.530588 / 2
     )
 
@@ -769,9 +777,9 @@ def test_moon_age_converts_astrals_28_day_index_to_a_synodic_month(
 def test_forecast_temperature_converts_the_declared_source_unit(
     monkeypatch, display_unit, source_unit, source_value, expected
 ):
-    monkeypatch.setattr(skystrip, "UNITS", display_unit)
+    monkeypatch.setattr(sky_settings, "UNITS", display_unit)
 
-    assert skystrip._forecast_temperature(
+    assert sky_audio_report_facts._forecast_temperature(
         {"temperature": source_value, "temperatureUnit": source_unit}
     ) == expected
 
@@ -787,4 +795,4 @@ def test_forecast_temperature_converts_the_declared_source_unit(
     ],
 )
 def test_forecast_temperature_rejects_missing_or_unsupported_values(period):
-    assert skystrip._forecast_temperature(period) is None
+    assert sky_audio_report_facts._forecast_temperature(period) is None

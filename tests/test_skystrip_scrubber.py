@@ -13,9 +13,14 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-skystrip = pytest.importorskip("skystrip")
+from apps.skystrip_app import model as sky_model
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app import weather_state as sky_weather_state
+from apps.skystrip_app import weather_timeline as sky_weather_timeline
+from apps.skystrip_app.render import precipitation as sky_render_precipitation
 
-TZ = skystrip.TZ
+TZ = sky_settings.TZ
 
 
 def _obs(when, description, present, **props):
@@ -52,7 +57,7 @@ def test_metar_intensity_maps_onto_the_rain_tiers():
         ("Heavy Rain", _rain("heavy"), 2),
     ]
     for description, present, tier in cases:
-        got = skystrip.obs_precipitation(
+        got = sky_weather.obs_precipitation(
             {"textDescription": description, "presentWeather": present})
         assert got["tier"] == tier, description
         assert got["rain"] and not got["snow"]
@@ -60,7 +65,7 @@ def test_metar_intensity_maps_onto_the_rain_tiers():
 
 def test_the_heavy_thunderstorm_reads_as_a_downpour():
     """The actual 14:35 observation from the day this was written."""
-    got = skystrip.obs_precipitation({
+    got = sky_weather.obs_precipitation({
         "textDescription": "Heavy Thunderstorms and Heavy Rain and Fog/Mist",
         "presentWeather": [
             {"intensity": "heavy", "weather": "rain", "rawString": "+RA"},
@@ -72,15 +77,15 @@ def test_the_heavy_thunderstorm_reads_as_a_downpour():
 
 
 def test_fog_alone_is_not_precipitation():
-    assert skystrip.obs_precipitation({
+    assert sky_weather.obs_precipitation({
         "textDescription": "Fog/Mist",
         "presentWeather": [{"intensity": None, "weather": "fog_mist"}]}) is None
-    assert skystrip.obs_precipitation(
+    assert sky_weather.obs_precipitation(
         {"textDescription": "Mostly Cloudy", "presentWeather": []}) is None
 
 
 def test_snow_is_told_apart_from_rain():
-    got = skystrip.obs_precipitation({
+    got = sky_weather.obs_precipitation({
         "textDescription": "Light Snow",
         "presentWeather": [{"intensity": "light", "weather": "snow"}]})
     assert got["snow"] and not got["rain"]
@@ -97,7 +102,7 @@ def test_the_heaviest_observation_in_a_slot_wins():
         (slot + timedelta(minutes=5), _obs(slot, "Heavy Rain", _rain("heavy"))),
         (slot + timedelta(minutes=9), _obs(slot, "Rain", _rain(None))),
     ]
-    got = skystrip.observed_precip_at(history, slot)
+    got = sky_weather.observed_precip_at(history, slot)
     assert got["tier"] == 2, "the nearest reading won instead of the heaviest"
 
 
@@ -105,22 +110,22 @@ def test_observations_outside_the_window_are_ignored():
     slot = datetime(2026, 8, 9, 14, 30, tzinfo=TZ)
     far = slot + timedelta(minutes=40)
     history = [(far, _obs(far, "Heavy Rain", _rain("heavy")))]
-    assert skystrip.observed_precip_at(history, slot) is None
+    assert sky_weather.observed_precip_at(history, slot) is None
 
 
 def test_no_observation_means_unknown_not_dry():
     """None is the signal for 'nothing covers this moment'. The caller draws
     nothing either way, but it must never fall through to the hourly table."""
     slot = datetime(2026, 8, 9, 14, 30, tzinfo=TZ)
-    assert skystrip.observed_precip_at([], slot) is None
-    assert skystrip.observed_precip_at(None, slot) is None
+    assert sky_weather.observed_precip_at([], slot) is None
+    assert sky_weather.observed_precip_at(None, slot) is None
 
 
 # --- forecast gate ----------------------------------------------------------
 
 def test_likelihood_gates_precipitation():
-    below = skystrip.forecast_precip(_hourly_row(prob=39, code=3))
-    at = skystrip.forecast_precip(_hourly_row(prob=40, code=3))
+    below = sky_weather.forecast_precip(_hourly_row(prob=39, code=3))
+    at = sky_weather.forecast_precip(_hourly_row(prob=40, code=3))
     assert below is None
     assert at is not None and at["rain"]
 
@@ -128,8 +133,8 @@ def test_likelihood_gates_precipitation():
 def test_likelihood_does_not_decide_intensity():
     """A 90% chance of drizzle must draw drizzle, not a downpour. This is the
     whole reason probability gates and accumulation sizes."""
-    drizzle = skystrip.forecast_precip(_hourly_row(prob=90, precip=0.3))
-    downpour = skystrip.forecast_precip(_hourly_row(prob=45, precip=8.0))
+    drizzle = sky_weather.forecast_precip(_hourly_row(prob=90, precip=0.3))
+    downpour = sky_weather.forecast_precip(_hourly_row(prob=45, precip=8.0))
     assert drizzle["tier"] == 0
     assert downpour["tier"] == 2
 
@@ -137,25 +142,25 @@ def test_likelihood_does_not_decide_intensity():
 def test_a_gate_passed_on_likelihood_alone_draws_the_lightest_thing():
     """prob >= 40 with no expected accumulation is the common case, and
     overstating it would put a downpour on a maybe."""
-    got = skystrip.forecast_precip(_hourly_row(prob=53, precip=0.0))
+    got = sky_weather.forecast_precip(_hourly_row(prob=53, precip=0.0))
     assert got["tier"] == 0
 
 
 def test_a_precipitation_code_wins_regardless_of_probability():
-    got = skystrip.forecast_precip(_hourly_row(prob=0, code=65, precip=7.9))
+    got = sky_weather.forecast_precip(_hourly_row(prob=0, code=65, precip=7.9))
     assert got is not None and got["rain"] and got["tier"] == 2
 
 
 def test_freezing_temperatures_turn_a_bare_gate_into_snow():
     """Probability carries no precipitation type, so temperature decides."""
-    got = skystrip.forecast_precip(_hourly_row(prob=60, code=3, temp=-4.0))
+    got = sky_weather.forecast_precip(_hourly_row(prob=60, code=3, temp=-4.0))
     assert got["snow"] and not got["rain"]
 
 
 # --- wx_at end to end -------------------------------------------------------
 
 def _state(hourly=None, history=None):
-    state = skystrip.SkyState()
+    state = sky_model.SkyState()
     state.hourly = hourly
     state.obs_history = history
     return state
@@ -170,7 +175,7 @@ def test_a_past_storm_scrubs_as_a_storm():
         history=[(past, _obs(
             past, "Heavy Thunderstorms and Heavy Rain",
             [{"intensity": "heavy", "weather": "rain"}]))])
-    wx = skystrip.wx_at(state, past)
+    wx = sky_weather_timeline.wx_at(state, past)
     assert wx.rain, "a confirmed storm scrubbed as a dry sky"
     assert wx.rain_tier == 2
     assert wx.thunder
@@ -184,7 +189,7 @@ def test_the_model_never_speaks_for_the_past():
     past = now - timedelta(hours=3)
     state = _state(hourly=[(past, _hourly_row(prob=50, precip=5.0, code=65))],
                    history=[])
-    wx = skystrip.wx_at(state, past)
+    wx = sky_weather_timeline.wx_at(state, past)
     assert not wx.rain and not wx.snow and not wx.thunder
 
 
@@ -193,7 +198,7 @@ def test_a_future_hour_uses_the_forecast():
     ahead = now + timedelta(hours=3)
     state = _state(hourly=[(ahead, _hourly_row(prob=45, precip=0.0))],
                    history=[])
-    assert skystrip.wx_at(state, ahead).rain
+    assert sky_weather_timeline.wx_at(state, ahead).rain
 
 
 def test_a_future_hour_below_the_threshold_stays_dry():
@@ -201,7 +206,7 @@ def test_a_future_hour_below_the_threshold_stays_dry():
     ahead = now + timedelta(hours=3)
     state = _state(hourly=[(ahead, _hourly_row(prob=25, precip=0.0))],
                    history=[])
-    assert not skystrip.wx_at(state, ahead).rain
+    assert not sky_weather_timeline.wx_at(state, ahead).rain
 
 
 def test_non_precipitation_fields_still_come_from_the_model():
@@ -211,7 +216,7 @@ def test_non_precipitation_fields_still_come_from_the_model():
     past = now - timedelta(hours=3)
     state = _state(hourly=[(past, _hourly_row(cloud=88, temp=17.5))],
                    history=[])
-    wx = skystrip.wx_at(state, past)
+    wx = sky_weather_timeline.wx_at(state, past)
     assert wx.cloud_frac == pytest.approx(0.88)
     assert wx.temp_c == pytest.approx(17.5)
 
@@ -222,7 +227,7 @@ def test_history_ingestion_rejects_malformed_payloads():
     start = datetime.now(timezone.utc) - timedelta(hours=26)
     for payload in (None, [], {}, {"features": "nope"}, {"features": None}):
         with pytest.raises(ValueError):
-            skystrip._parse_obs_history(payload, start)
+            sky_weather_timeline._parse_obs_history(payload, start)
 
 
 def test_history_ingestion_is_bounded():
@@ -231,9 +236,9 @@ def test_history_ingestion_is_bounded():
     start = now - timedelta(hours=26)
     feats = [{"properties": _obs(now - timedelta(minutes=i % 600),
                                  "Light Rain", _rain("light"))}
-             for i in range(skystrip.OBS_HISTORY_MAX + 250)]
-    rows = skystrip._parse_obs_history({"features": feats}, start)
-    assert len(rows) <= skystrip.OBS_HISTORY_MAX
+             for i in range(sky_weather.OBS_HISTORY_MAX + 250)]
+    rows = sky_weather_timeline._parse_obs_history({"features": feats}, start)
+    assert len(rows) <= sky_weather.OBS_HISTORY_MAX
 
 
 def test_history_ingestion_drops_junk_rows_without_failing():
@@ -248,7 +253,7 @@ def test_history_ingestion_drops_junk_rows_without_failing():
         {"properties": _obs(now - timedelta(days=9), "Rain", _rain(None))},
         {"properties": _obs(now + timedelta(hours=6), "Rain", _rain(None))},
     ]}
-    rows = skystrip._parse_obs_history(payload, start)
+    rows = sky_weather_timeline._parse_obs_history(payload, start)
     assert len(rows) == 1
 
 
@@ -258,7 +263,7 @@ def test_history_rows_come_back_in_time_order():
     times = [now - timedelta(hours=h) for h in (2, 20, 9, 1)]
     payload = {"features": [
         {"properties": _obs(t, "Rain", _rain(None))} for t in times]}
-    rows = skystrip._parse_obs_history(payload, start)
+    rows = sky_weather_timeline._parse_obs_history(payload, start)
     assert [r[0] for r in rows] == sorted(r[0] for r in rows)
 
 
@@ -267,8 +272,8 @@ def test_the_live_path_still_rejects_stale_timestamps():
     not quietly widen it for current conditions."""
     now = datetime.now(timezone.utc)
     old = (now - timedelta(hours=5)).isoformat()
-    assert skystrip._source_datetime(old, now=now) is None
-    assert skystrip._source_datetime(old, now=now, max_age_s=26 * 3600)
+    assert sky_weather_state._source_datetime(old, now=now) is None
+    assert sky_weather_state._source_datetime(old, now=now, max_age_s=26 * 3600)
 
 
 def test_a_thunderstorm_keeps_its_observed_intensity():
@@ -281,6 +286,6 @@ def test_a_thunderstorm_keeps_its_observed_intensity():
             hourly=[(past, _hourly_row())],
             history=[(past, _obs(past, "Thunderstorms and Rain", [
                 {"intensity": intensity, "weather": "rain"}]))])
-        wx = skystrip.wx_at(state, past)
+        wx = sky_weather_timeline.wx_at(state, past)
         assert wx.thunder
-        assert skystrip._rain_tier(wx) == want, intensity
+        assert sky_render_precipitation._rain_tier(wx) == want, intensity

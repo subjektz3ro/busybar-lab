@@ -61,6 +61,15 @@ def _unquote(value: str) -> str:
     return value
 
 
+def is_single_line(value: str) -> bool:
+    """Match every separator accepted by str.splitlines(), plus env's NUL ban.
+
+    Checking only CR/LF lets a Unicode line separator forge another key when
+    a machine-written override is read back through parse_env_text().
+    """
+    return not any(char in value for char in "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029\0")
+
+
 def parse_env_text(text: str, *, strip_quotes: bool = False) -> dict[str, str]:
     """Parse `KEY=value` lines. Later duplicates win, blanks are preserved."""
     values: dict[str, str] = {}

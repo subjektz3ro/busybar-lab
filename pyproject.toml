@@ -109,24 +109,19 @@ ignore = [
 # Documentation refreshes use fixed upstream/device endpoints.
 "scripts/*" = ["S310"]
 
-# Type checking gates every first-party Python package plus each app entry
-# point. Keep the list explicit so a newly added app has to opt into the gate
-# deliberately instead of being covered accidentally by an import.
+# Type checking covers whole source directories, including newly scaffolded
+# apps and extracted helpers, without a second registration list to maintain.
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
+# apps is a checkout-local namespace, also used by isolated visualizer fixtures.
+# Resolve its nested packages from the repository root, not as top-level apps.
+explicit_package_bases = true
 files = [
     "busybar_dev",
     "barkeep",
     "busybar_viz",
-    "apps/dsn.py",
-    "apps/dsn_config.py",
-    "apps/dsn_source.py",
-    "apps/hello.py",
-    "apps/skystrip.py",
-    "apps/skystrip_config.py",
-    "apps/skystrip_lightning.py",
-    "apps/_template.py",
+    "apps",
 ]
 
 [tool.pytest.ini_options]
@@ -153,7 +148,35 @@ default = 85.0
 [tool.coverage-floors.exceptions]
 "apps/_template.py" = 80.0
 "apps/hello.py" = 80.0
-"apps/skystrip.py" = 71.2
+# The app split exposes existing gaps formerly averaged into the monoliths
+# (especially runtime, input and device-effect branches). Preserve a measured
+# per-owner ratchet instead of retaining an app-wide exception. These floors
+# are rounded down from the lower Python 3.11/3.13 result; no source lines are
+# excluded to make the split pass. Both launchers now meet the default floor.
+"apps/dsn_app/audio/assets.py" = 79.3
+"apps/dsn_app/audio/narration.py" = 82.9
+"apps/dsn_app/audio/worker.py" = 76.0
+"apps/dsn_app/cli.py" = 84.3
+"apps/dsn_app/device/assets.py" = 69.2
+"apps/dsn_app/device/events.py" = 81.7
+"apps/dsn_app/device/scenes.py" = 81.3
+"apps/dsn_app/input.py" = 71.2
+"apps/dsn_app/ranges.py" = 84.2
+"apps/dsn_app/runtime.py" = 68.2
+"apps/skystrip_app/audio/report.py" = 76.8
+"apps/skystrip_app/audio/report_assets.py" = 81.1
+"apps/skystrip_app/audio/siren.py" = 73.0
+"apps/skystrip_app/device/ambient.py" = 29.8
+"apps/skystrip_app/device/assets.py" = 52.5
+"apps/skystrip_app/device/display.py" = 76.4
+"apps/skystrip_app/device/effects.py" = 43.1
+"apps/skystrip_app/device/report_status.py" = 72.6
+"apps/skystrip_app/device/scrubber.py" = 67.1
+"apps/skystrip_app/input.py" = 83.9
+"apps/skystrip_app/providers/alerts.py" = 66.6
+"apps/skystrip_app/render/astronomy.py" = 81.3
+"apps/skystrip_app/render/grove.py" = 74.2
+"apps/skystrip_app/runtime.py" = 61.1
 "barkeep/keepalive.py" = 21.1
 "busybar_dev/__init__.py" = 98.0
 "busybar_dev/tts.py" = 56.1

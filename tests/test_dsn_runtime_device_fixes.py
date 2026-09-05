@@ -13,24 +13,35 @@ import pytest
 from busylib import exceptions
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-dsn = pytest.importorskip("dsn")
+from apps.dsn_app import input as dsn_input
+from apps.dsn_app import limits as dsn_limits
+from apps.dsn_app import model as dsn_model
+from apps.dsn_app import reconcile as dsn_reconcile
+from apps.dsn_app import settings as dsn_settings
+from apps.dsn_app import source as dsn_source
+from apps.dsn_app.audio import assets as dsn_audio_assets
+from apps.dsn_app.audio import narration as dsn_audio_narration
+from apps.dsn_app.audio import output as dsn_audio_output
+from apps.dsn_app.audio import words as dsn_audio_words
+from apps.dsn_app.audio import worker as dsn_audio_worker
+from apps.dsn_app.device import display as dsn_device_display
 
 
-def link(craft: str = "VGR2", dish: str = "DSS43", **changes) -> dsn.Link:
-    base = dsn.Link(
+def link(craft: str = "VGR2", dish: str = "DSS43", **changes) -> dsn_source.Link:
+    base = dsn_source.Link(
         complex_name="Canberra", dish=dish, craft=craft, elevation=30.0,
         band="X", down_bps=20_000.0, up_active=True, range_km=2.1e10,
         naif=-32, down_dbm=-140.0, up_kw=18.0, streams=1,
         azimuth=120.0,
-        down_streams=(dsn.DownStream("X", 20_000.0, -140.0),),
+        down_streams=(dsn_source.DownStream("X", 20_000.0, -140.0),),
         up_band="X",
     )
     return replace(base, **changes)
 
 
-def fresh_state(selected: dsn.Link, *, view: str = "instrument") -> dsn.State:
+def fresh_state(selected: dsn_source.Link, *, view: str = "instrument") -> dsn_model.State:
     now = time.time()
-    state = dsn.State(links=[selected], view=view, feed_seeded=True)
+    state = dsn_model.State(links=[selected], view=view, feed_seeded=True)
     state.feed_timestamp_ms = int(now * 1000)
     state.feed_advanced_at = now
     return state
@@ -43,9 +54,9 @@ def test_selection_handoff_is_invariant_to_equivalent_record_order():
 
     selected = []
     for incoming in ([steady, handoff], [handoff, steady]):
-        state = dsn.State(
+        state = dsn_model.State(
             links=[steady, old], cursor=1, feed_seeded=True)
-        dsn.reconcile_links(state, list(incoming), now=100.0)
+        dsn_reconcile.reconcile_links(state, list(incoming), now=100.0)
         selected.append(state.current().key)
 
     assert selected == [handoff.key, handoff.key]
@@ -59,10 +70,10 @@ def test_selection_departure_fallback_ignores_both_snapshots_record_order():
 
     for before in ([first, selected, second], [second, selected, first]):
         for after in ([first, second], [second, first]):
-            state = dsn.State(
+            state = dsn_model.State(
                 links=list(before), cursor=before.index(selected),
                 feed_seeded=True)
-            dsn.reconcile_links(state, list(after), now=100.0)
+            dsn_reconcile.reconcile_links(state, list(after), now=100.0)
             outcomes.add(state.current().key)
 
     assert outcomes == {min(first.key, second.key)}
@@ -83,19 +94,19 @@ def test_new_source_retires_every_possibly_committed_heartbeat_id():
 
     async def scenario():
         bb = CommitThenLoseResponse()
-        assert await dsn.sync_live_lease(bb, state, "fresh") is False
+        assert await dsn_device_display.sync_live_lease(bb, state, "fresh") is False
         uncertain = state.heartbeat_pending_id
         assert uncertain in state.heartbeat_uncertain
 
         state.feed_timestamp_ms += 1
-        assert await dsn.sync_live_lease(bb, state, "fresh") is True
+        assert await dsn_device_display.sync_live_lease(bb, state, "fresh") is True
         return bb, uncertain
 
     bb, uncertain = asyncio.run(scenario())
     second = {element.id: element for element in bb.draws[1].elements}
     assert state.heartbeat_id != uncertain
     assert second[uncertain].timeout == 1
-    assert second[state.heartbeat_id].timeout == dsn.LIVE_LEASE_TIMEOUT_S
+    assert second[state.heartbeat_id].timeout == dsn_settings.LIVE_LEASE_TIMEOUT_S
     assert state.heartbeat_uncertain == {}
     assert state.heartbeat_uncertain_until == {}
 
@@ -114,7 +125,7 @@ def test_expired_ambiguous_heartbeat_ids_do_not_grow_recovery_payloads():
             self.draws.append(payload)
 
     bb = RecordingBar()
-    assert asyncio.run(dsn.sync_live_lease(bb, state, "fresh")) is True
+    assert asyncio.run(dsn_device_display.sync_live_lease(bb, state, "fresh")) is True
 
     assert "expired" not in {
         element.id for element in bb.draws[0].elements}
@@ -125,8 +136,8 @@ def test_expired_ambiguous_heartbeat_ids_do_not_grow_recovery_payloads():
 def test_deferred_stop_settles_before_a_new_generation_can_play():
     selected = link()
     state = fresh_state(selected)
-    text = dsn.spoken(selected, state.names, state.dish_types)
-    state.speech[dsn.speech_name(text)] = 60.0
+    text = dsn_audio_words.spoken(selected, state.names, state.dish_types)
+    state.speech[dsn_audio_assets.speech_name(text)] = 60.0
     state.audio_stop_pending = True
 
     class GatedAudioBar:
@@ -151,9 +162,9 @@ def test_deferred_stop_settles_before_a_new_generation_can_play():
     async def scenario():
         bb = GatedAudioBar()
         deferred = asyncio.create_task(
-            dsn.stop_audio_bounded(bb, state, "deferred"))
+            dsn_audio_output.stop_audio_bounded(bb, state, "deferred"))
         await bb.stop_entered.wait()
-        narration = asyncio.create_task(dsn.speak(bb, state, selected))
+        narration = asyncio.create_task(dsn_audio_narration.speak(bb, state, selected))
         await asyncio.sleep(0)
         assert not bb.played.is_set(), "PLAY crossed an older in-flight STOP"
 
@@ -169,7 +180,7 @@ def test_deferred_stop_settles_before_a_new_generation_can_play():
 
 
 def test_obsolete_deferred_stop_token_cannot_become_a_new_stop():
-    state = dsn.State(
+    state = dsn_model.State(
         audio_generation=2, audio_stop_pending=False,
         audio_stop_generation=None)
 
@@ -181,7 +192,7 @@ def test_obsolete_deferred_stop_token_cannot_become_a_new_stop():
             self.stops += 1
 
     bb = AudioBar()
-    asyncio.run(dsn.stop_audio_bounded(
+    asyncio.run(dsn_audio_output.stop_audio_bounded(
         bb, state, "obsolete deferred", generation=1))
 
     assert bb.stops == 0
@@ -192,9 +203,9 @@ def test_shutdown_stop_cannot_be_overtaken_by_a_cancellation_resistant_play(
         monkeypatch):
     selected = link()
     state = fresh_state(selected)
-    text = dsn.spoken(selected, state.names, state.dish_types)
-    state.speech[dsn.speech_name(text)] = 60.0
-    monkeypatch.setattr(dsn, "SHUTDOWN_TIMEOUT_S", 0.1)
+    text = dsn_audio_words.spoken(selected, state.names, state.dish_types)
+    state.speech[dsn_audio_assets.speech_name(text)] = 60.0
+    monkeypatch.setattr(dsn_limits, "SHUTDOWN_TIMEOUT_S", 0.1)
 
     class ObservedLock:
         """Expose the final STOP waiting behind PLAY without using sleeps."""
@@ -244,13 +255,13 @@ def test_shutdown_stop_cannot_be_overtaken_by_a_cancellation_resistant_play(
     async def scenario():
         bb = LatePlayBar()
         state.audio_io = ObservedLock()
-        speaking = asyncio.create_task(dsn.speak(bb, state, selected))
+        speaking = asyncio.create_task(dsn_audio_narration.speak(bb, state, selected))
         state.speech_tasks.add(speaking)
         speaking.add_done_callback(state.speech_tasks.discard)
         await bb.play_entered.wait()
 
         shutdown = asyncio.create_task(
-            dsn.shutdown_audio_bounded(bb, state, [speaking]))
+            dsn_audio_output.shutdown_audio_bounded(bb, state, [speaking]))
         await bb.play_cancelled.wait()
         # The first cancellation-settlement window has elapsed and the final
         # STOP is now queued on the same lock, still unable to cross PLAY.
@@ -275,8 +286,8 @@ def test_shutdown_stop_cannot_be_overtaken_by_a_cancellation_resistant_play(
 def test_unplayable_speech_gets_a_new_immutable_resident_path(monkeypatch):
     selected = link()
     state = fresh_state(selected)
-    text = dsn.spoken(selected, state.names, state.dish_types)
-    broken = dsn.speech_name(text)
+    text = dsn_audio_words.spoken(selected, state.names, state.dish_types)
+    broken = dsn_audio_assets.speech_name(text)
     state.speech[broken] = 1.0
 
     class RepairingBar:
@@ -311,15 +322,15 @@ def test_unplayable_speech_gets_a_new_immutable_resident_path(monkeypatch):
     async def fake_synth(_text: str) -> bytes:
         return b"\0\0" * 100
 
-    monkeypatch.setattr(dsn, "synth_off_loop", fake_synth)
+    monkeypatch.setattr(dsn_audio_worker, "synth_off_loop", fake_synth)
 
     async def scenario():
         bb = RepairingBar()
-        await dsn.speak(bb, state, selected)
-        repaired = dsn.speech_asset_name(state, text)
+        await dsn_audio_narration.speak(bb, state, selected)
+        repaired = dsn_audio_assets.speech_asset_name(state, text)
         assert repaired != broken and repaired.endswith("_r01.snd")
 
-        result = await dsn.ensure_speech(bb, state, text)
+        result = await dsn_audio_assets.ensure_speech(bb, state, text)
         assert result is not None and result[0] == repaired
         assert bb.operations.index(("upload", repaired)) < \
             bb.operations.index(("remove", broken))
@@ -328,9 +339,9 @@ def test_unplayable_speech_gets_a_new_immutable_resident_path(monkeypatch):
 
         # The suffix encodes its base generation, so restart adoption keeps
         # using the repair rather than rediscovering the corrupt base name.
-        restarted = dsn.State()
-        await dsn.load_speech_cache(bb, restarted)
-        assert dsn.speech_asset_name(restarted, text) == repaired
+        restarted = dsn_model.State()
+        await dsn_audio_assets.load_speech_cache(bb, restarted)
+        assert dsn_audio_assets.speech_asset_name(restarted, text) == repaired
         assert repaired in restarted.speech
 
     asyncio.run(scenario())
@@ -339,9 +350,9 @@ def test_unplayable_speech_gets_a_new_immutable_resident_path(monkeypatch):
 def test_failed_bad_ancestor_retirement_protects_its_repaired_successor(
         monkeypatch):
     text = "Canberra is receiving Voyager 2."
-    broken = dsn.speech_name(text)
-    repaired = dsn.speech_name(text, repair=1)
-    monkeypatch.setattr(dsn, "SPEECH_CACHE_MAX", 0)
+    broken = dsn_audio_assets.speech_name(text)
+    repaired = dsn_audio_assets.speech_name(text, repair=1)
+    monkeypatch.setattr(dsn_limits, "SPEECH_CACHE_MAX", 0)
 
     class StickyAncestorBar:
         def __init__(self) -> None:
@@ -362,8 +373,8 @@ def test_failed_bad_ancestor_retirement_protects_its_repaired_successor(
             self.files.pop(name, None)
 
     bb = StickyAncestorBar()
-    state = dsn.State()
-    asyncio.run(dsn.load_speech_cache(bb, state))
+    state = dsn_model.State()
+    asyncio.run(dsn_audio_assets.load_speech_cache(bb, state))
 
     assert state.speech_repairs[broken] == 1
     assert state.speech_retire == {broken}
@@ -374,7 +385,7 @@ def test_failed_bad_ancestor_retirement_protects_its_repaired_successor(
 
 def test_zero_byte_resident_speech_advances_to_a_repair_generation():
     text = "Madrid is receiving Juno."
-    broken = dsn.speech_name(text)
+    broken = dsn_audio_assets.speech_name(text)
 
     class StickyZeroBar:
         async def storage_list(self, path: str):
@@ -384,11 +395,11 @@ def test_zero_byte_resident_speech_advances_to_a_repair_generation():
         async def storage_remove(self, path: str):
             raise OSError("zero-byte path could not be removed")
 
-    state = dsn.State()
-    asyncio.run(dsn.load_speech_cache(StickyZeroBar(), state))
+    state = dsn_model.State()
+    asyncio.run(dsn_audio_assets.load_speech_cache(StickyZeroBar(), state))
 
-    speech = dsn.speech_asset_name(state, text)
-    assert speech == dsn.speech_name(text, repair=1)
+    speech = dsn_audio_assets.speech_asset_name(state, text)
+    assert speech == dsn_audio_assets.speech_name(text, repair=1)
     assert broken in state.speech_retire
     assert broken not in state.speech
 
@@ -399,11 +410,11 @@ def test_zero_byte_resident_speech_advances_to_a_repair_generation():
      ("stale", "FEED STALE"), ("fresh", "NO LINK DATA")],
 )
 def test_start_and_ambient_share_truthful_feed_status(freshness, label):
-    assert dsn.feed_status_label(freshness) == label
+    assert dsn_device_display.feed_status_label(freshness) == label
 
 
 def test_start_reports_never_online_as_offline_not_stale():
-    state = dsn.State()
+    state = dsn_model.State()
 
     class InputBar:
         def __init__(self) -> None:
@@ -421,7 +432,7 @@ def test_start_reports_never_online_as_offline_not_stale():
 
     async def scenario():
         bb = InputBar()
-        listening = asyncio.create_task(dsn.listen_input(bb, state))
+        listening = asyncio.create_task(dsn_input.listen_input(bb, state))
         await asyncio.wait_for(bb.drawn.wait(), 0.2)
         listening.cancel()
         await asyncio.gather(listening, return_exceptions=True)

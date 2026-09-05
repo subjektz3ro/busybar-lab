@@ -11,6 +11,10 @@ uv sync --locked --dev
 uv run pytest -q              # the whole suite, no hardware required
 ```
 
+Use the [maintainer map](docs/maintaining.md) to find the owner and focused
+tests for a change. Browser behavior tests additionally need Node.js 22 or
+newer, with no npm dependencies to install.
+
 **You do not need a BUSY Bar to contribute.** Device access goes through
 `busybar_dev.connect()`, and CI makes no calls to hardware or external
 services. The offline command depends on the app: `hello --dry-run` builds its
@@ -52,6 +56,7 @@ for the hardware-free test suite:
 uv run python -m compileall -q apps barkeep busybar_dev busybar_viz scripts
 uv run ruff check --output-format github .
 uv run mypy
+node --test tests/frontend/*.test.cjs
 BUSYBAR_HOST=203.0.113.1 uv run pytest -q \
   --cov=apps --cov=barkeep --cov=busybar_dev --cov=busybar_viz \
   --cov-report=json:coverage.json --cov-report=term:skip-covered

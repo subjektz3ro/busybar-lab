@@ -1,22 +1,21 @@
 """Pure configuration and state-path policy for the Skystrip app.
 
 This module deliberately does not read ``os.environ`` or load ``.env``. It
-turns an explicit mapping into one immutable value; ``skystrip.py`` owns
+turns an explicit mapping into one immutable value; ``settings.py`` owns
 applying that value to its long-running process state.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-import math
 from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-
 LIGHTNING_WS_URL_MAX_CHARS = 2048
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENES = ("house", "skyline", "lakefront", "forest", "grove", "backroads")
 
 
@@ -114,8 +113,7 @@ def resolve_state_root(raw: str | None, repo_root: Path) -> tuple[Path, str]:
         return candidate.resolve(), ""
     except (OSError, RuntimeError, ValueError):
         return default.resolve(), (
-            "BUSYBAR_STATE_DIR is unusable; using the repository state root "
-            f"{default}"
+            f"BUSYBAR_STATE_DIR is unusable; using the repository state root {default}"
         )
 
 
@@ -137,9 +135,7 @@ def parse_runtime_config(
         values.get("SKYSTRIP_LON"), "SKYSTRIP_LON", -180.0, 180.0
     )
     if latitude_set != longitude_set:
-        raise ValueError(
-            "SKYSTRIP_LAT and SKYSTRIP_LON must be configured together"
-        )
+        raise ValueError("SKYSTRIP_LAT and SKYSTRIP_LON must be configured together")
 
     timezone_name = (values.get("SKYSTRIP_TZ") or "UTC").strip()
     if len(timezone_name) > 255:
@@ -147,9 +143,7 @@ def parse_runtime_config(
     try:
         configured_timezone = ZoneInfo(timezone_name)
     except (ZoneInfoNotFoundError, ValueError, OSError) as exc:
-        raise ValueError(
-            "SKYSTRIP_TZ must be a valid IANA timezone name"
-        ) from exc
+        raise ValueError("SKYSTRIP_TZ must be a valid IANA timezone name") from exc
 
     units = (values.get("SKYSTRIP_UNITS") or "f").strip().lower()
     if units not in {"f", "c"}:
@@ -159,9 +153,8 @@ def parse_runtime_config(
     # corner's measured backgrounds by hue separation (the contract tests
     # sweep all of them), so no unreadable clock is even configurable.
     clock_ink = (values.get("SKYSTRIP_CLOCK_INK") or "orange").strip().lower()
-    if clock_ink not in {"orange", "pink", "red"}:
-        raise ValueError(
-            "SKYSTRIP_CLOCK_INK must be 'orange', 'pink', or 'red'")
+    if clock_ink not in STATUS_INKS:
+        raise ValueError("SKYSTRIP_CLOCK_INK must be 'orange', 'pink', or 'red'")
 
     lightning_errors: tuple[str, ...] = ()
     try:
@@ -187,12 +180,10 @@ def parse_runtime_config(
         units=units,
         clock_ink=clock_ink,
         style=(values.get("SKYSTRIP_STYLE") or "plain").lower(),
-        report_voice=(
-            values.get("SKYSTRIP_VOICE") or "am_michael"
-        ).strip(),
-        christmas_window=(
-            values.get("SKYSTRIP_CHRISTMAS") or "dec24-26"
-        ).strip().lower(),
+        report_voice=(values.get("SKYSTRIP_VOICE") or "am_michael").strip(),
+        christmas_window=(values.get("SKYSTRIP_CHRISTMAS") or "dec24-26")
+        .strip()
+        .lower(),
         nws_station=values.get("SKYSTRIP_STATION", ""),
         nws_user_agent=(
             f"skystrip ({contact})" if contact else "skystrip (hobby project)"
@@ -222,3 +213,16 @@ DEFAULT_SKYSTRIP_CONFIG = SkystripConfig(
     state_root=REPO_ROOT / "state",
     enabled_scenes=SCENES,
 )
+
+STATUS_INKS = {
+    # Dominant channels at FULL scale, deliberately: brightness reads as
+    # apparent size on this panel, so a 90% ink draws visibly thinner
+    # digits than a 100% one for free. Teal was tried and panel-vetoed
+    # ("doesn't work well", 2026-08-12); orange is the operator's pick and
+    # matches the bar's own industrial design — white body, orange
+    # accents. Its G sits at 130 so it stays >=30% from the alarm red in
+    # G, and its B of zero is the separator against every sky.
+    "orange": (255, 130, 0),  # the hardware's accent colour, on the panel
+    "pink": (255, 64, 200),  # The Drake's neon family, dusk-flavoured
+    "red": (255, 40, 28),  # reads hardest of all; also the alarm colour
+}

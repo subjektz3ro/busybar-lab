@@ -19,27 +19,32 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps"))
 
-import skystrip  # noqa: E402
+from apps.skystrip_app import eclipse as sky_eclipse
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app.audio import report_facts as sky_audio_report_facts
+from apps.skystrip_app.audio import report_plain as sky_audio_report_plain
+from datetime import timezone
 
 
 def local(hour: int, minute: int = 0, day: int = 15, month: int = 6):
-    return datetime(2026, month, day, hour, minute, tzinfo=skystrip.TZ)
+    return datetime(2026, month, day, hour, minute, tzinfo=sky_settings.TZ)
 
 
 def wx(**kwargs):
-    return skystrip.WeatherState(**kwargs)
+    return sky_weather.WeatherState(**kwargs)
 
 
 def report(wx_state, forecast=None, when=None, hourly=None):
-    return skystrip._compose_report(
+    return sky_audio_report_plain._compose_report(
         wx_state, forecast, when or local(14), hourly)
 
 
 @pytest.fixture(autouse=True)
 def plain_fahrenheit(monkeypatch):
     """Both style knobs are module constants read at import."""
-    monkeypatch.setattr(skystrip, "STYLE", "plain")
-    monkeypatch.setattr(skystrip, "UNITS", "f")
+    monkeypatch.setattr(sky_settings, "STYLE", "plain")
+    monkeypatch.setattr(sky_settings, "UNITS", "f")
 
 
 # --- greeting --------------------------------------------------------------
@@ -89,7 +94,7 @@ def test_fahrenheit_is_the_default_conversion():
 
 
 def test_celsius_is_reported_unconverted(monkeypatch):
-    monkeypatch.setattr(skystrip, "UNITS", "c")
+    monkeypatch.setattr(sky_settings, "UNITS", "c")
     assert "20 degrees" in report(wx(temp_c=20.0))
 
 
@@ -222,7 +227,7 @@ def test_a_likely_soaking_names_the_hour_and_the_tool():
 
 
 def test_snow_gets_a_shovel_in_the_chicago_style(monkeypatch):
-    monkeypatch.setattr(skystrip, "STYLE", "chicago")
+    monkeypatch.setattr(sky_settings, "STYLE", "chicago")
     rows = hourly_rows(local(10), prob=70, code=73)
     text = report(wx(), when=local(10), hourly=rows)
     assert "chance of snow" in text
@@ -284,7 +289,7 @@ def test_the_hourly_outlook_suppresses_the_forecast_umbrella():
 
 
 def test_the_chicago_style_signs_off(monkeypatch):
-    monkeypatch.setattr(skystrip, "STYLE", "chicago")
+    monkeypatch.setattr(sky_settings, "STYLE", "chicago")
     assert report(wx()).endswith("And that's the picture, folks.")
 
 
@@ -293,7 +298,7 @@ def test_the_plain_style_does_not(monkeypatch):
 
 
 def test_the_chicago_lake_breeze_needs_an_easterly(monkeypatch):
-    monkeypatch.setattr(skystrip, "STYLE", "chicago")
+    monkeypatch.setattr(sky_settings, "STYLE", "chicago")
     assert "Cooler by the lake" in report(wx(wind_kmh=25.0, wind_dir=90.0))
     assert "Cooler by the lake" not in report(wx(wind_kmh=25.0, wind_dir=270.0))
 
@@ -328,7 +333,7 @@ def test_no_condition_leaves_an_empty_report():
 def test_a_heads_up_candidate_without_peak_geometry_is_omitted(monkeypatch):
     """One incomplete candidate must not abort the rest of the search."""
     now = local(22)
-    now_utc = now.astimezone(skystrip.timezone.utc)
+    now_utc = now.astimezone(timezone.utc)
     begin = now_utc + timedelta(hours=1)
 
     class Candidate:
@@ -346,10 +351,8 @@ def test_a_heads_up_candidate_without_peak_geometry_is_omitted(monkeypatch):
     state_calls = []
 
     monkeypatch.setattr(
-        skystrip._skystrip_eclipse, "eclipses_near", lambda _when: candidates)
-    monkeypatch.setattr(
-        skystrip,
-        "eclipse_visible_state",
+        sky_eclipse, "eclipses_near", lambda _when: candidates)
+    monkeypatch.setattr(sky_eclipse, "visible_state",
         lambda when, _observer: None if when == now_utc else object(),
     )
 
@@ -360,9 +363,9 @@ def test_a_heads_up_candidate_without_peak_geometry_is_omitted(monkeypatch):
         state_calls.append(eclipse)
         return None if eclipse is incomplete else Peak()
 
-    monkeypatch.setattr(skystrip._skystrip_eclipse, "state_at", state_at)
+    monkeypatch.setattr(sky_eclipse, "state_at", state_at)
 
-    facts = skystrip._eclipse_report_facts(now)
+    facts = sky_audio_report_facts._eclipse_report_facts(now)
 
     assert state_calls == candidates
     assert facts is not None
@@ -377,7 +380,7 @@ def _periods(day: int = 15):
     """An NWS pair shaped like the real feed: the afternoon ends at six.
 
     Times are built from the same clock the test reads, so the fixture
-    cannot drift from `skystrip.TZ`.
+    cannot drift from `sky_settings.TZ`.
     """
     return [
         {"name": "This Afternoon", "isDaytime": True, "temperature": 81,
@@ -405,7 +408,7 @@ def test_the_report_stops_naming_a_period_that_is_nearly_over(
     In that hour the bar greeted you with one and forecast the other, for
     a high that had already happened.
     """
-    monkeypatch.setattr(skystrip, "STYLE", style)
+    monkeypatch.setattr(sky_settings, "STYLE", style)
     text = report(wx(temp_c=25.0), forecast=_periods(), when=local(17, 30))
     assert "fternoon" not in text, (
         f"still forecasting an afternoon that ends in 30 minutes: {text}")
@@ -419,7 +422,7 @@ def test_the_current_period_is_still_used_while_it_has_time_left(
 ):
     """The fix must not skip ahead all day — at one o'clock the afternoon
     is exactly what the report should be talking about."""
-    monkeypatch.setattr(skystrip, "STYLE", style)
+    monkeypatch.setattr(sky_settings, "STYLE", style)
     text = report(wx(temp_c=25.0), forecast=_periods(), when=local(13, 0))
     assert "fternoon" in text, f"skipped the live period: {text}"
     assert "81" in text, text

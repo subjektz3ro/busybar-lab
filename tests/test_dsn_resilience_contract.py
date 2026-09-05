@@ -18,15 +18,31 @@ import pytest
 from busylib import exceptions
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "apps"))
-dsn = pytest.importorskip("dsn")
+from apps.dsn_app import feed as dsn_feed
+from apps.dsn_app import history as dsn_history
+from apps.dsn_app import input as dsn_input
+from apps.dsn_app import limits as dsn_limits
+from apps.dsn_app import model as dsn_model
+from apps.dsn_app import ranges as dsn_ranges
+from apps.dsn_app import reconcile as dsn_reconcile
+from apps.dsn_app import runtime as dsn_runtime
+from apps.dsn_app import selection as dsn_selection
+from apps.dsn_app import source as dsn_source
+from apps.dsn_app.audio import assets as dsn_audio_assets
+from apps.dsn_app.audio import narration as dsn_audio_narration
+from apps.dsn_app.audio import words as dsn_audio_words
+from apps.dsn_app.device import assets as dsn_device_assets
+from apps.dsn_app.device import scene_policy as dsn_device_scene_policy
+from apps.dsn_app.device import scenes as dsn_device_scenes
+from apps.dsn_app.render import instrument as dsn_render_instrument
 
 
 def link(
     craft: str = "VGR2",
     dish: str = "DSS43",
     **changes,
-) -> dsn.Link:
-    base = dsn.Link(
+) -> dsn_source.Link:
+    base = dsn_source.Link(
         complex_name="Canberra",
         dish=dish,
         craft=craft,
@@ -40,14 +56,14 @@ def link(
         up_kw=18.0,
         streams=1,
         azimuth=120.0,
-        down_streams=(dsn.DownStream("X", 20_000.0, -140.0),),
+        down_streams=(dsn_source.DownStream("X", 20_000.0, -140.0),),
         up_band="X",
     )
     return replace(base, **changes)
 
 
-def seeded_state(*links: dsn.Link, cursor: int = 0) -> dsn.State:
-    state = dsn.State()
+def seeded_state(*links: dsn_source.Link, cursor: int = 0) -> dsn_model.State:
+    state = dsn_model.State()
     state.links = list(links)
     state.cursor = cursor
     state.feed_seeded = True
@@ -110,16 +126,16 @@ def test_a_to_b_to_a_reuses_the_resident_a_scene_asset():
 
     async def scenario():
         state.cursor = 0
-        a_signature = dsn.scene_signature(state, a)
-        assert await dsn.push_scene(bb, state, a, a_signature)
+        a_signature = dsn_device_scene_policy.scene_signature(state, a)
+        assert await dsn_device_scenes.push_scene(bb, state, a, a_signature)
         a_path = animation_draws(bb)[-1].elements[0].path
 
         state.cursor = 1
-        b_signature = dsn.scene_signature(state, b)
-        assert await dsn.push_scene(bb, state, b, b_signature)
+        b_signature = dsn_device_scene_policy.scene_signature(state, b)
+        assert await dsn_device_scenes.push_scene(bb, state, b, b_signature)
 
         state.cursor = 0
-        assert await dsn.push_scene(bb, state, a, a_signature)
+        assert await dsn_device_scenes.push_scene(bb, state, a, a_signature)
         return a_path
 
     a_path = asyncio.run(scenario())
@@ -136,18 +152,18 @@ def test_a_to_b_to_a_reuses_the_resident_a_scene_asset():
 def test_instrument_signature_changes_if_and_only_if_up_band_changes_pixels():
     duplex = link(
         up_band="S",
-        down_streams=(dsn.DownStream("X", 20_000.0, -140.0),),
+        down_streams=(dsn_source.DownStream("X", 20_000.0, -140.0),),
     )
     changed = replace(duplex, up_band="X")
 
-    before, _, _ = dsn.render_instrument_frames(duplex, freshness="fresh")
-    after, _, _ = dsn.render_instrument_frames(changed, freshness="fresh")
+    before, _, _ = dsn_render_instrument.render_instrument_frames(duplex, freshness="fresh")
+    after, _, _ = dsn_render_instrument.render_instrument_frames(changed, freshness="fresh")
     same_pixels = [frame.tobytes() for frame in before] == [
         frame.tobytes() for frame in after]
 
     assert same_pixels, "the fixture must isolate a non-visible uplink-band change"
-    assert dsn.instrument_signature(duplex, [], "fresh") == \
-        dsn.instrument_signature(changed, [], "fresh")
+    assert dsn_render_instrument.instrument_signature(duplex, [], "fresh") == \
+        dsn_render_instrument.instrument_signature(changed, [], "fresh")
 
 
 def test_non_409_failure_after_upload_reuses_then_eventually_reclaims_the_asset():
@@ -170,13 +186,13 @@ def test_non_409_failure_after_upload_reuses_then_eventually_reclaims_the_asset(
 
     async def scenario():
         with pytest.raises(OSError, match="response lost"):
-            await dsn.push_scene(bb, state, state.links[0], signature)
+            await dsn_device_scenes.push_scene(bb, state, state.links[0], signature)
         first_path = bb.uploads[0][1]
 
         # A transport failure is ambiguous: the draw may have landed.  Keep
         # ownership and retry the exact immutable path instead of writing a new
         # generation or deleting a file the firmware may hold open.
-        assert await dsn.push_scene(bb, state, state.links[0], signature)
+        assert await dsn_device_scenes.push_scene(bb, state, state.links[0], signature)
         assert len(bb.uploads) == 1
         assert animation_draws(bb)[-1].elements[0].path == first_path
 
@@ -185,7 +201,7 @@ def test_non_409_failure_after_upload_reuses_then_eventually_reclaims_the_asset(
         # bounded cache or reclaimed; 64 generations catches an unbounded leak
         # without prescribing a particular cache representation.
         for generation in range(64):
-            await dsn.push_scene(
+            await dsn_device_scenes.push_scene(
                 bb, state, state.links[0], ("instrument", "generation", generation))
         return first_path
 
@@ -196,9 +212,9 @@ def test_non_409_failure_after_upload_reuses_then_eventually_reclaims_the_asset(
         "and later reclaimed")
 
 
-def install_run_harness(monkeypatch, bb, links: list[dsn.Link], *, input_task=None):
+def install_run_harness(monkeypatch, bb, links: list[dsn_source.Link], *, input_task=None):
     """Replace every external/background dependency used by ``run``."""
-    state_seen: dict[str, dsn.State] = {}
+    state_seen: dict[str, dsn_model.State] = {}
 
     async def connect():
         return bb
@@ -209,7 +225,7 @@ def install_run_harness(monkeypatch, bb, links: list[dsn.Link], *, input_task=No
     async def park(*args, **kwargs):
         await asyncio.Event().wait()
 
-    async def seed_feed(state: dsn.State):
+    async def seed_feed(state: dsn_model.State):
         state_seen["state"] = state
         state.links = list(links)
         state.feed_seeded = True
@@ -219,19 +235,19 @@ def install_run_harness(monkeypatch, bb, links: list[dsn.Link], *, input_task=No
         state.dirty.set()
         await asyncio.Event().wait()
 
-    monkeypatch.setattr(dsn, "aconnect", connect)
-    monkeypatch.setattr(dsn, "sweep_stale_assets", noop)
-    monkeypatch.setattr(dsn, "fetch_names", noop)
-    monkeypatch.setattr(dsn, "load_speech_cache", noop)
-    monkeypatch.setattr(dsn, "load_ranges", lambda state: None)
-    monkeypatch.setattr(dsn, "load_history", lambda state: None)
-    monkeypatch.setattr(dsn, "poll_feed", seed_feed)
-    monkeypatch.setattr(dsn, "poll_names", park)
-    monkeypatch.setattr(dsn, "poll_ranges", park)
-    monkeypatch.setattr(dsn, "prebake", park)
-    monkeypatch.setattr(dsn, "rotate", park)
+    monkeypatch.setattr(dsn_runtime, "aconnect", connect)
+    monkeypatch.setattr(dsn_device_assets, "sweep_stale_assets", noop)
+    monkeypatch.setattr(dsn_feed, "fetch_names", noop)
+    monkeypatch.setattr(dsn_audio_assets, "load_speech_cache", noop)
+    monkeypatch.setattr(dsn_ranges, "load_ranges", lambda state: None)
+    monkeypatch.setattr(dsn_history, "load_history", lambda state: None)
+    monkeypatch.setattr(dsn_feed, "poll_feed", seed_feed)
+    monkeypatch.setattr(dsn_feed, "poll_names", park)
+    monkeypatch.setattr(dsn_ranges, "poll_ranges", park)
+    monkeypatch.setattr(dsn_audio_narration, "prebake", park)
+    monkeypatch.setattr(dsn_selection, "rotate", park)
     if input_task is not None:
-        monkeypatch.setattr(dsn, "listen_input", input_task)
+        monkeypatch.setattr(dsn_input, "listen_input", input_task)
     return state_seen
 
 
@@ -269,7 +285,7 @@ def test_stop_interrupts_a_blocked_main_loop_upload(monkeypatch):
         bb = BlockedUploadBar()
         install_run_harness(monkeypatch, bb, [selected], input_task=_park_forever)
         handlers = capture_signal_handlers(monkeypatch)
-        running = asyncio.create_task(dsn.run(False))
+        running = asyncio.create_task(dsn_runtime.run(False))
         await asyncio.wait_for(bb.upload_started.wait(), 2.0)
         request_term(handlers)
         try:
@@ -321,7 +337,7 @@ def test_wheel_intent_invalidates_a_previous_scene_409_backoff(monkeypatch):
         bb = RefuseFirstSceneBar()
         install_run_harness(monkeypatch, bb, [a, b])
         handlers = capture_signal_handlers(monkeypatch)
-        running = asyncio.create_task(dsn.run(False))
+        running = asyncio.create_task(dsn_runtime.run(False))
         try:
             await asyncio.wait_for(bb.first_refused.wait(), 2.0)
             await asyncio.wait_for(bb.second_scene.wait(), 2.0)
@@ -365,7 +381,7 @@ def test_elapsed_live_lease_backoff_retries_without_a_scene_redraw(monkeypatch):
         real_time = loop.time
         clock = {"offset": 0.0}
         monkeypatch.setattr(loop, "time", lambda: real_time() + clock["offset"])
-        running = asyncio.create_task(dsn.run(False))
+        running = asyncio.create_task(dsn_runtime.run(False))
         try:
             await asyncio.wait_for(bb.first_lease.wait(), 2.0)
             clock["offset"] = 31.0
@@ -390,7 +406,7 @@ def test_arrival_acknowledgement_survives_a_handoff_during_the_draw():
     state = seeded_state(old)
     state.view = "instrument"
     state.completion_pending = old.key
-    dsn.request_led(state, dsn.LED_ARRIVAL)
+    dsn_model.request_led(state, dsn_limits.LED_ARRIVAL)
 
     class GatedDrawBar(RecordingBar):
         def __init__(self) -> None:
@@ -406,10 +422,10 @@ def test_arrival_acknowledgement_survives_a_handoff_during_the_draw():
 
     async def scenario():
         bb = GatedDrawBar()
-        pushing = asyncio.create_task(dsn.push_scene(
+        pushing = asyncio.create_task(dsn_device_scenes.push_scene(
             bb, state, old, ("instrument", "arrival")))
         await bb.draw_started.wait()
-        dsn.reconcile_links(state, [new], now=200.0)
+        dsn_reconcile.reconcile_links(state, [new], now=200.0)
         bb.release_draw.set()
         await pushing
 
@@ -427,8 +443,8 @@ def test_accepted_narration_stops_when_its_live_link_changes(replacement):
     old = link()
     state = seeded_state(old)
     state.names = {"vgr2": "Voyager 2", "jno": "Juno"}
-    text = dsn.spoken(old, state.names, state.dish_types)
-    name = dsn.speech_name(text)
+    text = dsn_audio_words.spoken(old, state.names, state.dish_types)
+    name = dsn_audio_assets.speech_name(text)
     state.speech[name] = 60.0
 
     class PlayingBar(RecordingBar):
@@ -442,11 +458,11 @@ def test_accepted_narration_stops_when_its_live_link_changes(replacement):
 
     async def scenario():
         bb = PlayingBar()
-        speaking = asyncio.create_task(dsn.speak(bb, state, old))
+        speaking = asyncio.create_task(dsn_audio_narration.speak(bb, state, old))
         state.speech_tasks.add(speaking)
         speaking.add_done_callback(state.speech_tasks.discard)
         await bb.play_started.wait()
-        dsn.reconcile_links(state, [replacement], now=200.0)
+        dsn_reconcile.reconcile_links(state, [replacement], now=200.0)
         done, _ = await asyncio.wait({speaking}, timeout=1.0)
         finished = speaking in done
         if not finished:
@@ -464,15 +480,15 @@ def test_audio_404_evicts_the_stale_cache_entry_for_background_rebake():
     selected = link()
     state = seeded_state(selected)
     state.names = {"vgr2": "Voyager 2"}
-    text = dsn.spoken(selected, state.names, state.dish_types)
-    name = dsn.speech_name(text)
+    text = dsn_audio_words.spoken(selected, state.names, state.dish_types)
+    name = dsn_audio_assets.speech_name(text)
     state.speech[name] = 12.0
 
     class MissingAudioBar(RecordingBar):
         async def audio_play(self, *, application_name: str, path: str):
             raise exceptions.BusyBarAPIError("asset not found", status_code=404)
 
-    asyncio.run(dsn.speak(MissingAudioBar(), state, selected))
+    asyncio.run(dsn_audio_narration.speak(MissingAudioBar(), state, selected))
 
     assert name not in state.speech
     assert state.narration_priority == selected.key

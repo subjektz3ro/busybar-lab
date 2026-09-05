@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parents[1]
 APP_DIR = REPO / "apps"
 CONFIG_KEYS = {
@@ -30,17 +29,48 @@ def _clean_environment() -> dict[str, str]:
             if key not in CONFIG_KEYS}
 
 
-def test_dsn_reexports_the_extracted_configuration_boundary():
-    sys.path.insert(0, str(APP_DIR))
-    import dsn
-    import dsn_config
+def test_runtime_settings_use_the_pure_configuration_owner():
+    from typing import get_type_hints
 
-    assert dsn.DsnConfig is dsn_config.DsnConfig
-    assert dsn.DEFAULT_DSN_CONFIG is dsn_config.DEFAULT_DSN_CONFIG
-    assert dsn.parse_runtime_config is dsn_config.parse_runtime_config
-    assert dsn.resolve_cache_dir is dsn_config.resolve_cache_dir
-    assert dsn.resolve_managed_cache_root is (
-        dsn_config.resolve_managed_cache_root)
+    from apps.dsn_app import config as dsn_config
+    from apps.dsn_app import settings as dsn_settings
+
+    assert dsn_settings._config is dsn_config
+    assert get_type_hints(dsn_settings.configure_runtime)["return"] is (
+        dsn_config.DsnConfig)
+
+
+def test_settings_apply_one_configuration_to_all_runtime_consumers(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from apps.dsn_app import config, ranges, settings
+    from apps.dsn_app.device import display
+
+    # Restore every process setting, including derived leases and cache paths.
+    for name, value in vars(settings).copy().items():
+        if name.isupper():
+            monkeypatch.setattr(settings, name, value)
+    values = {"DSN_POLL_S": "12.5", "DSN_ROTATE_S": "33",
+              "DSN_VOICE": "bf_alice", "DSN_VIEW": "distance",
+              "DSN_NETWORK_STYLE": "rows", "BARKEEP_MANAGED": "1",
+              "BUSYBAR_CACHE_DIR": str(tmp_path), "DSN_CACHE_DIR": "custom"}
+    events = []
+    monkeypatch.setattr(settings, "load_env", lambda: events.append("dotenv"))
+    monkeypatch.setattr(settings, "os", SimpleNamespace(environ=values))
+    result = settings.configure_runtime()
+    assert events == ["dotenv"]
+    assert result == config.parse_runtime_config(values)
+    assert settings.RUNTIME_CONFIG is result
+    assert (settings.POLL_S, settings.ROTATE_S, settings.VOICE,
+            settings.DEFAULT_VIEW, settings.DSN_NETWORK_STYLE) == (
+                12.5, 33.0, "bf_alice", "distance", "rows")
+    assert settings.CACHE_DIR == tmp_path / "custom"
+    assert settings.RANGE_CACHE == settings.CACHE_DIR / "dsn_ranges.json"
+    assert settings.HISTORY_PATH == settings.CACHE_DIR / "dsn_history.jsonl"
+    assert (settings.FEED_DELAYED_S, settings.FEED_STALE_S,
+            settings.LIVE_LEASE_TIMEOUT_S) == (31.25, 62.5, 43)
+    assert ranges._settings is display._settings is settings
+    assert not settings.CACHE_DIR.exists()
 
 
 def test_plain_import_does_not_load_dotenv_or_inherit_owner_configuration():
@@ -51,16 +81,20 @@ from unittest.mock import patch
 
 sys.path.insert(0, {str(APP_DIR)!r})
 with patch("busybar_dev.load_env") as load_env, patch("logging.basicConfig") as basic_config:
-    import dsn
+    from apps.dsn_app import cli as dsn_cli
+    from apps.dsn_app import config as dsn_config
+    from apps.dsn_app import settings as dsn_settings
+    import asyncio
+    import logging
     print(json.dumps({{
         "load_calls": load_env.call_count,
         "logging_calls": basic_config.call_count,
-        "poll": dsn.POLL_S,
-        "rotate": dsn.ROTATE_S,
-        "voice": dsn.VOICE,
-        "view": dsn.DEFAULT_VIEW,
-        "style": dsn.DSN_NETWORK_STYLE,
-        "cache": str(dsn.CACHE_DIR),
+        "poll": dsn_settings.POLL_S,
+        "rotate": dsn_settings.ROTATE_S,
+        "voice": dsn_settings.VOICE,
+        "view": dsn_settings.DEFAULT_VIEW,
+        "style": dsn_settings.DSN_NETWORK_STYLE,
+        "cache": str(dsn_settings.CACHE_DIR),
     }}))
 """
     env = _clean_environment()
@@ -105,7 +139,11 @@ import os
 import sys
 
 sys.path.insert(0, {str(APP_DIR)!r})
-import dsn
+from apps.dsn_app import cli as dsn_cli
+from apps.dsn_app import config as dsn_config
+from apps.dsn_app import settings as dsn_settings
+import asyncio
+import logging
 
 calls = []
 def fake_load_env():
@@ -122,22 +160,22 @@ def fake_load_env():
     }})
     return {{}}
 
-dsn.load_env = fake_load_env
-config = dsn.configure_runtime()
+dsn_settings.load_env = fake_load_env
+config = dsn_settings.configure_runtime()
 print(json.dumps({{
     "calls": calls,
-    "frozen": config == dsn.RUNTIME_CONFIG,
-    "poll": dsn.POLL_S,
-    "rotate": dsn.ROTATE_S,
-    "voice": dsn.VOICE,
-    "view": dsn.DEFAULT_VIEW,
-    "style": dsn.DSN_NETWORK_STYLE,
-    "cache": str(dsn.CACHE_DIR),
-    "range": str(dsn.RANGE_CACHE),
-    "history": str(dsn.HISTORY_PATH),
-    "delayed": dsn.FEED_DELAYED_S,
-    "stale": dsn.FEED_STALE_S,
-    "lease": dsn.LIVE_LEASE_TIMEOUT_S,
+    "frozen": config == dsn_settings.RUNTIME_CONFIG,
+    "poll": dsn_settings.POLL_S,
+    "rotate": dsn_settings.ROTATE_S,
+    "voice": dsn_settings.VOICE,
+    "view": dsn_settings.DEFAULT_VIEW,
+    "style": dsn_settings.DSN_NETWORK_STYLE,
+    "cache": str(dsn_settings.CACHE_DIR),
+    "range": str(dsn_settings.RANGE_CACHE),
+    "history": str(dsn_settings.HISTORY_PATH),
+    "delayed": dsn_settings.FEED_DELAYED_S,
+    "stale": dsn_settings.FEED_STALE_S,
+    "lease": dsn_settings.LIVE_LEASE_TIMEOUT_S,
 }}))
 """
 
@@ -170,9 +208,9 @@ print(json.dumps({{
 
 def test_mapping_parser_preserves_malformed_value_fallbacks(tmp_path):
     sys.path.insert(0, str(APP_DIR))
-    import dsn
+    from apps.dsn_app import config as dsn_config
 
-    config = dsn.parse_runtime_config({
+    config = dsn_config.parse_runtime_config({
         "DSN_POLL_S": "not-a-number",
         "DSN_ROTATE_S": "nan",
         "DSN_VIEW": "not-a-view",
@@ -199,7 +237,12 @@ def test_mapping_parser_preserves_malformed_value_fallbacks(tmp_path):
 
 def test_cli_applies_runtime_configuration_before_starting(monkeypatch):
     sys.path.insert(0, str(APP_DIR))
-    import dsn
+    import asyncio
+    import logging
+
+    from apps.dsn_app import cli as dsn_cli
+    from apps.dsn_app import config as dsn_config
+    from apps.dsn_app import settings as dsn_settings
 
     events: list[str] = []
 
@@ -208,17 +251,17 @@ def test_cli_applies_runtime_configuration_before_starting(monkeypatch):
 
     def configure():
         events.append("configure")
-        return dsn.DEFAULT_DSN_CONFIG
+        return dsn_config.DEFAULT_DSN_CONFIG
 
     def run_coroutine(coroutine):
         events.append("run")
         coroutine.close()
 
-    monkeypatch.setattr(dsn, "configure_runtime", configure)
-    monkeypatch.setattr(dsn.logging, "basicConfig", configure_logging)
-    monkeypatch.setattr(dsn.asyncio, "run", run_coroutine)
+    monkeypatch.setattr(dsn_settings, "configure_runtime", configure)
+    monkeypatch.setattr(logging, "basicConfig", configure_logging)
+    monkeypatch.setattr(asyncio, "run", run_coroutine)
     monkeypatch.setattr(sys, "argv", ["dsn.py", "--once"])
 
-    dsn.main()
+    dsn_cli.main()
 
     assert events == ["logging", "configure", "run"]

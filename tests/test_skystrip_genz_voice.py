@@ -20,7 +20,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps"))
 
-import skystrip  # noqa: E402
+from apps.skystrip_app import settings as sky_settings
+from apps.skystrip_app import weather as sky_weather
+from apps.skystrip_app.audio import report_plain as sky_audio_report_plain
 from busybar_dev.tts import speakable  # noqa: E402
 
 
@@ -37,21 +39,21 @@ FORECAST = [{"name": "This Afternoon", "isDaytime": True, "temperature": 81,
 
 @pytest.fixture(autouse=True)
 def fahrenheit(monkeypatch):
-    monkeypatch.setattr(skystrip, "UNITS", "f")
+    monkeypatch.setattr(sky_settings, "UNITS", "f")
 
 
 def _report(style, monkeypatch, wx=None, when=None, forecast=None,
             hourly=None):
-    monkeypatch.setattr(skystrip, "STYLE", style)
-    base = when or datetime(2026, 6, 15, 14, 30, tzinfo=skystrip.TZ)
-    return skystrip._compose_report(
-        wx or skystrip.WeatherState(temp_c=25.0), forecast, base, hourly)
+    monkeypatch.setattr(sky_settings, "STYLE", style)
+    base = when or datetime(2026, 6, 15, 14, 30, tzinfo=sky_settings.TZ)
+    return sky_audio_report_plain._compose_report(
+        wx or sky_weather.WeatherState(temp_c=25.0), forecast, base, hourly)
 
 
 def test_the_genz_style_does_not_just_fall_back_to_plain(monkeypatch):
     """An unknown SKYSTRIP_STYLE silently reads as plain, so a style that
     was never implemented would pass every other test in this file."""
-    base = datetime(2026, 6, 15, 14, 30, tzinfo=skystrip.TZ)
+    base = datetime(2026, 6, 15, 14, 30, tzinfo=sky_settings.TZ)
     plain = _report("plain", monkeypatch, hourly=_hourly(base))
     genz = _report("genz", monkeypatch, hourly=_hourly(base))
     assert genz != plain, "genz produced the plain report verbatim"
@@ -69,7 +71,7 @@ GENZ_MARKERS = (
 def test_the_genz_report_actually_sounds_like_the_style(monkeypatch):
     text = _report("genz", monkeypatch,
                    hourly=_hourly(datetime(2026, 6, 15, 14, 30,
-                                           tzinfo=skystrip.TZ)))
+                                           tzinfo=sky_settings.TZ)))
     hits = [m for m in GENZ_MARKERS if m in text.lower()]
     assert len(hits) >= 3, f"barely in register ({hits}): {text}"
 
@@ -82,7 +84,7 @@ BANNED_INITIALISMS = ("ngl", "tbh", "fr fr", " fr ", " rn ", "istg", "iykyk",
 def test_no_initialism_the_voice_cannot_pronounce(hour, monkeypatch):
     """Kokoro reads these as letter mush and `speakable` does not expand
     them, so the stereotype has to be carried by whole words."""
-    base = datetime(2026, 6, 15, hour, 30, tzinfo=skystrip.TZ)
+    base = datetime(2026, 6, 15, hour, 30, tzinfo=sky_settings.TZ)
     text = _report("genz", monkeypatch, when=base, forecast=FORECAST,
                    hourly=_hourly(base)).lower()
     for bad in BANNED_INITIALISMS:
@@ -91,7 +93,7 @@ def test_no_initialism_the_voice_cannot_pronounce(hour, monkeypatch):
 
 def test_a_severe_alert_is_still_named_and_still_serious(monkeypatch):
     """Slang must not bury something a person has to act on."""
-    wx = skystrip.WeatherState(severe=True, severe_event="Tornado Warning")
+    wx = sky_weather.WeatherState(severe=True, severe_event="Tornado Warning")
     text = _report("genz", monkeypatch, wx=wx)
     assert "Tornado Warning" in text, text
     # The sentence that carries the warning, not merely the first one —
@@ -117,8 +119,8 @@ def test_the_numbers_match_what_plain_would_have_said(
     with_hourly, facts, monkeypatch,
 ):
     """A voice changes the wording, never the facts."""
-    base = datetime(2026, 6, 15, 14, 30, tzinfo=skystrip.TZ)
-    wx = skystrip.WeatherState(temp_c=25.0, wind_kmh=40.0, wind_dir=270.0)
+    base = datetime(2026, 6, 15, 14, 30, tzinfo=sky_settings.TZ)
+    wx = sky_weather.WeatherState(temp_c=25.0, wind_kmh=40.0, wind_dir=270.0)
     kw = dict(wx=wx, when=base, forecast=FORECAST,
               hourly=_hourly(base) if with_hourly else None)
     plain = _report("plain", monkeypatch, **kw)
@@ -129,7 +131,7 @@ def test_the_numbers_match_what_plain_would_have_said(
 
 
 def test_no_decimal_number_reaches_the_genz_report(monkeypatch):
-    base = datetime(2026, 6, 15, 14, 30, tzinfo=skystrip.TZ)
+    base = datetime(2026, 6, 15, 14, 30, tzinfo=sky_settings.TZ)
     text = _report("genz", monkeypatch, forecast=FORECAST,
                    hourly=_hourly(base, peak_prob=56.5))
     assert not re.search(r"\d+\.\d", text), text
@@ -137,7 +139,7 @@ def test_no_decimal_number_reaches_the_genz_report(monkeypatch):
 
 @pytest.mark.parametrize("hour", [3, 9, 14, 19, 23])
 def test_the_genz_report_survives_voice_normalization(hour, monkeypatch):
-    base = datetime(2026, 6, 15, hour, 30, tzinfo=skystrip.TZ)
+    base = datetime(2026, 6, 15, hour, 30, tzinfo=sky_settings.TZ)
     text = _report("genz", monkeypatch, when=base, forecast=FORECAST,
                    hourly=_hourly(base))
     spoken = speakable(text)
@@ -154,7 +156,7 @@ def test_the_genz_report_survives_voice_normalization(hour, monkeypatch):
 ])
 def test_every_condition_has_something_to_say(state, monkeypatch):
     """No weather state may fall through to an empty or bare report."""
-    text = _report("genz", monkeypatch, wx=skystrip.WeatherState(**state))
+    text = _report("genz", monkeypatch, wx=sky_weather.WeatherState(**state))
     assert len(text) > 40, text
     assert text.strip().endswith("."), text
 
@@ -167,14 +169,14 @@ def test_the_same_hour_always_says_it_the_same_way(monkeypatch):
     would bake and upload a fresh sound file every minute. Two renders of
     the same hour must be byte-identical.
     """
-    base = datetime(2026, 6, 15, 14, 30, tzinfo=skystrip.TZ)
+    base = datetime(2026, 6, 15, 14, 30, tzinfo=sky_settings.TZ)
     kw = dict(when=base, forecast=FORECAST, hourly=_hourly(base))
     first = _report("genz", monkeypatch, **kw)
     second = _report("genz", monkeypatch, **kw)
     assert first == second, "the wording rerolled between two renders"
 
     # Same hour, a later minute: the phrasing must not move either.
-    later = datetime(2026, 6, 15, 14, 58, tzinfo=skystrip.TZ)
+    later = datetime(2026, 6, 15, 14, 58, tzinfo=sky_settings.TZ)
     same_hour = _report("genz", monkeypatch, when=later, forecast=FORECAST,
                         hourly=_hourly(base))
     assert same_hour.split(".")[0] == first.split(".")[0], (
@@ -186,7 +188,7 @@ def test_the_wording_actually_changes_through_the_day(monkeypatch):
     greetings, signoffs = set(), set()
     for day in (14, 15, 16):
         for hour in range(24):
-            base = datetime(2026, 6, day, hour, 15, tzinfo=skystrip.TZ)
+            base = datetime(2026, 6, day, hour, 15, tzinfo=sky_settings.TZ)
             text = _report("genz", monkeypatch, when=base,
                            hourly=_hourly(base))
             greetings.add(text.split(".")[0])
@@ -204,7 +206,7 @@ def test_the_slang_is_current_rather_than_remembered(monkeypatch):
              "sheesh", "bruh moment", "slaps")
     for day in (14, 15):
         for hour in range(24):
-            base = datetime(2026, 6, day, hour, 15, tzinfo=skystrip.TZ)
+            base = datetime(2026, 6, day, hour, 15, tzinfo=sky_settings.TZ)
             text = _report("genz", monkeypatch, when=base, forecast=FORECAST,
                            hourly=_hourly(base)).lower()
             for word in stale:
@@ -217,7 +219,7 @@ def test_the_slang_is_current_rather_than_remembered(monkeypatch):
 def _at_temp_f(f_value, monkeypatch, **kw):
     """A report whose CURRENT temperature reads as `f_value` Fahrenheit."""
     return _report("genz", monkeypatch,
-                   wx=skystrip.WeatherState(temp_c=(f_value - 32) * 5 / 9,
+                   wx=sky_weather.WeatherState(temp_c=(f_value - 32) * 5 / 9,
                                             cloud_frac=0.1),
                    **kw)
 
@@ -248,7 +250,7 @@ def test_an_ordinary_temperature_gets_no_bit(f_value, monkeypatch):
 
 def test_a_warning_gets_no_jokes_about_the_number(monkeypatch):
     """The bit is off under a warning, and that includes this."""
-    wx = skystrip.WeatherState(severe=True, severe_event="Tornado Warning",
+    wx = sky_weather.WeatherState(severe=True, severe_event="Tornado Warning",
                                temp_c=(69 - 32) * 5 / 9)
     text = _report("genz", monkeypatch, wx=wx)
     assert "69 degrees" in text, text
@@ -257,7 +259,7 @@ def test_a_warning_gets_no_jokes_about_the_number(monkeypatch):
 
 def test_at_most_one_bit_per_report(monkeypatch):
     """Two gags in one broadcast is a comedy routine, not a forecast."""
-    base = datetime(2026, 6, 15, 14, 30, tzinfo=skystrip.TZ)
+    base = datetime(2026, 6, 15, 14, 30, tzinfo=sky_settings.TZ)
     forecast = [{"name": "This Afternoon", "isDaytime": True,
                  "temperature": 69, "temperatureUnit": "F",
                  "shortForecast": "Sunny",
