@@ -7,6 +7,8 @@ build your own, then use the guides below for the part you are changing.
 
 | Guide | Scope |
 |---|---|
+| [Quickstart](quickstart.md) | First offline check, private configuration, device connection, Barkeep and troubleshooting |
+| [Example gallery](gallery.md) | Included DSN views and Skystrip scene animations |
 | [Architecture](architecture.md) | Laptop and always-on-host topology, deployment flow, and module map |
 | [Maintainer map](maintaining.md) | Package ownership, enforced dependency boundaries and focused tests |
 | [Dependencies](dependencies.md) | Runtime packages, speech engines, host prerequisites, and disk budget |

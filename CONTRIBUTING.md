@@ -5,6 +5,9 @@ tools, or update documentation.
 
 ## Getting set up
 
+New to the project? Start with the [quickstart](docs/quickstart.md) for tool
+installation and an offline demo. You can contribute without connecting a bar.
+
 ```bash
 cd busybar-lab                    # after cloning the repository
 uv sync --locked --dev
