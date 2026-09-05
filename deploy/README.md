@@ -1,8 +1,17 @@
 # Running this on a server
 
 For a first installation, follow the [quickstart](../docs/quickstart.md),
-which walks through private configuration, a device check and opening the UI.
+which walks through connecting your bar, private configuration and starting Skystrip.
 This page is the detailed reference for service setup, updates and remote access.
+
+The installer validates saved settings, probes the bar without drawing, and
+checks Barkeep's web page after service startup. To repeat those checks without
+reinstalling or changing the device, run `uv run python -m deploy.check_setup`
+from the checkout. Each network probe has a ten-second deadline; diagnostics
+do not print private settings or raw request errors. An unavailable bar still
+allows host installation but is reported as unfinished connection setup.
+Invalid settings or a service that fails its web check return failure.
+See [setup help](../docs/troubleshooting.md) for the checks' scope and next steps.
 
 The supported service target is 64-bit glibc 2.28+ Linux on `x86_64` or
 `aarch64`, using CPython 3.11–3.13. A Pi 4/5

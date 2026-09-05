@@ -124,6 +124,32 @@ def test_every_host_tried_is_named_in_the_error(bars):
     assert busybar_dev.MDNS_HOST in message
 
 
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_connection_failure_retains_the_device_error_for_diagnosis(
+    bars, monkeypatch, asynchronous,
+):
+    from busylib.exceptions import BusyBarAPIError
+
+    failure = BusyBarAPIError("access denied", status_code=403)
+
+    class Refused(FakeBar):
+        def version(self):
+            raise failure
+
+    class AsyncRefused(Refused):
+        async def version(self):
+            raise failure
+
+    monkeypatch.setattr(busybar_dev, "BusyBar", Refused)
+    monkeypatch.setattr(busybar_dev, "AsyncBusyBar", AsyncRefused)
+    with pytest.raises(ConnectionError) as caught:
+        if asynchronous:
+            await busybar_dev.aconnect(host="device.example")
+        else:
+            busybar_dev.connect(host="device.example")
+    assert caught.value.__cause__ is failure
+
+
 def test_the_usb_controller_rides_the_same_host(bars):
     """busylib's lazy .usb controller defaults to the USB address; the CLI has
     to follow HTTP or a Wi-Fi bar gets telnet on the wrong address."""

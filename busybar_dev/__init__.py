@@ -47,6 +47,7 @@ def connect(host: str | None = None, token: str | None = None) -> BusyBar:
     token = token or os.environ.get("BUSYBAR_TOKEN")
     candidates = [host] if host else [USB_HOST, MDNS_HOST]
     errors: list[str] = []
+    last_error: Exception | None = None
     for candidate in candidates:
         bb = BusyBar(candidate, token=token)
         try:
@@ -56,12 +57,13 @@ def connect(host: str | None = None, token: str | None = None) -> BusyBar:
             bb._usb = UsbController(candidate)
             return bb
         except Exception as exc:  # noqa: BLE001 - report all hosts at the end
+            last_error = exc
             errors.append(f"{candidate}: {exc}")
             bb.close()
     raise ConnectionError(
         "Could not reach the BUSY Bar. Is it plugged in over USB?\n"
         + "\n".join(errors)
-    )
+    ) from last_error
 
 
 async def aconnect(host: str | None = None, token: str | None = None) -> AsyncBusyBar:
@@ -71,6 +73,7 @@ async def aconnect(host: str | None = None, token: str | None = None) -> AsyncBu
     token = token or os.environ.get("BUSYBAR_TOKEN")
     candidates = [host] if host else [USB_HOST, MDNS_HOST]
     errors: list[str] = []
+    last_error: Exception | None = None
     for candidate in candidates:
         bb = AsyncBusyBar(candidate, token=token)
         try:
@@ -79,9 +82,10 @@ async def aconnect(host: str | None = None, token: str | None = None) -> AsyncBu
             bb._usb = AsyncUsbController(candidate)
             return bb
         except Exception as exc:  # noqa: BLE001 - report all hosts at the end
+            last_error = exc
             errors.append(f"{candidate}: {exc}")
             await bb.aclose()
     raise ConnectionError(
         "Could not reach the BUSY Bar. Is it plugged in over USB?\n"
         + "\n".join(errors)
-    )
+    ) from last_error

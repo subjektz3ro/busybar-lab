@@ -381,7 +381,9 @@ def test_installer_uses_home_local_uv_for_every_command_when_path_has_none(
     calls = log.read_text().splitlines()
     assert calls[0] == "sync --locked"
     assert "cache dir" in calls
-    assert calls.count("run --no-sync python -") == 2
+    assert calls.count("run --no-sync python -") == 1
+    assert "run --no-sync python -m deploy.check_setup --config-only" in calls
+    assert "run --no-sync python -m deploy.check_setup --device-only" in calls
 
     script = INSTALLER.read_text()
     assert '"$UV_BIN" run --no-sync python - "$1"' in script

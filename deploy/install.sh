@@ -452,6 +452,13 @@ fi
 # Keep existing installs private too, not only files created by this run.
 chmod 600 .env
 
+say "Checking saved settings..."
+if ! "$UV_BIN" run --no-sync python -m deploy.check_setup --config-only; then
+  say "Fix the reported settings, then rerun ./deploy/install.sh."
+  echo "  No service was installed or restarted by this run."
+  exit 1
+fi
+
 # 4. Kokoro's shared model and voice bank. It is required on the supported
 # Linux production path; any download, digest, import, or synthesis failure is
 # fatal and happens before a service is installed or started.
@@ -523,19 +530,13 @@ print(f"  {summary}")
 PY
 fi
 
-# 5. Find the bar. connect() reads .env itself; do not source a data file.
+# 5. Find the bar. A read-only, bounded probe; never draw or change brightness.
 say "Looking for your Busy Bar..."
-if "$UV_BIN" run --no-sync python - <<'PY'
-from busybar_dev import connect
-try:
-    with connect() as bb:
-        bb.version()
-    print("  found it.")
-except Exception as e:
-    raise SystemExit(f"  not reachable: {e}")
-PY
-then :; else
-  say "Bar not reachable yet. Plug it in over USB or fix BUSYBAR_HOST in .env."
+BAR_READY=0
+if "$UV_BIN" run --no-sync python -m deploy.check_setup --device-only; then
+  BAR_READY=1
+else
+  say "Bar not reachable yet. Follow the diagnostic above."
   echo "  Finishing host setup anyway; supervised apps will retry when it appears."
 fi
 
@@ -571,19 +572,36 @@ if [ "$INSTALL_SVC" -eq 1 ]; then
   if [ "$SERVICE_WAS_ACTIVE" -eq 1 ]; then
     run_root systemctl stop "$SERVICE_UNIT"
   fi
-  run_root systemctl start "$SERVICE_UNIT"
-  systemctl is-active --quiet "$SERVICE_UNIT"
+  if ! run_root systemctl start "$SERVICE_UNIT" \
+     || ! systemctl is-active --quiet "$SERVICE_UNIT"; then
+    say "Barkeep could not start."
+    echo "  Check: journalctl -u $SERVICE_UNIT -n 50 --no-pager"
+    echo "  See docs/troubleshooting.md before retrying."
+    exit 1
+  fi
   cleanup_service_tmp
   trap - EXIT HUP INT TERM
-  say "Running. Watch it: journalctl -u $SERVICE_UNIT -f"
-  say "Open the control plane"
-  echo "  On this host: http://127.0.0.1:8080"
-  echo "  From another computer, keep this SSH tunnel open:"
-  echo "    ssh -N -L 8080:127.0.0.1:8080 $SERVICE_USER@server.example"
-  echo "  Then open http://127.0.0.1:8080 locally and select Skystrip or DSN."
+  say "Checking Barkeep's web page..."
+  if ! "$UV_BIN" run --no-sync python -m deploy.check_setup --web-only; then
+    say "Barkeep did not pass its web check."
+    echo "  Check: journalctl -u $SERVICE_UNIT -n 50 --no-pager"
+    echo "  The service may still be running; do not start a second copy."
+    exit 1
+  fi
+  if [ "$BAR_READY" -eq 1 ]; then
+    say "Setup checks passed for the bar and Barkeep web page."
+    echo "  Review any configuration warnings above, then open Barkeep and select an app."
+    echo "  These checks did not draw or test the physical display."
+  fi
 else
-  say "Done."
+  say "Host setup complete; Barkeep has not been started."
   printf '  Run the control plane with: "%s" run -m barkeep\n' "$UV_BIN"
+  echo "  Leave it running, then open http://127.0.0.1:8080 (default settings)."
+  echo "  For custom port/HTTPS or another computer, see docs/quickstart.md."
 fi
 
-say "The sky is yours."
+if [ "$BAR_READY" -ne 1 ]; then
+  say "Bar connection still needs attention; the apps are not ready to display yet."
+fi
+echo "  Recheck from this folder: uv run python -m deploy.check_setup"
+echo "  Help: docs/troubleshooting.md"
