@@ -189,13 +189,19 @@ def test_device_transport_failure_has_the_right_connection_advice(
 def web_with(monkeypatch, handler):
     real_client = httpx.Client
     captured = {}
+    elapsed = [0.0]
 
     def factory(**kwargs):
         captured.update(kwargs)
         return real_client(transport=httpx.MockTransport(handler), **kwargs)
 
     monkeypatch.setattr(diagnostic.httpx, "Client", factory)
-    monkeypatch.setattr(diagnostic.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        diagnostic.time,
+        "sleep",
+        lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds),
+    )
+    monkeypatch.setattr(diagnostic.time, "monotonic", lambda: elapsed[0])
     return captured
 
 
@@ -248,9 +254,25 @@ def test_web_probe_retries_startup_then_reports_an_unreachable_ui(
 
     web_with(monkeypatch, refuse)
     result = diagnostic.web_probe(config_root, {})
-    assert len(calls) == 3
+    assert 3 < len(calls) <= 32
     assert result.level == "FAIL"
     assert "sensitive" not in result.message
+
+
+def test_web_probe_allows_a_slow_service_to_finish_starting(config_root, monkeypatch):
+    calls = []
+
+    def serve(request):
+        calls.append(request)
+        if len(calls) < 9:
+            raise httpx.ConnectError("still starting")
+        return httpx.Response(
+            200, content=(ROOT / "barkeep/static/index.html").read_bytes()
+        )
+
+    web_with(monkeypatch, serve)
+    assert diagnostic.web_probe(config_root, {}).level == "PASS"
+    assert len(calls) == 9
 
 
 def test_probe_worker_timeout_is_bounded_and_does_not_echo_output(

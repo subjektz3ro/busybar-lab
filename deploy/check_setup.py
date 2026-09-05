@@ -26,6 +26,7 @@ from .setup_config import Finding, check_config, settings, web_target
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE_TIMEOUT_S = 10.0
+WEB_READY_TIMEOUT_S = 7.0  # Leave time for one final 2s request and worker startup.
 
 
 def device_probe(values: Mapping[str, str]) -> Finding:
@@ -71,7 +72,8 @@ def web_probe(root: Path, values: Mapping[str, str]) -> Finding:
         with httpx.Client(
             timeout=2.0, trust_env=False, verify=context, follow_redirects=False
         ) as client:
-            for attempt in range(3):
+            deadline = time.monotonic() + WEB_READY_TIMEOUT_S
+            while True:
                 try:
                     # Root UI is public even with BARKEEP_TOKEN. Never transmit
                     # a credential or follow a redirect to diagnose readiness.
@@ -99,15 +101,15 @@ def web_probe(root: Path, values: Mapping[str, str]) -> Finding:
                         "Barkeep's web page responds on this computer. Remote-browser access still needs a tunnel or deliberate LAN setup.",
                     )
                 except httpx.TransportError:
-                    if attempt == 2:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
                         raise
-                    time.sleep(0.25)
+                    time.sleep(min(0.25, remaining))
     except httpx.TransportError:
         return Finding(
             "FAIL",
             "Barkeep's web page is not reachable. Check that Barkeep is running, its bind/port, and HTTPS certificates if enabled. See docs/troubleshooting.md.",
         )
-    return Finding("FAIL", "Barkeep's web check did not complete.")
 
 
 def run_probe(kind: str, root: Path, values: Mapping[str, str]) -> Finding:
