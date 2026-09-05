@@ -1,5 +1,9 @@
 # Running this on a server
 
+For a first installation, follow the [quickstart](../docs/quickstart.md),
+which walks through private configuration, a device check and opening the UI.
+This page is the detailed reference for service setup, updates and remote access.
+
 The supported service target is 64-bit glibc 2.28+ Linux on `x86_64` or
 `aarch64`, using CPython 3.11–3.13. A Pi 4/5
 with 64-bit Raspberry Pi OS and at least 2 GiB RAM, NUC, 64-bit laptop, or VM
