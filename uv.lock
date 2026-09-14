@@ -155,7 +155,7 @@ dev = [
 
 [[package]]
 name = "busylib"
-version = "2.0.2"
+version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx2" },
@@ -167,9 +167,9 @@ dependencies = [
     { name = "websockets" },
     { name = "zeroconf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/2b/766b162e56a1868ad42ba8029d61fd1e29f0d3c21929225dcc50a72658b8/busylib-2.0.2.tar.gz", hash = "sha256:a024099758224e04aac4de313771e3de62c2d7a7131157a8b557270cc93b6e0c", size = 395250, upload-time = "2026-08-27T17:40:35.076Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/a0/17c4b4b5a8b2fc306dad1f32786ece7a918945201c7387d0fdf9c58e6f67/busylib-2.3.0.tar.gz", hash = "sha256:0f0002d76b77fbe006feea5919feb52ecfbe81ab17cad5fb4e12daa9517af334", size = 413861, upload-time = "2026-09-09T21:40:41.443Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/58/e8fbf66b7cd15109c1fc65690ba6df1ae92b219d41c3b6335821b0593f2c/busylib-2.0.2-py3-none-any.whl", hash = "sha256:eeb826e5c026aabed39c1ef8ef883b128d5ecd79477de58b39ebe058ad2871a2", size = 90955, upload-time = "2026-08-27T17:40:33.772Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/aa/5cf15c5b6e631995e3f958619710a729536796fcc9c9f3ce6b8b40e8e557/busylib-2.3.0-py3-none-any.whl", hash = "sha256:1bc9d14aa3743de9485bba0a742ab936168006f4e5a01754cb5ade763978e849", size = 105010, upload-time = "2026-09-09T21:40:39.989Z" },
 ]
 
 [[package]]
