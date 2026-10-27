@@ -273,7 +273,7 @@ def test_prepare_event_assets_is_deterministic_idempotent_and_bounded():
         len(name.encode("ascii")) <= dsn_limits.DEVICE_ASSET_FILENAME_MAX
         for name in names
     ), "firmware rejects longer names with HTTP 400"
-    assert all(blob.startswith(b"bicycle0") for _app, _name, blob in uploaded_once)
+    assert all(blob.startswith(b"bicycle1") for _app, _name, blob in uploaded_once)
     assert first.uploads == uploaded_once, "a second prepare re-uploaded immutable assets"
     assert "dsnevt_legacy.anim" not in first.files
     assert first.files["v2_afnova_1234567890.snd"] == unrelated

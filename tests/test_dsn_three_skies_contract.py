@@ -308,14 +308,22 @@ def test_source_freshness_never_turns_the_local_skies_into_fake_motion():
                for frame in stale)
 
 
-def test_static_triptych_uses_native_duration_folding_not_forty_full_frames():
+def test_static_triptych_costs_one_keyframe_plus_five_byte_holds_not_forty_full_frames():
     frames, fps, hold = render([link()])
-    folded = dsn_device_assets.encode_native_frames(frames, fps, hold)
-    forced = anim.encode_anim(
-        frames, fps=fps, durations=[hold] * len(frames))
+    blob = dsn_device_assets.encode_native_frames(frames, fps, hold)
+    decoded = anim.decode_anim(blob)
+    keyframe_only = anim.encode_anim(frames[:1], fps=fps)
 
     assert len(frames) == dsn_limits.INSTRUMENT_FRAMES
-    assert len(folded) * 10 < len(forced)
+    assert decoded.display_frame_count == len(frames) * hold
+    assert decoded.frames[0].mask_encoding == "full"
+    # bicycle1 has no per-frame duration: every held tick is its own frame,
+    # but an unchanged frame is a 5-byte header with no mask and no pixels.
+    assert all(
+        (frame.mask_encoding, frame.pixel_bytes) == ("none", 0)
+        for frame in decoded.frames[1:]
+    )
+    assert len(blob) == len(keyframe_only) + 5 * (decoded.display_frame_count - 1)
 
 
 def test_focus_lens_marquees_every_pixel_of_the_complete_friendly_name():

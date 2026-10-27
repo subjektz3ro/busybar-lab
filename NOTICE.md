@@ -9,11 +9,14 @@ for the distributed combination with the Apache-2.0 Astral dependency.
 
 `busybar_dev/anim.py` encodes the BUSY Bar's native `.anim` format. It was
 ported from the official
-[`busy-app/busybar-firmware`](https://github.com/busy-app/busybar-firmware/tree/2cfd1f3ad94071056f3f96784183bab62dea423e)
-repository at the revision named in the source header, GPL-2.0-or-later,
+[`busy-app/busybar-firmware`](https://github.com/busy-app/busybar-firmware/tree/8edd2da42ed2facbab73796c456746e7dcbed2e7)
+repository at the revision named in the source header (the 1.3.1 release), GPL-2.0-or-later,
 Copyright 2024-2026 Flipper FZCO — specifically
-`scripts/seq2anim.py`, `scripts/flipper/rle.py` and
-`lib/anim_file/anim_file_format.h`. The source header pins the upstream
+`scripts/seq2anim.py`, `scripts/flipper/rle.py`,
+`lib/anim_file/anim_file_format.h`, and, for the decoder, the reference
+behaviour of `lib/anim_file/components/` (`anim_file_load.c`,
+`anim_file_mask.c`, `anim_file_seq.c`, `anim_file_img.c`) and
+`lib/toolbox/rle_encode`. The source header pins the upstream
 revision reviewed for this port. Keep that attribution intact.
 
 ## Bundled and fetched material

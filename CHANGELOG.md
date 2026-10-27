@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Animations: firmware 1.3.1's `bicycle1` container
+
+- Firmware 1.3.1 (auto-installed on bars with updates enabled) replaced the
+  `.anim` container. The signature is now `bicycle1`, every frame is one
+  display tick, and each frame carries a change mask against its predecessor
+  plus only the pixels under that mask, encoded raw, with the firmware RLE,
+  or as header-less QOI. The loader rejects `bicycle0` outright while the
+  draw request still returns 200, so every raster app drew the firmware's
+  broken-asset placeholder — a magenta boxed X at the element origin —
+  instead of its scene. `busybar_dev/anim.py` now emits `bicycle1`,
+  byte-identical to the vendor's `seq2anim.py` at the 1.3.1 release on the
+  suite's reference frames, and decodes it back for `busybar-viz`.
+  `durations` still repeat a frame for that many ticks; the repeats are
+  five-byte "unchanged" frames. Section starts are keyframes. The decoder
+  names a `bicycle0` file as legacy rather than merely invalid.
+
 ### Dependencies: clear the audit
 
 - Lock Pillow 13.0.0 and certifi 2026.10.23. pip-audit had begun failing

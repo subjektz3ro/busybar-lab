@@ -64,7 +64,10 @@ a scraped mirror of the vendor documentation.
   A POST-order test is insufficient: advance past the newer timeout and prove
   the interrupted card cannot resurface.
 - **Animations:** the device plays `.anim` files natively (`AnimationElement`,
-  `loop=True`) — its own format, magic `bicycle0`, BGR888 + firmware RLE.
+  `loop=True`) — its own container, magic `bicycle1` since firmware 1.3.1:
+  one frame per tick, a change mask per frame, BGR888 pixels raw, firmware
+  RLE or header-less QOI. The 1.3.1 loader rejects `bicycle0` and draws a
+  magenta boxed X placeholder instead, while the draw request still returns 200.
   `busybar_dev/anim.py` encodes it from PIL frames (ported from the firmware's
   GPL-2.0-or-later `scripts/seq2anim.py`). Prefer one `.anim` upload over host-driven
   redraw loops for any motion; the device cycles frames itself.
@@ -97,8 +100,10 @@ a scraped mirror of the vendor documentation.
 - **One wheel detent is ONE encoder count** (verified in skystrip and dsn).
   Never invent a counts-per-detent divisor; grep the other apps for measured
   hardware constants before choosing your own.
-- **Nothing interactive may wait on an asset upload.** An `.anim` is ~80 KB
-  and ~1 s; per-detent rendering makes the wheel feel dead. Draw an instant
+- **Nothing interactive may wait on an asset upload.** An `.anim` upload is
+  a device round trip (the old container cost ~80 KB and ~1 s; `bicycle1`
+  scenes are far smaller, but still a round trip); per-detent rendering
+  makes the wheel feel dead. Draw an instant
   read-out with Text/Rectangle elements and commit the scene on rest.
 - **Speech costs ~1× realtime** on a small ARM host. Pre-bake lines and cache
   them on-device under a hash of *text + voice*; never synthesise on a

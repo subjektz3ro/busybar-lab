@@ -302,7 +302,7 @@ snapshot of at most 32 MiB and records its SHA-256 in the normalized request;
 decode and publication use that snapshot, so replacing the path afterwards
 cannot change the evidence identity. PNG input must be a real PNG, is converted
 to RGB, and must match the selected display. `.anim` decoding uses
-`busybar_dev.anim`, including native section repeat timing, then publishes the
+`busybar_dev.anim`, composing each frame's change mask onto its predecessor, then publishes the
 expanded playback frames. It proves the snapshotted file pixels and timing were
 decoded; it does not emulate firmware element composition or panel optics.
 
