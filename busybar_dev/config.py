@@ -177,6 +177,25 @@ def describe_exception(exc: BaseException) -> str:
     return f"{name}: {detail}" if detail else name
 
 
+class ExpectedDeviceReplyFilter(logging.Filter):
+    """Drop busylib's ERROR echo for replies the apps already treat as success.
+
+    busylib logs every non-2xx reply at ERROR before raising. Stopping audio
+    that has already finished answers 410 "No audio is playing", which the
+    apps catch and count as stopped, so the only trace left in the service
+    log was the library's echo of a non-event. Only the library's own records
+    are touched; an app that says the same words is reporting, not echoing.
+    """
+
+    EXPECTED = ("No audio is playing",)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not record.name.startswith("busylib."):
+            return True
+        message = record.getMessage()
+        return not any(expected in message for expected in self.EXPECTED)
+
+
 class CoordinateRedactingFilter(logging.Filter):
     """Last-resort scrub, so the next code path that formats a URL is covered
     by construction rather than by review."""

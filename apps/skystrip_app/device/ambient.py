@@ -14,6 +14,7 @@ from apps.skystrip_app import settings as _settings
 from apps.skystrip_app import weather as _weather
 from apps.skystrip_app.render import art as _render_art
 from apps.skystrip_app.render import primitives as _render_primitives
+from busybar_dev.config import describe_exception
 
 
 # --- device side ----------------------------------------------------------
@@ -101,11 +102,36 @@ def _ambient_mood(state: _model.SkyState) -> tuple[int, int, int]:
     )
 
 
+async def _transport_type(bb) -> str | None:
+    """The bar's own account of how we reached it, or None when it cannot say."""
+    query = getattr(bb, "transport", None)
+    if query is None:
+        return None
+    try:
+        info = await query()
+    except Exception:  # noqa: BLE001 - older client or firmware; probe instead
+        return None
+    kind = getattr(info, "type", None)
+    return kind if isinstance(kind, str) else None
+
+
+def _stand_down(state: _model.SkyState, reason: str) -> None:
+    state.ambient_strip = False
+    _limits.logger.info(
+        "ambient: the status strip is a USB-only CLI feature; standing down "
+        "for this run (%s)",
+        reason,
+    )
+
+
 async def ambient_lights(bb, state: _model.SkyState) -> None:
     """Steady mood color on the top strip via the firmware CLI (telnet
     over the USB link) — the StaticColor preset HTTP never exposed."""
+    transport = await _transport_type(bb)
+    if transport is not None and transport != "usb":
+        _stand_down(state, f"bar reached over {transport}")
+        return
     last = None
-    warned = False
     while True:
         try:
             r, g, b = _ambient_mood(state)
@@ -113,20 +139,24 @@ async def ambient_lights(bb, state: _model.SkyState) -> None:
             if q != last:
                 await bb.usb.send_command("status_lights", str(r), str(g), str(b))
                 last = q
-                warned = False
                 _limits.logger.info("ambient: (%d,%d,%d)", r, g, b)
-            await asyncio.sleep(_limits.AMBIENT_PERIOD_S)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - mood is best-effort
-            if not warned:
-                # The firmware CLI only answers on the USB interface —
-                # over Wi-Fi the strip stays dark. Alarm blinks are HTTP
-                # and unaffected.
-                _limits.logger.info(
-                    "ambient: CLI unreachable (USB-only feature); standing down: %s",
-                    exc,
-                )
-                warned = True
-            last = None
-            await asyncio.sleep(300)
+            # The firmware answers the CLI only on the USB interface; over
+            # Wi-Fi it resets the socket, and busylib logs every attempt at
+            # WARNING. Retrying every five minutes put 300 of those lines a
+            # day into the service log for a strip that cannot light.
+            _stand_down(state, describe_exception(exc))
+            return
+        await asyncio.sleep(_limits.AMBIENT_PERIOD_S)
+
+
+async def reset_strip(bb, state: _model.SkyState) -> None:
+    """Hand the strip back dark at shutdown, only if it was ever ours."""
+    if not state.ambient_strip:
+        return
+    try:
+        await bb.usb.send_command("status_lights", "0", "0", "0")
+    except Exception:  # noqa: BLE001 - cleanup never masks the exit
+        pass

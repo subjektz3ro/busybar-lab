@@ -353,10 +353,7 @@ async def run(once: bool) -> None:
             generation = _alerts._claim_audio_stop(state)
             await _audio_output.stop_audio(bb, state, generation)
         # Best-effort cleanup: never let it mask the exception that got us here
-        try:
-            await bb.usb.send_command("status_lights", "0", "0", "0")
-        except Exception:  # noqa: BLE001
-            pass
+        await _device_ambient.reset_strip(bb, state)
         try:
             if not once:
                 await bb.display_clear(application_name=_limits.APP_NAME)

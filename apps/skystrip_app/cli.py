@@ -47,7 +47,7 @@ from apps.skystrip_app.render import primitives as _render_primitives
 from apps.skystrip_app.render import scene as _render_scene
 from apps.skystrip_app.render import status as _render_status
 from busybar_dev import aconnect
-from busybar_dev.config import CoordinateRedactingFilter
+from busybar_dev.config import CoordinateRedactingFilter, ExpectedDeviceReplyFilter
 from busybar_dev.device import is_refusal as _is_refusal
 
 
@@ -240,6 +240,16 @@ def _provider_notice(args: argparse.Namespace) -> str:
     return f"Skystrip data: {OPEN_METEO_NOTICE} {RAINVIEWER_NOTICE}"
 
 
+def configure_logging() -> None:
+    """One service log in our own words, with the library kept to real news."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(CoordinateRedactingFilter())
+    logging.getLogger("busylib").setLevel(logging.WARNING)
+    logging.getLogger("busylib.client.base").addFilter(ExpectedDeviceReplyFilter())
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -248,11 +258,7 @@ def main() -> None:
     # with anything. The redaction filter is a backstop behind
     # describe_exception, so the next code path that formats a URL is covered
     # by construction rather than by review.
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
-    for handler in logging.getLogger().handlers:
-        handler.addFilter(CoordinateRedactingFilter())
-    logging.getLogger("busylib").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    configure_logging()
     try:
         _settings.configure_runtime()
     except ValueError as exc:

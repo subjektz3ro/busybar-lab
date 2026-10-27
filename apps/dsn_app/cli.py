@@ -54,6 +54,7 @@ from apps.dsn_app.render import network_dishes as _render_network_dishes
 from apps.dsn_app.render import network_rows as _render_network_rows
 from apps.dsn_app.render import network_skies as _render_network_skies
 from apps.dsn_app.render import timing as _render_timing
+from busybar_dev.config import ExpectedDeviceReplyFilter
 
 
 def describe_links(
@@ -136,6 +137,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(name)s %(message)s",
     )
+    logging.getLogger("busylib.client.base").addFilter(ExpectedDeviceReplyFilter())
     _settings.configure_runtime()
 
     if args.dry_run:

@@ -68,6 +68,9 @@ class SkyState:
     thunder_at: float | None = None  # source time of thunder evidence
     snow_depth_at: float | None = None  # source time of modeled ground snow
     rain_src: str = ""  # which source last decided rain (for logs)
+    # The top-strip mood rides the firmware CLI, which answers only over USB.
+    # False once the bar (or a refused command) says the strip is not ours.
+    ambient_strip: bool = True
     flash_queue: asyncio.Queue = field(
         default_factory=lambda: asyncio.Queue(maxsize=_limits.FLASH_QUEUE_MAX)
     )
