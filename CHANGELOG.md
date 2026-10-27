@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Dependencies: clear the audit
+
+- Lock Pillow 13.0.0 and certifi 2026.10.23. pip-audit had begun failing
+  CI on 39 advisories against Pillow 12.3.0 and certifi 2026.7.22, none of
+  them reachable through code changes here. Pillow 13 is a major release,
+  so this bump carries the full suite and `busybar-viz baseline check`:
+  all 8 registered scenarios render pixel-identical to their pinned
+  digests.
+
 ### Bar-owner onboarding and setup diagnostics
 
 - Put the real-bar Barkeep/Skystrip path first in the README and quickstart,
