@@ -27,6 +27,13 @@
   all 8 registered scenarios render pixel-identical to their pinned
   digests.
 
+### Dependencies: busylib 2.5.0
+
+- Lock busylib 2.5.0 (was 2.0.2), which models firmware API 27.7. Its
+  `BusySnapshot` variants now require the bar's `busy_bar_settings`; the
+  apps only read the snapshot type, so the test fakes gained the field and
+  nothing else changed.
+
 ### Bar-owner onboarding and setup diagnostics
 
 - Put the real-bar Barkeep/Skystrip path first in the README and quickstart,
