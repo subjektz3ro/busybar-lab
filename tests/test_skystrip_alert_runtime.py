@@ -37,6 +37,16 @@ from busybar_dev.pixel_text import text_width
 import httpx
 
 
+# busylib 2.5.0 models the firmware's API 27.7 snapshot, where every variant
+# carries the bar's busy settings. Skystrip only reads ``snapshot.type``, but
+# the fake must still validate as the real client would.
+BUSY_BAR_SETTINGS = {
+    "theme": "default",
+    "show_work_phase_only": False,
+    "trigger_smart_home": False,
+}
+
+
 def _extreme_alert(identifier: str = "urn:alert:a", event: str = "Tornado Warning"):
     """Build the production alert type once the alert-domain module exists."""
     from busybar_dev.weather_alerts import Alert
@@ -191,7 +201,7 @@ class SnapshotInputBar(InputBar):
             await asyncio.sleep(0)
             if self.snapshot_error is not None:
                 raise self.snapshot_error
-            snapshot = {"type": self.snapshot_type}
+            snapshot = {"type": self.snapshot_type, "busy_bar_settings": BUSY_BAR_SETTINGS}
             if self.snapshot_type == "INFINITE":
                 snapshot.update(card_id="test", is_paused=False)
             return types.BusySnapshot.model_validate({
@@ -489,7 +499,7 @@ async def test_switch_event_cannot_reclassify_an_unknown_start_in_flight(
             try:
                 await self.release_snapshot.wait()
                 return types.BusySnapshot.model_validate({
-                    "snapshot": {"type": "NOT_STARTED"},
+                    "snapshot": {"type": "NOT_STARTED", "busy_bar_settings": BUSY_BAR_SETTINGS},
                     "snapshot_timestamp_ms": 1,
                 })
             finally:
