@@ -64,7 +64,10 @@ a scraped mirror of the vendor documentation.
   A POST-order test is insufficient: advance past the newer timeout and prove
   the interrupted card cannot resurface.
 - **Animations:** the device plays `.anim` files natively (`AnimationElement`,
-  `loop=True`) — its own format, magic `bicycle0`, BGR888 + firmware RLE.
+  `loop=True`) — its own container, magic `bicycle1` since firmware 1.3.1:
+  one frame per tick, a change mask per frame, BGR888 pixels raw, firmware
+  RLE or header-less QOI. The 1.3.1 loader rejects `bicycle0` and draws a
+  magenta boxed X placeholder instead, while the draw request still returns 200.
   `busybar_dev/anim.py` encodes it from PIL frames (ported from the firmware's
   GPL-2.0-or-later `scripts/seq2anim.py`). Prefer one `.anim` upload over host-driven
   redraw loops for any motion; the device cycles frames itself.

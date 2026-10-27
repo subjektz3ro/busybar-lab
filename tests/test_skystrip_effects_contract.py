@@ -312,7 +312,7 @@ def _capture_encoder(monkeypatch):
     def capture(frames, fps, **_kwargs):
         copies = [frame.copy() for frame in frames]
         encoded.append((copies, fps))
-        return b"bicycle0" + bytes([len(encoded)])
+        return b"bicycle1" + bytes([len(encoded)])
 
     monkeypatch.setattr(anim, "encode_anim", capture)
     return encoded
