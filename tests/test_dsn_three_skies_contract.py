@@ -320,7 +320,7 @@ def test_static_triptych_costs_one_keyframe_plus_five_byte_holds_not_forty_full_
     # bicycle1 has no per-frame duration: every held tick is its own frame,
     # but an unchanged frame is a 5-byte header with no mask and no pixels.
     assert all(
-        (frame.mask_encoding, frame.encoded_size) == ("none", 0)
+        (frame.mask_encoding, frame.pixel_bytes) == ("none", 0)
         for frame in decoded.frames[1:]
     )
     assert len(blob) == len(keyframe_only) + 5 * (decoded.display_frame_count - 1)

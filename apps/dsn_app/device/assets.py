@@ -197,8 +197,7 @@ def next_scene_filename(state: _model.State) -> str:
 
 def encode_native_frames(frames: list[Image.Image], fps: int, hold: int) -> bytes:
     """Hold each frame for ``hold`` ticks; an unchanged tick costs five bytes."""
-    durations = None if hold == 1 else [hold] * len(frames)
-    return anim.encode_anim(frames, fps=fps, durations=durations)
+    return anim.encode_anim(frames, fps=fps, durations=[hold] * len(frames))
 
 
 async def trim_scene_cache(bb, state: _model.State) -> None:

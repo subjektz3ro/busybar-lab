@@ -1,8 +1,11 @@
 """Encoder and decoder for the BUSY Bar ``.anim`` container ("bicycle1").
 
 Ported from the official firmware tooling (busy-app/busybar-firmware,
-``scripts/seq2anim.py``, ``scripts/flipper/rle.py``, and
-``lib/anim_file/anim_file_format.h`` at upstream revision
+``scripts/seq2anim.py``, ``scripts/flipper/rle.py``,
+``lib/anim_file/anim_file_format.h``, and, for the decoder, the reference
+behaviour of ``lib/anim_file/components/anim_file_load.c``,
+``anim_file_mask.c``, ``anim_file_seq.c`` and ``anim_file_img.c`` plus
+``lib/toolbox/rle_encode``, all at upstream revision
 8edd2da42ed2facbab73796c456746e7dcbed2e7, the 1.3.1 release).
 
 Those portions are Copyright 2024-2026 Flipper FZCO and licensed
@@ -34,6 +37,8 @@ _LEGACY_SIGNATURE = b"bicycle0"
 _HEADER_FMT = "<8s BBBB HHBB II II"
 _SECTION_FMT = "<III"
 _FRAME_FMT = "<BHH"
+# A frame identical to its predecessor: empty mask, raw encoding, no pixels.
+_UNCHANGED_FRAME = struct.pack(_FRAME_FMT, 0, 0, 0)
 _COLOR_BGR888 = 0
 _MAX_BLOCKS = 127
 _RLE_THRESHOLD = 3
@@ -109,8 +114,10 @@ class AnimFileFrame:
     ``rgb`` is canonical row-major RGB888 of the whole frame after applying
     this frame's change mask on top of its predecessor; the BGR wire order is
     deliberately removed at this boundary so callers cannot accidentally
-    preview red as blue.  ``changed_pixels`` and ``encoded_size`` describe
-    what the file actually carried for the frame.
+    preview red as blue.  An unchanged frame shares its predecessor's ``rgb``
+    object rather than copying it.  ``changed_pixels``, ``mask_bits`` and
+    ``pixel_bytes`` describe what the file carried: a frame occupies
+    ``5 + ceil(mask_bits / 8) + pixel_bytes`` bytes on disk.
     """
 
     rgb: bytes
@@ -118,7 +125,7 @@ class AnimFileFrame:
     pixel_encoding: PixelEncoding
     changed_pixels: int
     mask_bits: int
-    encoded_size: int
+    pixel_bytes: int
     file_offset: int
 
     def image(self, size: tuple[int, int]) -> Image.Image:
@@ -272,7 +279,7 @@ def _rle_decompress(source: bytes, expected_size: int) -> bytes:
 
 # --- header-less QOI (lib/anim_file/components/anim_file_img.c) -------------
 
-def _qoi_hash(pixel: bytes) -> int:
+def _qoi_hash(pixel: Sequence[int]) -> int:
     r, g, b, a = pixel
     return (r * 3 + g * 5 + b * 7 + a * 11) % 64
 
@@ -339,7 +346,7 @@ def _qoi_decompress(source: bytes, expected_pixels: int, index: int) -> bytes:
 
     def emit(px: tuple[int, int, int, int]) -> None:
         nonlocal last, count
-        lut[(px[0] * 3 + px[1] * 5 + px[2] * 7 + px[3] * 11) % 64] = px
+        lut[_qoi_hash(px)] = px
         last = px
         count += 1
         if count > expected_pixels:
@@ -471,12 +478,16 @@ def _read_bits(data: bytes, position: int, count: int) -> int:
 
 def _decode_mask(
     encoding: int, data: bytes, bits: int, pixel_count: int, index: int,
-) -> list[int]:
-    """Return the indices of the pixels frame ``index`` replaces."""
+) -> list[int] | None:
+    """Return the indices of the pixels frame ``index`` replaces.
+
+    ``None`` means every pixel, so a keyframe never materialises an index
+    list the size of the panel.
+    """
     if encoding == _MASK_NONE:
         return []
     if encoding == _MASK_FULL:
-        return list(range(pixel_count))
+        return None
     if encoding == _MASK_BITMAP:
         if bits != pixel_count:
             raise AnimDecodeError(
@@ -707,6 +718,8 @@ def decode_anim(
     cursor = sections_end
     frame_header_size = struct.calcsize(_FRAME_FMT)
     previous_rgb: bytes | None = None
+    actual_max_mask_bits = 0
+    actual_max_pixel_bytes = 0
     for index in range(frame_count):
         file_offset = cursor
         if cursor + frame_header_size > frames_end:
@@ -750,8 +763,11 @@ def decode_anim(
         )
         encoded = data[mask_end:pixel_end]
         cursor = pixel_end
+        actual_max_mask_bits = max(actual_max_mask_bits, mask_bits)
+        actual_max_pixel_bytes = max(actual_max_pixel_bytes, pixel_size)
 
-        changed_size = len(changed) * 3
+        changed_count = pixel_count if changed is None else len(changed)
+        changed_size = changed_count * 3
         if pixel_code == _PIXELS_RAW:
             if pixel_size != changed_size:
                 raise AnimDecodeError(
@@ -762,10 +778,14 @@ def decode_anim(
         elif pixel_code == _PIXELS_RLE:
             rgb_changed = _bgr_to_rgb(_rle_decompress(encoded, changed_size))
         else:
-            rgb_changed = _qoi_decompress(encoded, len(changed), index)
+            rgb_changed = _qoi_decompress(encoded, changed_count, index)
 
-        if mask_code == _MASK_FULL:
+        if changed is None:
             rgb = rgb_changed
+        elif not changed:
+            # A held tick shares its predecessor: thousands of them in a
+            # Skystrip timeline would otherwise each copy the whole panel.
+            rgb = previous_rgb if previous_rgb is not None else bytes(rgb_size)
         else:
             composed = bytearray(previous_rgb) if previous_rgb else bytearray(rgb_size)
             for k, pixel in enumerate(changed):
@@ -775,14 +795,21 @@ def decode_anim(
             rgb=rgb,
             mask_encoding=_MASK_NAMES[mask_code],
             pixel_encoding=_PIXEL_NAMES[pixel_code],
-            changed_pixels=len(changed),
+            changed_pixels=changed_count,
             mask_bits=mask_bits,
-            encoded_size=pixel_size,
+            pixel_bytes=pixel_size,
             file_offset=file_offset,
         ))
         previous_rgb = rgb
     if cursor != frames_end:
         raise AnimDecodeError("frame chunk length/count mismatch")
+    # The firmware only checks frames against these as upper bounds; the
+    # vendor encoder writes exact maxima, so demanding equality here catches
+    # a corrupted header and proves this module's encoder writes them too.
+    if actual_max_mask_bits != max_mask_bits:
+        raise AnimDecodeError("header max_mask_bits does not match frame data")
+    if actual_max_pixel_bytes != max_pixel_bytes:
+        raise AnimDecodeError("header max_pixel_bytes does not match frame data")
 
     sections: list[AnimSection] = []
     for name, first, last, frame_offset in section_rows:
@@ -832,16 +859,19 @@ def encode_anim(frames: list[Image.Image], fps: int,
     """
     if not frames:
         raise ValueError("need at least one frame")
-    if not 1 <= fps <= 255:
-        raise ValueError("fps must be 1..255, one byte in the container")
+    if isinstance(fps, bool) or not isinstance(fps, int) or not 1 <= fps <= 255:
+        raise ValueError("fps must be an int in 1..255, one byte in the container")
     width, height = frames[0].size
     if not (1 <= width <= 255 and 1 <= height <= 255):
         raise ValueError("frame dimensions must be 1..255 pixels")
     if durations is not None:
         if len(durations) != len(frames):
             raise ValueError("durations must have one entry per frame")
-        if any(duration <= 0 for duration in durations):
-            raise ValueError("every duration must be at least one tick")
+        if any(
+            isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0
+            for duration in durations
+        ):
+            raise ValueError("every duration must be an int of at least one tick")
 
     timeline: list[bytes] = []
     for image, duration in zip(frames, durations or [1] * len(frames)):
@@ -857,6 +887,11 @@ def encode_anim(frames: list[Image.Image], fps: int,
             raise ValueError('section name "default" is reserved')
         if not name:
             raise ValueError("section names must be non-empty")
+        if "\x00" in name:
+            raise ValueError(
+                f"section name {name!r} contains a NUL, which terminates names "
+                "in the container"
+            )
         if name in names:
             raise ValueError(f"duplicate section name {name!r}")
         if first < 0 or last >= frame_count:
@@ -876,6 +911,13 @@ def encode_anim(frames: list[Image.Image], fps: int,
     previous: bytes | None = None
     for index, rgba in enumerate(timeline):
         reference = None if index in keyframes else previous
+        if reference is not None and rgba == reference:
+            # Byte-identical to what the vendor's subtract/encode pass emits
+            # for a held frame, without its O(pixels) work: Skystrip's
+            # timeline holds 97 slots for 200 ticks each on the event loop.
+            encoded_frames.append(_UNCHANGED_FRAME)
+            previous = rgba
+            continue
         changed_rgba, mask = _subtract(rgba, reference)
         pixel_code, pixel_bytes = _choose_pixel_encoding(
             _pack_bgr888(changed_rgba), changed_rgba, delta=reference is not None,

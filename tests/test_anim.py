@@ -164,8 +164,9 @@ def test_an_unchanged_frame_is_a_five_byte_marker_with_no_pixels():
     repeat = decoded.frames[1]
 
     assert (repeat.mask_encoding, repeat.pixel_encoding) == ("none", "raw")
-    assert (repeat.changed_pixels, repeat.encoded_size) == (0, 0)
+    assert (repeat.changed_pixels, repeat.pixel_bytes) == (0, 0)
     assert decoded.frames[2].file_offset - repeat.file_offset == 5
+    assert repeat.rgb is decoded.frames[0].rgb  # shares, never copies, the held picture
     assert decoded.display_frame_count == 3
     assert decoded.duration_seconds == pytest.approx(0.5)
     assert _colors(decoded) == [(255, 0, 0), (255, 0, 0), (0, 0, 255)]
@@ -206,7 +207,7 @@ def test_a_small_change_ships_only_the_changed_pixels():
     assert (delta.mask_encoding, delta.pixel_encoding, delta.changed_pixels) == (
         "bitmap", "qoi", 2,
     )
-    assert delta.encoded_size == 5
+    assert delta.pixel_bytes == 5
     assert delta.image(decoded.size).tobytes() == frames[1].tobytes()
 
 
@@ -405,3 +406,90 @@ def test_encoder_rejects_frames_the_container_cannot_describe():
         anim.encode_anim([_solid((1, 2, 3))], fps=5, durations=[1, 1])
     with pytest.raises(ValueError, match="duration"):
         anim.encode_anim([_solid((1, 2, 3))], fps=5, durations=[0])
+
+
+def test_encoder_rejects_section_names_the_container_cannot_terminate():
+    frames = [_solid((1, 2, 3)), _solid((4, 5, 6))]
+    with pytest.raises(ValueError, match="NUL"):
+        anim.encode_anim(frames, fps=5, sections=[("a\x00b", 1, 1)])
+
+
+def test_encoder_rejects_non_integer_fps_and_durations():
+    frame = _solid((1, 2, 3))
+    with pytest.raises(ValueError, match="fps"):
+        anim.encode_anim([frame], fps=5.0)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="fps"):
+        anim.encode_anim([frame], fps=True)
+    with pytest.raises(ValueError, match="duration"):
+        anim.encode_anim([frame], fps=5, durations=[2.0])  # type: ignore[list-item]
+
+
+def test_header_maxima_must_match_the_frames_they_describe():
+    frames, kwargs, _ = _reference("partial_change")
+    blob = anim.encode_anim(frames, **kwargs)
+
+    with pytest.raises(anim.AnimDecodeError, match="max_mask_bits"):
+        anim.decode_anim(_mutate_header(blob, 5, 999))
+    with pytest.raises(anim.AnimDecodeError, match="max_pixel_bytes"):
+        anim.decode_anim(_mutate_header(blob, 6, 999))
+
+
+def test_truncated_pixel_data_is_rejected():
+    frames, kwargs, _ = _reference("solid_4x2")
+    blob = bytearray(anim.encode_anim(frames, **kwargs))
+    blob[_frame_start(blob) + 5] = 0x84  # literal four pixels, but three bytes follow
+    with pytest.raises(anim.AnimDecodeError, match="truncated RLE literal"):
+        anim.decode_anim(blob)
+
+    frames, kwargs, _ = _reference("partial_change")
+    blob = anim.encode_anim(frames, **kwargs)
+    delta = _frame_start(blob) + 9
+    pixels = delta + 5 + 2
+    assert blob[pixels] == 0xFE
+    short = bytearray(blob[:pixels + 1] + blob[pixels + 5:])  # QOI_OP_RGB, no payload
+    struct.pack_into("<H", short, delta + 3, 1)
+    header = list(struct.unpack_from(anim._HEADER_FMT, short, 0))
+    header[10] -= 4
+    struct.pack_into(anim._HEADER_FMT, short, 0, *header)
+    with pytest.raises(anim.AnimDecodeError, match="truncated QOI"):
+        anim.decode_anim(short)
+
+
+def test_masks_that_do_not_cover_the_frame_are_rejected():
+    frames, kwargs, _ = _reference("sparse_72x16")
+    blob = anim.encode_anim(frames, **kwargs)
+    delta = _frame_start(blob) + 5 + 40  # frame 0 is a header plus 40 RLE bytes
+    assert blob[delta] == 0x20
+
+    truncated = bytearray(blob)
+    struct.pack_into("<H", truncated, delta + 1, 66)  # one bit short of the last run
+    with pytest.raises(anim.AnimDecodeError, match="run-length mask is truncated"):
+        anim.decode_anim(truncated)
+
+    short_run = bytearray(blob)
+    short_run[delta + 5 + 1] = 0xC3  # first run 255 -> 254 leaves a pixel uncovered
+    with pytest.raises(anim.AnimDecodeError, match="does not cover the frame"):
+        anim.decode_anim(short_run)
+
+    frames, kwargs, _ = _reference("partial_change")
+    blob = anim.encode_anim(frames, **kwargs)
+    delta = _frame_start(blob) + 9
+    bitmap = bytearray(blob)
+    struct.pack_into("<H", bitmap, delta + 1, 15)  # 16-pixel frame, 15-bit bitmap
+    with pytest.raises(anim.AnimDecodeError, match="bitmap mask must cover"):
+        anim.decode_anim(bitmap)
+
+    frames, kwargs, _ = _reference("solid_4x2")
+    blob = bytearray(anim.encode_anim(frames, **kwargs))
+    blob[_frame_start(blob)] = 0x20  # run-length mask with zero bits
+    with pytest.raises(anim.AnimDecodeError, match="empty change mask"):
+        anim.decode_anim(blob)
+
+
+def test_first_section_must_be_default():
+    frames, kwargs, _ = _reference("one_pixel")
+    blob = bytearray(anim.encode_anim(frames, **kwargs))
+    name = blob.index(b"default\x00")
+    blob[name:name + 7] = b"defaulx"
+    with pytest.raises(anim.AnimDecodeError, match="must be 'default'"):
+        anim.decode_anim(blob)

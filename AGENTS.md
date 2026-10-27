@@ -100,8 +100,10 @@ a scraped mirror of the vendor documentation.
 - **One wheel detent is ONE encoder count** (verified in skystrip and dsn).
   Never invent a counts-per-detent divisor; grep the other apps for measured
   hardware constants before choosing your own.
-- **Nothing interactive may wait on an asset upload.** An `.anim` is ~80 KB
-  and ~1 s; per-detent rendering makes the wheel feel dead. Draw an instant
+- **Nothing interactive may wait on an asset upload.** An `.anim` upload is
+  a device round trip (the old container cost ~80 KB and ~1 s; `bicycle1`
+  scenes are far smaller, but still a round trip); per-detent rendering
+  makes the wheel feel dead. Draw an instant
   read-out with Text/Rectangle elements and commit the scene on rest.
 - **Speech costs ~1× realtime** on a small ARM host. Pre-bake lines and cache
   them on-device under a hash of *text + voice*; never synthesise on a

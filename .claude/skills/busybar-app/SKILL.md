@@ -737,7 +737,7 @@ upload size — spend it only where it shows.
 | A fixed-width pixel font | 3 wide: '0'=='O' and '5'=='S', byte-identical. 4 wide: M and W become filled rectangles | Proportional — 5 columns for M/W, 3 for I/1, 4 for the rest. Slashed zero. Assert no collisions (law #6) |
 | Loop duration set from your data | Text scroll and every other motion inherit it | Fixed loop; encode the variable as spacing |
 | Picking your own encoder-counts-per-detent | One count IS one detent; a divisor of 4 eats 3 of every 4 clicks | grep the other apps for the measured constant |
-| Re-rendering the scene on every wheel detent | ~80 KB and ~1 s per upload; the dial feels dead | Instant text read-out, commit the scene on rest |
+| Re-rendering the scene on every wheel detent | a device upload round trip per detent (~80 KB and ~1 s with the old container); the dial feels dead | Instant text read-out, commit the scene on rest |
 | Two labels anchored to opposite ends of a row | Not a collision guarantee — they overlapped on the panel | Plan the row; marquee, alternate, or use an explicit semantic abbreviation |
 | 4-wide `M` and `W` | Two adjacent filled rows: a block, not a letter | 5 columns for those two; the font is proportional |
 | Synthesising speech on a keypress | ~1x realtime; the scene has changed before it plays | Prepare ahead, cache on device by text+voice hash |
