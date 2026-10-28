@@ -106,6 +106,7 @@ FLASH_ELEMENT_TIMEOUT_S = 2  # firmware leases are whole seconds
 FLASH_ASSET_RETIRE_GRACE_S = 1.0  # let firmware release the expired file handle
 
 AMBIENT_PERIOD_S = 20  # how often the top-strip mood re-evaluates
+AMBIENT_RETRY_S = 300  # after a failed strip command on a USB bar
 
 AMBIENT_LEVEL = 0.35  # ambient brightness scale (the strip is bright)
 

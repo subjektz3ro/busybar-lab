@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### A service log that only carries news
+
+- Two days of the Skystrip service log on a Wi-Fi host held 324 busylib
+  warnings for the top-strip `status_lights` command, 248 "NWS observation
+  is incomplete" warnings, 107 phonemizer "words count mismatch" warnings,
+  and an ERROR echo for a 410 the app already treats as success. None of
+  them was news. The strip mood now asks the bar how it was reached and
+  stands down for the run on a transport it knows is not USB (Wi-Fi, BLE)
+  without sending a command; a bar that cannot say is probed once, and a
+  refusal stands the strip down for the run instead of retrying every
+  five minutes. On the USB link a failed command is retried after five
+  minutes and logged once per cause, so a reboot never darkens the strip
+  for good. Shutdown hands back only a strip we actually lit. An
+  incomplete station observation is warned about once per distinct cause
+  until the next good read, and announced once when it recovers.
+  Kokoro synthesis keeps phonemizer's per-line bookkeeping at ERROR. busylib's
+  echo of "No audio is playing" is filtered on the library's logger only;
+  the apps' own words are untouched.
+
 ### Animations: firmware 1.3.1's `bicycle1` container
 
 - Firmware 1.3.1 (auto-installed on bars with updates enabled) replaced the

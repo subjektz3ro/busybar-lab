@@ -133,7 +133,9 @@ async def test_watcher_owns_one_state_and_reaps_all_tasks_on_sigterm(
     assert pushes == ([(state, sentinel_frames)] if fresh else [])
     sweep.assert_awaited_once_with(bar)
     siren.assert_awaited_once_with(bar, state)
-    bar.usb.send_command.assert_awaited_once_with("status_lights", "0", "0", "0")
+    # ambient_lights is patched out above, so the strip was never lit and
+    # there is nothing to hand back; see tests/test_skystrip_ambient_strip.py.
+    bar.usb.send_command.assert_not_awaited()
     bar.display_clear.assert_awaited_once_with(
         application_name=runtime._limits.APP_NAME
     )

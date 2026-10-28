@@ -155,6 +155,17 @@ def tts_engine_status() -> tuple[str | None, str]:
     return None, detail
 
 
+def quiet_phonemizer() -> None:
+    """Keep phonemizer's per-line bookkeeping out of a service log.
+
+    Kokoro hands phonemizer one line at a time; whenever punctuation splits a
+    line differently from phonemizer's own count it warns "words count
+    mismatch". The audio is unaffected, and a host that bakes a report every
+    hour would log a hundred of those a day about nothing.
+    """
+    logging.getLogger("phonemizer").setLevel(logging.ERROR)
+
+
 def _kokoro_synth(text: str, voice: str) -> tuple[bytes, int]:
     """Kokoro neural TTS: best prosody of the local engines."""
     global _KOKORO
@@ -172,6 +183,9 @@ def _kokoro_synth(text: str, voice: str) -> tuple[bytes, int]:
                 "re-run deploy/install.sh to fetch the voice bank")
         model, bank = paths
         _KOKORO = Kokoro(str(model), str(bank))
+    # After the import above: phonemizer sets its own logger to WARNING when
+    # it is first imported, so quieting it earlier would not survive.
+    quiet_phonemizer()
     samples, rate = _KOKORO.create(
         text, voice=voice, speed=tts_speed(), lang="en-us")
     import numpy as np

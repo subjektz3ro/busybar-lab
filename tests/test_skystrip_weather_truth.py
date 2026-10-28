@@ -796,3 +796,89 @@ def test_forecast_temperature_converts_the_declared_source_unit(
 )
 def test_forecast_temperature_rejects_missing_or_unsupported_values(period):
     assert sky_audio_report_facts._forecast_temperature(period) is None
+
+
+@pytest.mark.asyncio
+async def test_an_incomplete_station_observation_is_reported_once_until_it_recovers(
+    monkeypatch, caplog,
+):
+    """KMDW publishes observations missing a field for hours at a time.
+
+    That is a data condition, not an incident: the fused snapshot falls back
+    to the model. One warning per distinct cause on the way in and one notice
+    on the way out is the whole story; a warning every five minutes, or on
+    every flip between two causes, is a log nobody reads.
+    """
+    import logging
+
+    complete = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "textDescription": "Mostly Cloudy",
+        "presentWeather": [],
+        "cloudLayers": [{"amount": "BKN"}],
+        "windSpeed": {"value": 12.0},
+        "windDirection": {"value": 180.0},
+        "temperature": {"value": 15.0},
+        "relativeHumidity": {"value": 70.0},
+        "visibility": {"value": 12000.0},
+    }
+    incomplete = {key: value for key, value in complete.items() if key != "temperature"}
+    stale = dict(complete, timestamp=(
+        datetime.now(timezone.utc) - timedelta(days=2)).isoformat())
+    served = [incomplete, stale, incomplete, stale, complete, complete, complete]
+    observation_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal observation_requests
+        if request.url.host == "api.weather.gov":
+            if "/points/" in request.url.path:
+                return httpx.Response(200, json={"properties": {
+                    "forecast": "https://api.weather.gov/gridpoints/TST/1,1/forecast",
+                }})
+            if "/observations/latest" in request.url.path:
+                body = served[min(observation_requests, len(served) - 1)]
+                observation_requests += 1
+                return httpx.Response(200, json={"properties": body})
+        if request.url.host == "api.open-meteo.com":
+            return httpx.Response(200, json={"current": _complete_current(
+                temperature_2m=15.0,
+                snow_depth=0.0,
+                weather_code=0,
+            )})
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    class MockClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    real_sleep = asyncio.sleep
+    cycles = 0
+
+    async def next_cycle(_seconds):
+        nonlocal cycles
+        cycles += 1
+        if cycles >= len(served):
+            raise asyncio.CancelledError
+        await real_sleep(0)
+
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+    monkeypatch.setattr(sky_providers_weather.asyncio, "sleep", next_cycle)
+    monkeypatch.setattr(sky_settings, "NWS_STATION", "KTST")
+    for attribute in ("_hourly_due", "_obs_history_due", "_forecast_due"):
+        monkeypatch.setattr(sky_providers_weather.poll_nws, attribute, float("inf"),
+                            raising=False)
+
+    state = sky_model.SkyState()
+    with caplog.at_level(logging.DEBUG, logger="skystrip"):
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(sky_providers_weather.poll_nws(state), timeout=5)
+
+    assert observation_requests >= 6
+    failures = [r for r in caplog.records if "obs fetch failed" in r.getMessage()]
+    assert [r.levelno for r in failures] == [logging.WARNING, logging.WARNING]
+    assert "NWS observation is incomplete" in failures[0].getMessage()
+    assert "stale" in failures[1].getMessage()
+    recovered = [r for r in caplog.records if "usable again" in r.getMessage()]
+    assert [r.levelno for r in recovered] == [logging.INFO]
+    assert sum("obs: cloud=" in r.getMessage() for r in caplog.records) >= 1
