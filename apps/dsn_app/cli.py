@@ -137,7 +137,8 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(name)s %(message)s",
     )
-    logging.getLogger("busylib.client.base").addFilter(ExpectedDeviceReplyFilter())
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(ExpectedDeviceReplyFilter())
     _settings.configure_runtime()
 
     if args.dry_run:

@@ -24,7 +24,7 @@ async def poll_nws(state: _model.SkyState) -> None:
     forecast_url = None
     nws_ok = True  # health of this observation/forecast discovery pipeline
     nws_retry_at = 0.0
-    obs_failure: str | None = None  # the last cause we warned about
+    obs_failures: set[str] = set()  # causes warned about since the last good read
     async with httpx.AsyncClient(headers=_settings.NWS_UA, timeout=20) as client:
         while True:
             t0 = asyncio.get_event_loop().time()
@@ -120,9 +120,9 @@ async def poll_nws(state: _model.SkyState) -> None:
                 # not temporarily regress to airport values mid-cycle.
                 nws_snapshot = obs
                 nws_source_time = obs_time
-                if obs_failure is not None:
+                if obs_failures:
                     _limits.logger.info("obs: NWS observation usable again")
-                    obs_failure = None
+                    obs_failures.clear()
                 _limits.logger.info(
                     "obs: cloud=%.0f%% rain=%s snow=%s thunder=%s "
                     "wind=%.0fkm/h temp=%.0fC rh=%.0f%% vis=%.0fm",
@@ -138,15 +138,17 @@ async def poll_nws(state: _model.SkyState) -> None:
             except Exception as exc:  # noqa: BLE001 - feed is best-effort
                 if nws_ok:
                     reason = describe_exception(exc)
-                    if reason != obs_failure:
-                        # Once per distinct cause. KMDW publishes observations
-                        # missing a field for hours at a time; the fused
-                        # snapshot falls back to the model meanwhile, and a
-                        # warning every five minutes is a log nobody reads.
+                    if reason not in obs_failures:
+                        # Once per distinct cause until the next good read.
+                        # KMDW publishes observations missing a field for
+                        # hours at a time, sometimes alternating with a stale
+                        # timestamp; the fused snapshot falls back to the
+                        # model meanwhile, and a warning every five minutes
+                        # is a log nobody reads.
                         _limits.logger.warning("obs fetch failed: %s", reason)
+                        obs_failures.add(reason)
                     else:
                         _limits.logger.debug("obs fetch still failing: %s", reason)
-                    obs_failure = reason
             # The NWS station is truth for phenomena but reads at the airport,
             # roughly hourly. Open-Meteo nowcasts temperature at our exact
             # coordinates (what the watch on your wrist does) — use it for

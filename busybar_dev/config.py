@@ -192,7 +192,10 @@ class ExpectedDeviceReplyFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if not record.name.startswith("busylib."):
             return True
-        message = record.getMessage()
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 - never break logging
+            return True
         return not any(expected in message for expected in self.EXPECTED)
 
 

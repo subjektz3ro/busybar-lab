@@ -245,8 +245,10 @@ def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
     for handler in logging.getLogger().handlers:
         handler.addFilter(CoordinateRedactingFilter())
+        # On the handlers, like the redaction: a filter on one busylib logger
+        # would not see records from its children or from a renamed module.
+        handler.addFilter(ExpectedDeviceReplyFilter())
     logging.getLogger("busylib").setLevel(logging.WARNING)
-    logging.getLogger("busylib.client.base").addFilter(ExpectedDeviceReplyFilter())
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
 

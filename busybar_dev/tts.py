@@ -169,7 +169,6 @@ def quiet_phonemizer() -> None:
 def _kokoro_synth(text: str, voice: str) -> tuple[bytes, int]:
     """Kokoro neural TTS: best prosody of the local engines."""
     global _KOKORO
-    quiet_phonemizer()
     if _KOKORO is None:
         from kokoro_onnx import Kokoro
         paths = _kokoro_paths()
@@ -184,6 +183,9 @@ def _kokoro_synth(text: str, voice: str) -> tuple[bytes, int]:
                 "re-run deploy/install.sh to fetch the voice bank")
         model, bank = paths
         _KOKORO = Kokoro(str(model), str(bank))
+    # After the import above: phonemizer sets its own logger to WARNING when
+    # it is first imported, so quieting it earlier would not survive.
+    quiet_phonemizer()
     samples, rate = _KOKORO.create(
         text, voice=voice, speed=tts_speed(), lang="en-us")
     import numpy as np
