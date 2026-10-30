@@ -32,6 +32,7 @@ class SkystripConfig:
     style: str
     report_voice: str
     christmas_window: str
+    halloween_window: str
     nws_station: str
     nws_user_agent: str
     lightning_ws: str | None
@@ -184,6 +185,9 @@ def parse_runtime_config(
         christmas_window=(values.get("SKYSTRIP_CHRISTMAS") or "dec24-26")
         .strip()
         .lower(),
+        halloween_window=(values.get("SKYSTRIP_HALLOWEEN") or "oct28-nov2")
+        .strip()
+        .lower(),
         nws_station=values.get("SKYSTRIP_STATION", ""),
         nws_user_agent=(
             f"skystrip ({contact})" if contact else "skystrip (hobby project)"
@@ -207,6 +211,7 @@ DEFAULT_SKYSTRIP_CONFIG = SkystripConfig(
     style="plain",
     report_voice="am_michael",
     christmas_window="dec24-26",
+    halloween_window="oct28-nov2",
     nws_station="",
     nws_user_agent="skystrip (hobby project)",
     lightning_ws=None,

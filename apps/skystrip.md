@@ -178,6 +178,13 @@ its own.
   a minority of the skyline's already-lit tower windows turned red or green,
   and a small lit conifer at the lakefront and on the backroads shoulder.
   Forest and grove keep their plain silhouette.
+- **Halloween decorations appear for a few days either side of the night**,
+  the same way — `SKYSTRIP_HALLOWEEN` sets the window, `oct28-nov2` by
+  default. The roofline string comes back in orange, purple and white, and a
+  jack-o'-lantern with a flickering candle sits on the lawn beside the house
+  and stands where the conifer does at the lakefront and on the backroads
+  shoulder; a minority of the skyline's lit windows turn orange or purple.
+  Forest and grove keep their plain silhouette.
 - **A small clock** sits in the corner.
 - **The scene** — the silhouette along the bottom — is yours to pick.
 - **Birds, windows, traffic, wildlife, smoke, fireflies, leaves and meteors**
@@ -276,6 +283,18 @@ thing that changes.*
 Two more scenes get one, off-camera here: a small lit conifer at the lakefront
 and on the backroads shoulder. Forest and grove keep their plain silhouette.
 
+## Halloween
+
+![halloween](../docs/media/skystrip-halloween.gif)
+
+*The house and the skyline, each with the treatment off then on, on Halloween
+night. The roofline string in orange, purple and white, a carved pumpkin with
+a candle in it on the lawn, and orange and purple where red and green go in
+December.*
+
+At the lakefront and on the backroads the pumpkin stands where the December
+conifer does. Forest and grove keep their plain silhouette.
+
 ## Scenes
 
 Six silhouettes: `house`, `skyline`, `lakefront`, `forest`, `grove`,
@@ -299,6 +318,7 @@ the rotation, so you can cycle between two you like instead of six you don't.
 | `SKYSTRIP_CONTACT` | *(blank)* | Email or URL for the NWS User-Agent. Blank stays anonymous. |
 | `SKYSTRIP_SCENES` | all six | Which scenes START cycles through |
 | `SKYSTRIP_CHRISTMAS` | `dec24-26` | Christmas decorations window: `off`, `dec25`, `dec24-26`, `dec20-jan1`, `dec1-26` |
+| `SKYSTRIP_HALLOWEEN` | `oct28-nov2` | Halloween decorations window: `off`, `oct31`, `oct30-nov1`, `oct28-nov2`, `oct1-nov2` |
 | `SKYSTRIP_VOICE` | `am_michael` | Kokoro report voice on supported Linux (`af_*`, `am_*`, `bf_*`, or `bm_*`). Linux uses `espeak-ng` when Kokoro cannot be imported or its model bank is unavailable; direct macOS development may use a non-Kokoro `say` voice. |
 | `SKYSTRIP_STYLE` | `plain` | Spoken report style: `plain`, `chicago`, or `genz` |
 
@@ -378,10 +398,11 @@ selector, and begins provider polling only after the operator selects
 conditions: `--at 03:30`, `--cloud 0.5`, `--storm`, `--rain`, `--snow`,
 `--snowdepth 0.30`, `--temp`, `--wind`, `--winddir`, `--humidity`, `--vis`,
 `--fog`, `--obscuration haze|smoke|dust|ash`, `--month`, `--moonday`,
-`--scene`, `--christmas`/`--no-christmas`.
+`--scene`, `--christmas`/`--no-christmas`, `--halloween`/`--no-halloween`.
 
-`--christmas` / `--no-christmas` force the holiday treatment on or off
-regardless of the calendar — useful for checking the roofline lights in July.
+`--christmas` / `--no-christmas` and `--halloween` / `--no-halloween` force a
+holiday treatment on or off regardless of the calendar — useful for checking
+the roofline lights or the pumpkin in July.
 There's no way to set this outside `--preview`: on real hardware the
 decorations always follow the date.
 

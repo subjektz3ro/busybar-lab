@@ -38,6 +38,14 @@ def _road_R(x: int) -> int:
 # for every column the tree actually touches (63-65).
 BACKROADS_TREE = (64, 15)
 
+# The jack-o'-lantern, one column right of the conifer: its body is 5 wide
+# (columns 63-67 at this anchor), and at the tree's own column it would
+# touch the last poplar's trunk at BACKROADS_POPLARS[-1]. The verge is three
+# rows deep below the road's shoulder band (13-15), which is exactly the
+# body, so it goes stemless -- a stem one row up would stand in the road,
+# and test_no_decoration_stands_in_the_road_at_halloween would say so.
+BACKROADS_PUMPKIN = (65, 15)
+
 # The poplar lane: five tall flames, evenly spaced, the road running
 # behind their trunks — the operator's lookbook pick (option B, then
 # tree design G, 2026-08-12). x=21 keeps the first crown east of the
@@ -453,12 +461,18 @@ def _draw_backroads(
         )
         _render_precipitation.settle_snow(px, snow_tops, tier, amb)
 
-    # A tree on the shoulder, drawn dead last so nothing painted above --
+    # A tree on the shoulder (a jack-o'-lantern at Halloween, standing on
+    # the tree's footprint), drawn dead last so nothing painted above --
     # settled snow included -- lands on top of it. BACKROADS_TREE was
     # chosen against _road_R itself (see its comment) so the road stays
     # clear without a fixed column range, the same problem the
     # settled-snow block above solves by excluding the road's own live
     # colours instead of a column span.
-    if _render_season.is_christmas(local):
+    holiday = _render_season.active_holiday(local)
+    if holiday == "christmas":
         tx, ty = BACKROADS_TREE
         _render_season.draw_lit_tree(px, tx, ty, phase, amb)
+    elif holiday == "halloween":
+        # Same footing as the conifer, stemless: see BACKROADS_PUMPKIN.
+        tx, ty = BACKROADS_PUMPKIN
+        _render_season.draw_jack_o_lantern(px, tx, ty, phase, amb, stem=False)

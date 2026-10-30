@@ -48,6 +48,7 @@ APP_GIFS = (
     "dsn-skies.gif",
     "skystrip-christmas.gif",
     "skystrip-day.gif",
+    "skystrip-halloween.gif",
     "skystrip-seasons.gif",
     "skystrip-weather.gif",
 )
@@ -268,25 +269,41 @@ def skystrip_gifs() -> None:
                                                 phase=i / 8, scene="house"))
     save_gif("skystrip-weather.gif", frames, 130)
 
-    # The Christmas treatment, off then on, for the two scenes that read on
-    # hardware: the roofline string at the house and the recoloured windows
-    # in the skyline. The subject here is the DIFFERENCE, so weather, seed
-    # and clock stay fixed within each pair and only the decoration toggles.
-    # December, after dark -- the skyline recolour only touches windows that
-    # are already lit, so there is nothing to see before dusk. 17:40 local
-    # is where this was checked on the device.
-    dusk = datetime(2026, 12, 24, 17, 40, tzinfo=sky_settings.TZ)
-    cold_clear = sky_weather.WeatherState(cloud_frac=0.15, temp_c=-4.0,
-                                       wind_kmh=6.0)
-    frames = []
-    for scene in ("house", "skyline"):
-        for on in (False, True):
-            sky_settings.CHRISTMAS_FORCED = on
-            for i in range(8):
-                frames.append(sky_render_scene.render_scene(dusk, cold_clear, seed=7,
-                                                    phase=i / 8, scene=scene))
-    sky_settings.CHRISTMAS_FORCED = None  # don't leave this set for the rest
-    save_gif("skystrip-christmas.gif", frames, 130)
+    def holiday_gif(name: str, flag: str, when: datetime, wx) -> None:
+        """A treatment off then on, for the two scenes that read on hardware.
+        The subject is the DIFFERENCE, so weather, seed and clock stay fixed
+        within each pair and only the decoration toggles. The forced flag is
+        restored to None whatever happens, so a failed render cannot leave
+        it set for the clips after it."""
+        frames = []
+        try:
+            for scene in ("house", "skyline"):
+                for on in (False, True):
+                    setattr(sky_settings, flag, on)
+                    for i in range(8):
+                        frames.append(sky_render_scene.render_scene(
+                            when, wx, seed=7, phase=i / 8, scene=scene))
+        finally:
+            setattr(sky_settings, flag, None)
+        save_gif(name, frames, 130)
+
+    # Christmas: the roofline string at the house and the recoloured windows
+    # in the skyline. December, after dark -- the skyline recolour only
+    # touches windows that are already lit, so there is nothing to see before
+    # dusk. 17:40 local is where this was checked on the device.
+    holiday_gif("skystrip-christmas.gif", "CHRISTMAS_FORCED",
+                datetime(2026, 12, 24, 17, 40, tzinfo=sky_settings.TZ),
+                sky_weather.WeatherState(cloud_frac=0.15, temp_c=-4.0,
+                                         wind_kmh=6.0))
+
+    # Halloween: the jack-o'-lantern on the lawn beside the house and the
+    # skyline's orange and purple windows. Halloween night after dark, mild
+    # and nearly still, so neither tumbling leaves nor chimney smoke pass in
+    # front of the pumpkin.
+    holiday_gif("skystrip-halloween.gif", "HALLOWEEN_FORCED",
+                datetime(2026, 10, 31, 19, 10, tzinfo=sky_settings.TZ),
+                sky_weather.WeatherState(cloud_frac=0.15, temp_c=9.0,
+                                         wind_kmh=3.0))
 
 
 def barkeep_gif(host: str) -> None:

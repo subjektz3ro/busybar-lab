@@ -160,6 +160,17 @@ def _shade(color: Color, amb: Color) -> RGB:
     )
 
 
+def _put(px, x: int, y: int, color: Color, amb: Color) -> None:
+    """Write one shaded pixel, or nothing if (x, y) is off the panel.
+
+    The clip is the point: the decorations are placed by anchors near the
+    panel's edges, and every drawer used to carry its own copy of this
+    bounds check. One owner.
+    """
+    if 0 <= x < _limits.W and 0 <= y < _limits.H:
+        px[x, y] = _shade(color, amb)
+
+
 # Status-clock inks: ONE saturated hue at a time, every hour, every scene.
 # Contrast is hue, not brightness — the panel resolves a >=30%
 # single-channel separation as readily as a luminance delta (the skill's
