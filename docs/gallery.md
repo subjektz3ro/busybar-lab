@@ -27,5 +27,6 @@ northern-temperate calendar. Your live sky uses your configured location.
 | **Seasons** — the same time and weather through the year | ![Skystrip seasons](media/skystrip-seasons.gif) |
 | **Weather** — clear, overcast, drizzle, downpour, storm, severe and snow | ![Skystrip weather](media/skystrip-weather.gif) |
 | **Christmas** — decorations off and on | ![Skystrip Christmas](media/skystrip-christmas.gif) |
+| **Halloween** — decorations off and on | ![Skystrip Halloween](media/skystrip-halloween.gif) |
 
 [Skystrip controls, geographic support and provider terms](../apps/skystrip.md).

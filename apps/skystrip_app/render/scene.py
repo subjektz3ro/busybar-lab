@@ -295,6 +295,14 @@ def render_scene(
             ]
             _render_season.string_lights(px, eaves, phase, amb)
 
+        # A jack-o'-lantern on the lawn beside the house at Halloween, at the
+        # same point in the stack as the Christmas string: after the sprite,
+        # before anything that may pass in front of it (leaves, fog, snow).
+        if _render_season.is_halloween(local):
+            _render_season.draw_jack_o_lantern(
+                px, *_render_art.HOUSE_PUMPKIN, phase, amb
+            )
+
         # Two trees in the yard, seasonal: green, autumn orange, winter bare
         mm = local.month
         rustle = wx.wind_kmh >= 8

@@ -74,7 +74,7 @@ def _draw_skyline(
         lit_frac = 0.35  # early risers / late dusk
 
     # Every lit window this frame lands here, in the exact order drawn --
-    # the Christmas recolour below reads this list rather than re-deriving
+    # the holiday recolour below reads this list rather than re-deriving
     # "which pixels are windows" by matching WINDOW_WARM/WINDOW_COOL, since
     # that colour also appears on the house sprite and the lakefront lamps.
     lit_windows: list[tuple[int, int]] = []
@@ -155,7 +155,12 @@ def _draw_skyline(
                     for x in range(span[0], span[1] + 1):
                         px[x, top] = (150, 140, 110)
 
+    inks: tuple[tuple[int, int, int], ...] | None = None
     if _render_season.is_christmas(local):
+        inks = _render_season.XMAS_BULBS[:2]  # red and green; the warm bulb IS a window
+    elif _render_season.is_halloween(local):
+        inks = _render_season.HALLOWEEN_INKS  # orange and purple
+    if inks is not None:
         # Recolour, never add: extra lit windows would change the tower's
         # apparent occupancy, and more lit pixels is this panel's haze
         # direction (LEDs lit on a mostly-dark pitch -- see the app skill).
@@ -182,7 +187,7 @@ def _draw_skyline(
                 # ~30% dimmer than its unshaded warm neighbour, right at
                 # the panel's contrast floor, so it reads as dirty rather
                 # than festive.
-                px[fx, fy] = _render_season.XMAS_BULBS[festive.randrange(2)]
+                px[fx, fy] = inks[festive.randrange(len(inks))]
 
     # The street: two streams of traffic at different speeds for parallax —
     # headlights flowing one way, taillights the other

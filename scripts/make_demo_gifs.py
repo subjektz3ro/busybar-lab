@@ -48,6 +48,7 @@ APP_GIFS = (
     "dsn-skies.gif",
     "skystrip-christmas.gif",
     "skystrip-day.gif",
+    "skystrip-halloween.gif",
     "skystrip-seasons.gif",
     "skystrip-weather.gif",
 )
@@ -287,6 +288,24 @@ def skystrip_gifs() -> None:
                                                     phase=i / 8, scene=scene))
     sky_settings.CHRISTMAS_FORCED = None  # don't leave this set for the rest
     save_gif("skystrip-christmas.gif", frames, 130)
+
+    # The Halloween treatment the same way: the jack-o'-lantern on the lawn
+    # beside the house and the skyline's orange and purple windows, each off
+    # then on with everything else fixed. Halloween night after dark, mild
+    # and nearly still, so neither tumbling leaves nor chimney smoke pass in
+    # front of the pumpkin.
+    hallow = datetime(2026, 10, 31, 19, 10, tzinfo=sky_settings.TZ)
+    mild_clear = sky_weather.WeatherState(cloud_frac=0.15, temp_c=9.0,
+                                        wind_kmh=3.0)
+    frames = []
+    for scene in ("house", "skyline"):
+        for on in (False, True):
+            sky_settings.HALLOWEEN_FORCED = on
+            for i in range(8):
+                frames.append(sky_render_scene.render_scene(hallow, mild_clear, seed=7,
+                                                    phase=i / 8, scene=scene))
+    sky_settings.HALLOWEEN_FORCED = None
+    save_gif("skystrip-halloween.gif", frames, 130)
 
 
 def barkeep_gif(host: str) -> None:

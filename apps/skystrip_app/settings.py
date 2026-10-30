@@ -39,6 +39,8 @@ REPORT_VOICE = _config.DEFAULT_SKYSTRIP_CONFIG.report_voice
 
 CHRISTMAS_WINDOW = _config.DEFAULT_SKYSTRIP_CONFIG.christmas_window
 
+HALLOWEEN_WINDOW = _config.DEFAULT_SKYSTRIP_CONFIG.halloween_window
+
 NWS_STATION = _config.DEFAULT_SKYSTRIP_CONFIG.nws_station
 
 NWS_UA = {"User-Agent": _config.DEFAULT_SKYSTRIP_CONFIG.nws_user_agent}
@@ -52,8 +54,9 @@ ENABLED_SCENES = _config.DEFAULT_SKYSTRIP_CONFIG.enabled_scenes
 
 def apply_runtime_config(config: _config.SkystripConfig) -> None:
     """Apply one validated immutable configuration to runtime globals."""
-    global CHRISTMAS_WINDOW, CLOCK_INK, ENABLED_SCENES, LAT, LIGHTNING_WS
-    global LOCATION_SET, LON, NWS_STATION, NWS_UA, OBSERVER, REPORT_VOICE
+    global CHRISTMAS_WINDOW, CLOCK_INK, ENABLED_SCENES, HALLOWEEN_WINDOW, LAT
+    global LIGHTNING_WS, LOCATION_SET, LON, NWS_STATION, NWS_UA, OBSERVER
+    global REPORT_VOICE
     global RUNTIME_CONFIG, SCENE_FILE, STATE_ROOT, STYLE, TZ, UNITS
 
     RUNTIME_CONFIG = config
@@ -68,6 +71,7 @@ def apply_runtime_config(config: _config.SkystripConfig) -> None:
     STYLE = config.style
     REPORT_VOICE = config.report_voice
     CHRISTMAS_WINDOW = config.christmas_window
+    HALLOWEEN_WINDOW = config.halloween_window
     NWS_STATION = config.nws_station
     NWS_UA = {"User-Agent": config.nws_user_agent}
     STATE_ROOT = config.state_root
@@ -115,9 +119,23 @@ CHRISTMAS_WINDOWS = {
     "dec1-26": ((12, 1, 12, 26),),
 }
 
+# Halloween gets the same shape of knob. The default runs a few days either
+# side of the night itself and ends on the Day of the Dead. The two tables
+# never share a date -- test_the_two_holidays_never_share_a_day pins it --
+# because both treatments stand on the same anchors in two of the scenes.
+HALLOWEEN_WINDOWS = {
+    "off": (),
+    "oct31": ((10, 31, 10, 31),),
+    "oct30-nov1": ((10, 30, 11, 1),),  # crosses the month
+    "oct28-nov2": ((10, 28, 11, 2),),
+    "oct1-nov2": ((10, 1, 11, 2),),
+}
+
 # Preview-only override. None means "follow the date", which is what the
 # device always does -- there is no way to set this outside --preview, on
 # purpose: the decorations should be honest about the date on real hardware.
 CHRISTMAS_FORCED: bool | None = None
+
+HALLOWEEN_FORCED: bool | None = None  # same contract as CHRISTMAS_FORCED
 
 CLOCK_INK = _config.STATUS_INKS["orange"]  # overwritten by apply_runtime_config

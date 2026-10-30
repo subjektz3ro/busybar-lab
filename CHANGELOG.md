@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Halloween
+
+- Skystrip's second calendar-driven look. For a few days either side of the
+  night (`SKYSTRIP_HALLOWEEN`, `oct28-nov2` by default; `off`, `oct31`,
+  `oct30-nov1` and `oct1-nov2` are the other choices, offered in the Barkeep
+  editor like the Christmas window) a jack-o'-lantern with a flickering
+  candle sits on the lawn beside the house and stands where the December
+  conifer does at the lakefront and on the backroads shoulder, and a
+  minority of the skyline's lit windows turn orange or purple instead of
+  red or green — recoloured, never added. Forest and grove stay plain, as
+  at Christmas. The two windows can never share a date. `--halloween` /
+  `--no-halloween` force it in `--preview`, as `--christmas` does.
+
 ### A service log that only carries news
 
 - Two days of the Skystrip service log on a Wi-Fi host held 324 busylib

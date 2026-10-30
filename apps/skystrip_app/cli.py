@@ -198,6 +198,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="force the Christmas treatment on or off, "
         "preview only (default: follow the date)",
     )
+    parser.add_argument(
+        "--halloween",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="force the Halloween treatment on or off, "
+        "preview only (default: follow the date)",
+    )
     return parser
 
 
@@ -306,6 +313,8 @@ def main() -> None:
             _render_primitives.MOON_DAY_OVERRIDE = args.moonday
         if args.christmas is not None:
             _settings.CHRISTMAS_FORCED = args.christmas
+        if args.halloween is not None:
+            _settings.HALLOWEEN_FORCED = args.halloween
         frames = _render_scene.render_loop_frames(now, wx, seed=0, scene=args.scene)
         big = [
             f.resize((_limits.W * 8, _limits.H * 8), Image.Resampling.NEAREST)

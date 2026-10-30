@@ -326,7 +326,8 @@ def _draw_lakefront(
         )
         _render_precipitation.settle_snow(px, tops, tier, amb)
 
-    # A tree on the bank, drawn dead last so nothing painted above --
+    # A tree on the bank (a jack-o'-lantern at Halloween, whose footprint is
+    # a subset of the tree's), drawn dead last so nothing painted above --
     # settled snow included -- lands on top of it. LAKEFRONT_TREE was
     # chosen against BEND_WATER_END itself (see its comment) so it stands
     # on real bank, not merely in a bank row -- the same problem the
@@ -335,3 +336,6 @@ def _draw_lakefront(
     if _render_season.is_christmas(local):
         tx, ty = LAKEFRONT_TREE
         _render_season.draw_lit_tree(px, tx, ty, phase, amb)
+    elif _render_season.is_halloween(local):
+        tx, ty = LAKEFRONT_TREE
+        _render_season.draw_jack_o_lantern(px, tx, ty, phase, amb)

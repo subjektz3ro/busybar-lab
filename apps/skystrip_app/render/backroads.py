@@ -453,7 +453,8 @@ def _draw_backroads(
         )
         _render_precipitation.settle_snow(px, snow_tops, tier, amb)
 
-    # A tree on the shoulder, drawn dead last so nothing painted above --
+    # A tree on the shoulder (a jack-o'-lantern at Halloween, whose footprint
+    # is a subset of the tree's), drawn dead last so nothing painted above --
     # settled snow included -- lands on top of it. BACKROADS_TREE was
     # chosen against _road_R itself (see its comment) so the road stays
     # clear without a fixed column range, the same problem the
@@ -462,3 +463,6 @@ def _draw_backroads(
     if _render_season.is_christmas(local):
         tx, ty = BACKROADS_TREE
         _render_season.draw_lit_tree(px, tx, ty, phase, amb)
+    elif _render_season.is_halloween(local):
+        tx, ty = BACKROADS_TREE
+        _render_season.draw_jack_o_lantern(px, tx, ty, phase, amb)
