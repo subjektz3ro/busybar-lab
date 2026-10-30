@@ -107,14 +107,15 @@ for _hx, _hy, _hc in HOUSE_SPRITE:
     if _hx not in HOUSE_TOP or _hy < HOUSE_TOP[_hx]:
         HOUSE_TOP[_hx] = _hy
 
-# Where the jack-o'-lantern sits at Halloween: on the lawn, two columns clear
-# of the sprite's last column so it stands beside the house rather than in
-# its wall, with the body's bottom row directly above the ground row. The
+# Where the jack-o'-lantern sits at Halloween: on the lawn, its 5-wide body
+# starting two columns past the sprite's last column -- one column of bare
+# lawn between them -- so it stands beside the house rather than in its
+# wall, with the body's bottom row directly above the ground row. The
 # right side is the quiet side -- GRASS_FRINGE, the fireflies and the snow
 # fringe all live left of the house (columns 2-46) and the status corner is
 # top-left -- so nothing else paints these cells. Derived from the sprite,
 # like HOUSE_TOP, so the pumpkin follows the house if the art ever moves.
-HOUSE_PUMPKIN = (max(HOUSE_TOP) + 3, _limits.H - 2)
+HOUSE_PUMPKIN = (max(HOUSE_TOP) + 4, _limits.H - 2)
 
 # Fixed constellation across the whole sky (foregrounds occlude naturally).
 # Stratified in x so stars never bunch; each has its own static brightness,

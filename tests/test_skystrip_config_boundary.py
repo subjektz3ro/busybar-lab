@@ -134,7 +134,6 @@ with patch("busybar_dev.load_env") as load_env:
         "style": sky_settings.STYLE,
         "voice": sky_settings.REPORT_VOICE,
         "christmas": sky_settings.CHRISTMAS_WINDOW,
-    "halloween": sky_settings.HALLOWEEN_WINDOW,
         "halloween": sky_settings.HALLOWEEN_WINDOW,
         "station": sky_settings.NWS_STATION,
         "user_agent": sky_settings.NWS_UA["User-Agent"],

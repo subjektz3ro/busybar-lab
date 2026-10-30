@@ -180,10 +180,11 @@ its own.
   Forest and grove keep their plain silhouette.
 - **Halloween decorations appear for a few days either side of the night**,
   the same way — `SKYSTRIP_HALLOWEEN` sets the window, `oct28-nov2` by
-  default. A jack-o'-lantern with a flickering candle sits on the lawn beside
-  the house and stands where the conifer does at the lakefront and on the
-  backroads shoulder; a minority of the skyline's lit windows turn orange or
-  purple. Forest and grove keep their plain silhouette.
+  default. The roofline string comes back in orange, purple and white, and a
+  jack-o'-lantern with a flickering candle sits on the lawn beside the house
+  and stands where the conifer does at the lakefront and on the backroads
+  shoulder; a minority of the skyline's lit windows turn orange or purple.
+  Forest and grove keep their plain silhouette.
 - **A small clock** sits in the corner.
 - **The scene** — the silhouette along the bottom — is yours to pick.
 - **Birds, windows, traffic, wildlife, smoke, fireflies, leaves and meteors**
@@ -286,9 +287,10 @@ and on the backroads shoulder. Forest and grove keep their plain silhouette.
 
 ![halloween](../docs/media/skystrip-halloween.gif)
 
-*The lawn beside the house and the skyline windows, each with the treatment
-off then on, on Halloween night. A carved pumpkin with a candle in it; orange
-and purple where red and green go in December.*
+*The house and the skyline, each with the treatment off then on, on Halloween
+night. The roofline string in orange, purple and white, a carved pumpkin with
+a candle in it on the lawn, and orange and purple where red and green go in
+December.*
 
 At the lakefront and on the backroads the pumpkin stands where the December
 conifer does. Forest and grove keep their plain silhouette.

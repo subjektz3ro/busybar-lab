@@ -71,6 +71,13 @@ WHEEL_HUB = (23, 5)
 # leftmost -- closest to the wheel -- column where that holds.
 LAKEFRONT_TREE = (59, 15)
 
+# The jack-o'-lantern shares the conifer's anchor outright. Its body is 5
+# wide and 3 tall with the stem over it (columns 57-61, rows 12-15), and
+# BEND_WATER_END puts the shoreline at 56 on row 12 and further left on
+# every row below, so all of it is bank -- the water guard test re-derives
+# that from BEND_WATER_END rather than trusting this sentence.
+LAKEFRONT_PUMPKIN = LAKEFRONT_TREE
+
 
 def _draw_lakefront(
     px,
@@ -326,16 +333,19 @@ def _draw_lakefront(
         )
         _render_precipitation.settle_snow(px, tops, tier, amb)
 
-    # A tree on the bank (a jack-o'-lantern at Halloween, whose footprint is
-    # a subset of the tree's), drawn dead last so nothing painted above --
+    # A tree on the bank (a jack-o'-lantern at Halloween, standing on the
+    # tree's footprint), drawn dead last so nothing painted above --
     # settled snow included -- lands on top of it. LAKEFRONT_TREE was
     # chosen against BEND_WATER_END itself (see its comment) so it stands
     # on real bank, not merely in a bank row -- the same problem the
     # settled-snow block above solves with water_colors instead of a
     # column range.
-    if _render_season.is_christmas(local):
+    holiday = _render_season.active_holiday(local)
+    if holiday == "christmas":
         tx, ty = LAKEFRONT_TREE
         _render_season.draw_lit_tree(px, tx, ty, phase, amb)
-    elif _render_season.is_halloween(local):
-        tx, ty = LAKEFRONT_TREE
+    elif holiday == "halloween":
+        # Same footing as the conifer: the anchor row is where its trunk
+        # stands, and the pumpkin's body stands in it too.
+        tx, ty = LAKEFRONT_PUMPKIN
         _render_season.draw_jack_o_lantern(px, tx, ty, phase, amb)

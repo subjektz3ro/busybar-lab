@@ -155,10 +155,11 @@ def _draw_skyline(
                     for x in range(span[0], span[1] + 1):
                         px[x, top] = (150, 140, 110)
 
+    holiday = _render_season.active_holiday(local)
     inks: tuple[tuple[int, int, int], ...] | None = None
-    if _render_season.is_christmas(local):
+    if holiday == "christmas":
         inks = _render_season.XMAS_BULBS[:2]  # red and green; the warm bulb IS a window
-    elif _render_season.is_halloween(local):
+    elif holiday == "halloween":
         inks = _render_season.HALLOWEEN_INKS  # orange and purple
     if inks is not None:
         # Recolour, never add: extra lit windows would change the tower's
@@ -168,7 +169,7 @@ def _draw_skyline(
         # office tower first and a decoration second.
         #
         # Seeded independently of `seed`/`phase` so the choice of WHICH lit
-        # windows go red or green is fixed across frames and across
+        # windows take a festive ink is fixed across frames and across
         # weather -- a window that flips colour every frame reads as a
         # fault, not decoration. lit_windows is itself already deterministic
         # for a given seed/hour (built above from win_rng), so replaying the

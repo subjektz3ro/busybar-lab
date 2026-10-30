@@ -287,21 +287,20 @@ def render_scene(
                 0.08 + 0.10 * pulse_norm,
             )
 
-        # Christmas lights along the roofline, roof drawn but not yet
-        # occluded by anything foreground (trees, snow, moonlight below).
-        if _render_season.is_christmas(local):
+        # Holiday lights along the roofline, roof drawn but not yet occluded
+        # by anything foreground (trees, snow, moonlight below). One string,
+        # one rhythm; only the bulbs change with the holiday.
+        holiday = _render_season.active_holiday(local)
+        if holiday is not None:
             eaves = [
                 (x, _render_art.HOUSE_TOP[x]) for x in sorted(_render_art.HOUSE_TOP)
             ]
-            _render_season.string_lights(px, eaves, phase, amb)
-
-        # A jack-o'-lantern on the lawn beside the house at Halloween, at the
-        # same point in the stack as the Christmas string: after the sprite,
-        # before anything that may pass in front of it (leaves, fog, snow).
-        if _render_season.is_halloween(local):
-            _render_season.draw_jack_o_lantern(
-                px, *_render_art.HOUSE_PUMPKIN, phase, amb
+            bulbs = (
+                _render_season.XMAS_BULBS
+                if holiday == "christmas"
+                else _render_season.HALLOWEEN_BULBS
             )
+            _render_season.string_lights(px, eaves, phase, amb, bulbs=bulbs)
 
         # Two trees in the yard, seasonal: green, autumn orange, winter bare
         mm = local.month
@@ -418,6 +417,16 @@ def render_scene(
                     px, fringe_x, (13, 14, 15), sky_before
                 )
                 _render_precipitation.settle_snow(px, tops, tier, amb)
+
+        # A jack-o'-lantern on the lawn beside the house at Halloween. Drawn
+        # after the settled snow, as at the lakefront and on the backroads, so
+        # the deepest tier's full-width blanket lands under it rather than
+        # over its face. Only moonlight, falling weather and fog come later,
+        # and those belong in front of it.
+        if holiday == "halloween":
+            _render_season.draw_jack_o_lantern(
+                px, *_render_art.HOUSE_PUMPKIN, phase, amb
+            )
 
         # Moonlight falls on the scene, sliding along with the moon itself
         if moon_pos is not None:
