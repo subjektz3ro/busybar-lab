@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11, <3.14"
 resolution-markers = [
     "python_full_version >= '3.12'",
@@ -155,7 +155,7 @@ dev = [
 
 [[package]]
 name = "busylib"
-version = "2.5.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx2" },
@@ -167,9 +167,9 @@ dependencies = [
     { name = "websockets" },
     { name = "zeroconf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/cc/463c03f9efc8aedf75b28320c58c09c06776e138bf1daf6f15a1ac1a1542/busylib-2.5.0.tar.gz", hash = "sha256:7490f4f3f3b6e705c24f2968e416259f10369df9a7416f906a30dc73a004fd79", size = 439378, upload-time = "2026-09-17T07:24:12.959Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/ce/d606ca10ab14a0315c531cf40de2cbab20b107837d7462e1afc3a96466ea/busylib-2.6.1.tar.gz", hash = "sha256:90eebbddf23cd2c4226f04a94e181111407ef5824fdb446fc81dc20a930c7ac4", size = 104948, upload-time = "2026-10-21T09:44:24.771Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/4c/e0630ba0b44da8568b11dca80af6a5d789abce7f867f328c515b9602c315/busylib-2.5.0-py3-none-any.whl", hash = "sha256:362c70b147dc749a3b8bc316b6a70ff709b7c390d96966f6a4cf640ee246946a", size = 121684, upload-time = "2026-09-17T07:24:11.463Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/01/f40aa85c08b17a67b72cc20c099721df71748e922afc45baae639ef65fb3/busylib-2.6.1-py3-none-any.whl", hash = "sha256:62afead2e13f1b3642d6dc658434a3d81187f2c1445a1e451fdba557b12d326c", size = 123304, upload-time = "2026-10-21T09:44:22.845Z" },
 ]
 
 [[package]]
