@@ -91,6 +91,11 @@ description = "When the Christmas decorations appear (off to disable)"
 choices = ["off", "dec25", "dec24-26", "dec20-jan1", "dec1-26"]
 default = "dec24-26"
 
+[skystrip.config.SKYSTRIP_HALLOWEEN]
+description = "When the Halloween decorations appear (off to disable)"
+choices = ["off", "oct31", "oct30-nov1", "oct28-nov2", "oct1-nov2"]
+default = "oct28-nov2"
+
 [dsn]
 kind = "foreground"
 entrypoint = "apps/dsn.py"

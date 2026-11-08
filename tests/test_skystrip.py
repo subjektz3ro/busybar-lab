@@ -1118,6 +1118,530 @@ def test_forest_and_grove_render_identically_with_christmas_on_and_off(
             f"grove must ship with no Christmas treatment at all")
 
 
+# --- Halloween ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("window,month,day,expected", [
+    ("oct28-nov2", 10, 27, False), ("oct28-nov2", 10, 28, True),
+    ("oct28-nov2", 10, 31, True),  ("oct28-nov2", 11, 1,  True),  # crosses the month
+    ("oct28-nov2", 11, 2,  True),  ("oct28-nov2", 11, 3,  False),
+    ("oct31",      10, 30, False), ("oct31",      10, 31, True),
+    ("oct31",      11, 1,  False),
+    ("oct30-nov1", 10, 29, False), ("oct30-nov1", 10, 30, True),
+    ("oct30-nov1", 11, 1,  True),  ("oct30-nov1", 11, 2,  False),
+    ("oct1-nov2",  9,  30, False), ("oct1-nov2",  10, 1,  True),
+    ("oct1-nov2",  11, 2,  True),  ("oct1-nov2",  11, 3,  False),
+    ("off",        10, 31, False),                 # off means off, on the night
+    ("oct28-nov2", 12, 25, False),                 # Christmas is not Halloween
+])
+def test_halloween_windows(monkeypatch, window, month, day, expected):
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", window)
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    when = datetime(2026, month, day, 12, 0, tzinfo=sky_settings.TZ)
+    assert sky_render_season.is_halloween(when) is expected
+
+
+def test_the_two_holidays_never_share_a_day():
+    """Both treatments stand on the same anchors -- the conifer and the
+    jack-o'-lantern share the lakefront bank and the backroads shoulder --
+    so no choice of windows may put both on the panel at once, or one
+    would paint over the other and the result would read as a fault."""
+    from datetime import date, timedelta
+
+    def days(windows):
+        out = set()
+        day = date(2026, 1, 1)
+        while day.year == 2026:
+            if any((m0, d0) <= (day.month, day.day) <= (m1, d1)
+                   for m0, d0, m1, d1 in windows):
+                out.add((day.month, day.day))
+            day += timedelta(days=1)
+        return out
+
+    xmas = set().union(*(days(w) for w in sky_settings.CHRISTMAS_WINDOWS.values()))
+    hallow = set().union(*(days(w) for w in sky_settings.HALLOWEEN_WINDOWS.values()))
+    assert xmas and hallow, "a window table is empty"
+    assert not (xmas & hallow), sorted(xmas & hallow)
+
+
+def test_an_unknown_halloween_window_is_off_not_a_crash(monkeypatch):
+    """Same contract as Christmas: a hand-edited config.env can hold anything,
+    and an unrecognised value must not put the app into a crash loop."""
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "spooky season")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    assert sky_render_season.is_halloween(
+        datetime(2026, 10, 31, 12, 0, tzinfo=sky_settings.TZ)) is False
+
+
+def test_halloween_is_declared_in_the_registry():
+    """An undeclared key is invisible in the barkeep editor, which is the only
+    way to configure an app on a headless host. The choices are the window
+    table itself, so the editor can never offer a window the code ignores."""
+    import tomllib
+    from pathlib import Path
+    reg = tomllib.loads((Path(__file__).resolve().parents[1]
+                         / "apps.toml").read_text())
+    cfg = reg["skystrip"]["config"]["SKYSTRIP_HALLOWEEN"]
+    assert cfg["default"] == "oct28-nov2"
+    assert set(cfg["choices"]) == {
+        "off", "oct31", "oct30-nov1", "oct28-nov2", "oct1-nov2"}
+    assert set(cfg["choices"]) == set(sky_settings.HALLOWEEN_WINDOWS)
+
+
+def test_the_halloween_window_defaults_to_a_few_days_either_side(tmp_path):
+    config = sky_config.parse_runtime_config({}, tmp_path)
+    assert config.halloween_window == "oct28-nov2"
+    assert sky_config.DEFAULT_SKYSTRIP_CONFIG.halloween_window == "oct28-nov2"
+
+
+@pytest.mark.parametrize("raw", ["oct28-nov2", "OCT28-NOV2", " Oct28-Nov2 "])
+def test_the_halloween_window_tolerates_case_and_whitespace(tmp_path, raw):
+    config = sky_config.parse_runtime_config({"SKYSTRIP_HALLOWEEN": raw}, tmp_path)
+    assert config.halloween_window == "oct28-nov2"
+
+
+def test_halloween_preview_flag_overrides_the_date():
+    parser = sky_cli.build_parser()
+    assert parser.parse_args(["--preview", "x.png"]).halloween is None
+    assert parser.parse_args(["--preview", "x.png", "--halloween"]).halloween is True
+    assert parser.parse_args(["--preview", "x.png",
+                              "--no-halloween"]).halloween is False
+
+
+def test_forced_halloween_overrides_the_window(monkeypatch):
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "off")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", True)
+    assert sky_render_season.is_halloween(
+        datetime(2026, 7, 4, 12, 0, tzinfo=sky_settings.TZ)) is True
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct31")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", False)
+    assert sky_render_season.is_halloween(
+        datetime(2026, 10, 31, 12, 0, tzinfo=sky_settings.TZ)) is False
+
+
+def test_the_halloween_window_is_evaluated_in_local_time(monkeypatch):
+    """Trick-or-treating is an evening affair, which is exactly when a UTC
+    date is already tomorrow in the Americas. The predicate owns the
+    conversion so no call site can get it wrong."""
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct31")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    local_eve = datetime(2026, 10, 30, 19, 0, tzinfo=sky_settings.TZ)
+    assert sky_render_season.is_halloween(local_eve) is False
+    assert sky_render_season.is_halloween(local_eve.astimezone(timezone.utc)) is False
+    local_day = datetime(2026, 10, 31, 19, 0, tzinfo=sky_settings.TZ)
+    assert sky_render_season.is_halloween(local_day) is True
+    assert sky_render_season.is_halloween(local_day.astimezone(timezone.utc)) is True
+
+
+# The jack-o'-lantern's footprint, relative to its base: a stem over a body
+# 5 wide and 3 tall with a rounded top -- two eyes on the middle row, a
+# three-wide mouth on the bottom. Spelled out here rather than imported so
+# the test notices if the shape ever shrinks back toward the 3-by-2 checker
+# that read on the physical panel as an orange blob, not a face.
+_PUMPKIN_STEM = (0, -3)
+_PUMPKIN_BODY = ((-1, -2), (0, -2), (1, -2),
+                 (-2, -1), (-1, -1), (0, -1), (1, -1), (2, -1),
+                 (-2, 0), (-1, 0), (0, 0), (1, 0), (2, 0))
+_PUMPKIN_FOOTPRINT = (_PUMPKIN_STEM, *_PUMPKIN_BODY)
+_PUMPKIN_SKIN = ((-1, -2), (0, -2), (1, -2), (-2, -1), (0, -1), (2, -1), (-2, 0), (2, 0))
+_PUMPKIN_CANDLE = ((-1, -1), (1, -1), (-1, 0), (0, 0), (1, 0))
+
+
+def test_the_pumpkin_palette_is_separable_and_collides_with_nothing():
+    """Two rules from the app skill. Below ~30% per-channel difference two
+    colours are one colour on the panel, so the candle must clear the skin
+    and the two window inks must clear each other AND the warm/cool windows
+    they sit between. And no decoration colour may be byte-identical to a
+    colour the scenes already paint: the road/water guard tests match on
+    membership, and October is when CANOPY_FALL and LEAF_COLORS are live,
+    so a pumpkin the colour of a tumbling leaf would make those guards fail
+    (or pass) on leaves rather than on decorations."""
+    def apart(a, b):
+        return max(abs(p - q) for p, q in zip(a, b)) >= 76  # 30% of 255
+
+    assert apart(sky_render_season.PUMPKIN, sky_render_season.CANDLE)
+    inks = sky_render_season.HALLOWEEN_INKS
+    assert len(inks) == 2
+    assert apart(*inks)
+    bulbs = sky_render_season.HALLOWEEN_BULBS
+    assert len(bulbs) == 3, "orange, purple and white"
+    for a, b in zip(bulbs, bulbs[1:] + bulbs[:1]):   # the string cycles
+        assert apart(a, b), (a, b)
+    for ink in inks:
+        assert apart(ink, sky_render_art.WINDOW_WARM), ink
+        assert apart(ink, sky_render_art.WINDOW_COOL), ink
+
+    scene_colours = {
+        sky_render_art.WINDOW_WARM, sky_render_art.WINDOW_COOL,
+        sky_render_art.WINDOW_COLOR, sky_render_art.BEACON_RED,
+        *sky_render_vegetation.CANOPY_FALL, *sky_render_vegetation.LEAF_COLORS,
+        sky_render_vegetation.GRASS_COLOR, sky_render_vegetation.GRASS_COLOR_2,
+        sky_render_vegetation.TRUNK_NIGHT, sky_render_vegetation.TRUNK_DAY,
+    }
+    for colour in (sky_render_season.PUMPKIN, sky_render_season.CANDLE,
+                   sky_render_season.STEM, *inks, *bulbs):
+        assert colour not in scene_colours, f"{colour} collides with a scene colour"
+    # The two holidays never share a date, so sharing a bulb is fine -- and
+    # the warm white is shared on purpose (see the XMAS_BULBS comment for why
+    # that exact value and not WINDOW_WARM).
+    assert bulbs[2] == sky_render_season.XMAS_BULBS[2]
+    assert not ({sky_render_season.PUMPKIN, sky_render_season.CANDLE,
+                 sky_render_season.STEM, *inks}
+                & {*sky_render_season.XMAS_BULBS, sky_render_season.XMAS_TREE})
+
+
+def test_the_jack_o_lantern_is_a_shape_with_a_lit_face():
+    """Shapes need 2-3 px of body to read on this panel, and a pumpkin with
+    nothing lit inside it is a squash. The first cut was 3 wide and 2 tall
+    with eyes in the corners and the mouth bottom centre -- a checkerboard,
+    which the physical panel showed as an orange blob (owner, 2026-10-30).
+    Now: 5 wide, 3 tall, a rounded top, two eyes with orange between them,
+    a three-wide mouth, and a stem. Every cell is where the picture says."""
+    img, px = _blank()
+    bx, by = 20, 14
+    sky_render_season.draw_jack_o_lantern(px, bx, by, 0.0)
+    lit = {(x, y) for x in range(sky_limits.W) for y in range(sky_limits.H)
+           if px[x, y] != (0, 0, 0)}
+    assert lit == {(bx + dx, by + dy) for dx, dy in _PUMPKIN_FOOTPRINT}
+
+    assert px[bx + _PUMPKIN_STEM[0], by + _PUMPKIN_STEM[1]] == sky_render_season.STEM
+    skin = {(bx + dx, by + dy) for dx, dy in _PUMPKIN_SKIN}
+    candle = {(bx + dx, by + dy) for dx, dy in _PUMPKIN_CANDLE}
+    for x, y in skin:
+        assert px[x, y] == sky_render_season.PUMPKIN, (x, y)
+    for x, y in candle:
+        r, g, b = px[x, y]
+        cr, cg, cb = sky_render_season.CANDLE
+        # the candle's own hue, at some brightness: every channel scaled alike
+        assert r and abs(g / r - cg / cr) < 0.03 and abs(b / r - cb / cr) < 0.03, (x, y)
+        assert r >= cr * 0.4, "the candle has gone out"
+
+    # A scene with no row for a stem gets the same face without one.
+    img, px = _blank()
+    sky_render_season.draw_jack_o_lantern(px, bx, by, 0.0, stem=False)
+    lit = {(x, y) for x in range(sky_limits.W) for y in range(sky_limits.H)
+           if px[x, y] != (0, 0, 0)}
+    assert lit == {(bx + dx, by + dy) for dx, dy in _PUMPKIN_BODY}
+
+
+def test_the_candle_flickers_and_closes_the_loop():
+    """The device loops the .anim itself, so phase 0 and phase 1 are adjacent
+    frames: a flicker that does not close its cycle jumps at the seam. And a
+    candle that never changes brightness is a painted-on face, not a flame."""
+    seen = set()
+    for ph in (0.0, 0.2, 0.4, 0.6, 0.8):
+        img, px = _blank()
+        sky_render_season.draw_jack_o_lantern(px, 20, 14, ph)
+        seen.add(px[20, 14])
+    assert len(seen) > 1, "the candle never flickers"
+
+    img0, px0 = _blank()
+    img1, px1 = _blank()
+    sky_render_season.draw_jack_o_lantern(px0, 20, 14, 0.0)
+    sky_render_season.draw_jack_o_lantern(px1, 20, 14, 1.0)
+    assert [px0[x, y] for x in range(sky_limits.W) for y in range(sky_limits.H)] == \
+           [px1[x, y] for x in range(sky_limits.W) for y in range(sky_limits.H)]
+
+
+def test_the_jack_o_lantern_stays_inside_the_panel():
+    img, px = _blank()
+    for bx, by in ((0, 0), (sky_limits.W - 1, sky_limits.H - 1), (-3, 40)):
+        sky_render_season.draw_jack_o_lantern(px, bx, by, 0.3)
+
+
+def test_a_jack_o_lantern_sits_on_the_lawn_beside_the_house_on_halloween(monkeypatch):
+    """Same shape of proof as test_the_house_wears_lights_at_christmas: not
+    merely `a != b`, but the real draw_jack_o_lantern footprint, rendered
+    fresh onto a blank canvas at the phase render_scene used, found pixel
+    for pixel at HOUSE_PUMPKIN -- and absent from the plain frame."""
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct28-nov2")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    wx = sky_weather.WeatherState(temp_c=8.0)
+    # UTC noon at 0,0 keeps _ambient() the identity, so the pumpkin lands
+    # unshaded and compares exactly (see test_house_scene_puts_snow_on_the_ground).
+    hallow = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    plain = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+    a = sky_render_scene.render_scene(hallow, wx, 0, scene="house")
+    b = sky_render_scene.render_scene(plain, wx, 0, scene="house")
+    assert a != b, "Halloween changed nothing"
+
+    bx, by = sky_render_art.HOUSE_PUMPKIN
+    # What holds it up: the lawn is the panel's bottom row, and the body's
+    # bottom row sits directly on it. A pumpkin a row higher floats.
+    assert by + 1 == sky_limits.H - 1
+    footprint = [(bx + dx, by + dy) for dx, dy in _PUMPKIN_FOOTPRINT]
+    # Beside the house, not through it, and not under the roofline string
+    # Christmas hangs -- the two never overlap in time, but the sprite does
+    # not move between October and December either.
+    sprite = {(x, y) for x, y, _ in sky_render_art.HOUSE_SPRITE}
+    assert not (set(footprint) & sprite), "the pumpkin is inside the house"
+    assert all(0 <= x < sky_limits.W and 0 <= y < sky_limits.H for x, y in footprint)
+
+    ref = Image.new("RGB", (sky_limits.W, sky_limits.H))
+    refpx = ref.load()
+    sky_render_season.draw_jack_o_lantern(refpx, bx, by, 0.0)
+    expected = [(x, y, refpx[x, y]) for x, y in footprint]
+    assert all(c != (0, 0, 0) for _, _, c in expected), \
+        "test setup produced no reference pumpkin colours"
+
+    apx, bpx = a.load(), b.load()
+    matches = sum(1 for x, y, c in expected if apx[x, y] == c)
+    assert matches == len(footprint) == 14, (
+        f"expected the full 14-pixel pumpkin at {(bx, by)}, got {matches}/14")
+    assert not any(bpx[x, y] == c for x, y, c in expected), \
+        "non-Halloween frame already shows pumpkin colours on the lawn"
+
+
+def test_the_house_wears_orange_purple_and_white_lights_at_halloween(monkeypatch):
+    """The December string, in Halloween colours: the same rhythm along the
+    same roofline, so the proof is the one
+    test_the_house_wears_lights_at_christmas gives -- the real string_lights
+    with HALLOWEEN_BULBS on a blank canvas at the phase render_scene used,
+    found bulb for bulb on the eaves, and absent from the plain frame."""
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct28-nov2")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    wx = sky_weather.WeatherState(temp_c=8.0)
+    hallow = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    plain = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+    a = sky_render_scene.render_scene(hallow, wx, 0, scene="house")
+    b = sky_render_scene.render_scene(plain, wx, 0, scene="house")
+
+    eaves = [(x, sky_render_art.HOUSE_TOP[x]) for x in sorted(sky_render_art.HOUSE_TOP)]
+    lit_points = eaves[::sky_render_season.XMAS_SPACING]
+    ref = Image.new("RGB", (sky_limits.W, sky_limits.H))
+    refpx = ref.load()
+    sky_render_season.string_lights(refpx, eaves, 0.0,
+                                    bulbs=sky_render_season.HALLOWEEN_BULBS)
+    expected = [(x, y, refpx[x, y]) for x, y in lit_points]
+    assert all(c != (0, 0, 0) for _, _, c in expected), \
+        "test setup produced no reference bulb colours"
+    # The string actually cycles through all three Halloween bulbs. The
+    # reference colours are swell-dimmed, so look for each bulb at SOME
+    # brightness: every channel scaled by the same factor, within rounding.
+    def is_scaled(c, bulb):
+        k = max(c) / max(bulb)
+        return 0.4 < k <= 1.0 and all(abs(ci - int(bi * k)) <= 2 for ci, bi in zip(c, bulb))
+    for bulb in sky_render_season.HALLOWEEN_BULBS:
+        assert any(is_scaled(c, bulb) for _, _, c in expected), \
+            f"no roofline bulb carries {bulb}"
+
+    apx, bpx = a.load(), b.load()
+    matches = sum(1 for x, y, c in expected if apx[x, y] == c)
+    assert matches == len(lit_points) == 4, (
+        f"expected all {len(lit_points)} roofline bulbs lit with the "
+        f"Halloween string colours, got {matches}")
+    assert not any(bpx[x, y] == c for x, y, c in expected), \
+        "non-Halloween frame already shows bulb colours on the roofline"
+
+
+def test_a_jack_o_lantern_stands_at_the_lakefront_and_on_the_backroads(monkeypatch):
+    """Where the December conifer stands. At the lakefront the pumpkin shares
+    the tree's anchor outright: BEND_WATER_END puts every cell of the wider
+    body, and the stem over it, on bank (the water guard below re-derives
+    that). On the backroads the verge is three rows deep below the road's
+    shoulder band, so there is no row for a stem, and the body sits one
+    column right of the tree so it clears the last poplar's trunk."""
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct28-nov2")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    wx = sky_weather.WeatherState(temp_c=8.0)
+    hallow = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    plain = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+    placements = {
+        "lakefront": (sky_render_lakefront.LAKEFRONT_PUMPKIN, True),
+        "backroads": (sky_render_backroads.BACKROADS_PUMPKIN, False),
+    }
+    assert sky_render_lakefront.LAKEFRONT_PUMPKIN == sky_render_lakefront.LAKEFRONT_TREE
+    assert sky_render_backroads.BACKROADS_PUMPKIN[1] == sky_render_backroads.BACKROADS_TREE[1]
+    decor = {sky_render_season.PUMPKIN, sky_render_season.STEM}
+
+    for scene, ((bx, by), stem) in placements.items():
+        a = sky_render_scene.render_scene(hallow, wx, 0, scene=scene)
+        b = sky_render_scene.render_scene(plain, wx, 0, scene=scene)
+        assert a != b, f"{scene} ignored Halloween"
+
+        ref = Image.new("RGB", (sky_limits.W, sky_limits.H))
+        refpx = ref.load()
+        sky_render_season.draw_jack_o_lantern(refpx, bx, by, 0.0, stem=stem)
+        cells = _PUMPKIN_FOOTPRINT if stem else _PUMPKIN_BODY
+        footprint = [(bx + dx, by + dy) for dx, dy in cells]
+        expected = [(x, y, refpx[x, y]) for x, y in footprint]
+        assert all(c != (0, 0, 0) for _, _, c in expected), \
+            f"{scene}: test setup produced no reference pumpkin colours"
+
+        apx, bpx = a.load(), b.load()
+        matches = sum(1 for x, y, c in expected if apx[x, y] == c)
+        assert matches == len(footprint), (
+            f"{scene}: expected the full {len(footprint)}-pixel pumpkin at "
+            f"{(bx, by)}, got {matches}")
+        assert not any(bpx[x, y] == c for x, y, c in expected), \
+            f"{scene}: non-Halloween frame already shows pumpkin colours"
+
+        # Skin and stem land as the raw constants (the candle cells are
+        # flicker-dimmed off CANDLE, the same blind spot the Christmas bulbs
+        # have), so exactly those are members of `decor`.
+        body_hits = sum(1 for _, _, c in expected if c in decor)
+        assert body_hits == len(_PUMPKIN_SKIN) + (1 if stem else 0), \
+            f"{scene}: reference render produced {body_hits} skin/stem pixels"
+        found = sum(1 for x, y in footprint if apx[x, y] in decor)
+        assert found == body_hits, (
+            f"{scene}: expected {body_hits} PUMPKIN/STEM pixels in the "
+            f"footprint, found {found}")
+        # Feet in the conifer's trunk row, nothing above the conifer's tip.
+        assert max(y for _, y in footprint) == by
+        assert min(y for _, y in footprint) >= by - 3
+
+
+def test_the_house_pumpkin_stands_on_deep_snow(monkeypatch):
+    """At the deepest settled-snow tier the house buries its lawn under a
+    full-width blanket. A pumpkin drawn before that blanket loses its mouth
+    and both cheeks and becomes a stem with two floating eyes; at the
+    lakefront and on the backroads it is drawn dead last and stands on the
+    snow. The house must agree with them."""
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct28-nov2")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    hallow = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    bx, by = sky_render_art.HOUSE_PUMPKIN
+    footprint = [(bx + dx, by + dy) for dx, dy in _PUMPKIN_FOOTPRINT]
+    ref = Image.new("RGB", (sky_limits.W, sky_limits.H))
+    refpx = ref.load()
+    sky_render_season.draw_jack_o_lantern(refpx, bx, by, 0.0)
+    expected = [(x, y, refpx[x, y]) for x, y in footprint]
+    for depth in (0.0, 0.05, 0.30):   # bare, dusting, buried
+        wx = sky_weather.WeatherState(temp_c=-2.0, snow_depth_m=depth)
+        apx = sky_render_scene.render_scene(hallow, wx, 0, scene="house").load()
+        matches = sum(1 for x, y, c in expected if apx[x, y] == c)
+        assert matches == 14, (
+            f"snow depth {depth} m: {matches}/14 pumpkin pixels survived")
+
+
+def test_christmas_takes_precedence_when_both_holidays_are_forced(monkeypatch):
+    """The two windows never share a date, so this can only happen in
+    --preview with both flags given. It still has to mean ONE thing in every
+    scene: the house used to draw both the roofline string and the pumpkin
+    while the other three silently dropped Halloween. One rule, pinned here:
+    Christmas wins, everywhere."""
+    wx = sky_weather.WeatherState(temp_c=-2.0)
+    now = datetime(2026, 7, 4, 19, 0, tzinfo=sky_settings.TZ)
+    assert sky_render_season.active_holiday(now) is None
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_FORCED", True)
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", True)
+    assert sky_render_season.active_holiday(now) == "christmas"
+    for scene in ("house", "skyline", "lakefront", "backroads"):
+        monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", True)
+        both = sky_render_scene.render_scene(now, wx, 0, scene=scene)
+        monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", False)
+        xmas_only = sky_render_scene.render_scene(now, wx, 0, scene=scene)
+        assert both == xmas_only, f"{scene}: forcing both holidays did not read as Christmas"
+    monkeypatch.setattr(sky_settings, "CHRISTMAS_FORCED", False)
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", True)
+    assert sky_render_season.active_holiday(now) == "halloween"
+
+
+def test_no_decoration_stands_in_the_road_at_halloween(monkeypatch):
+    """Same rule as settled snow and the Christmas conifer: the road is not
+    ground you decorate. Re-derives the road from _road_R at test time."""
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct28-nov2")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    wx = sky_weather.WeatherState(temp_c=8.0)
+    hallow = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    decor = {sky_render_season.PUMPKIN, sky_render_season.STEM}
+    for ph in (0.0, 0.25, 0.5, 0.75):
+        px = sky_render_scene.render_scene(hallow, wx, 0, phase=ph,
+                                           scene="backroads").load()
+        for x in range(sky_limits.W):
+            y = round(sky_render_backroads._road_R(x))
+            for dy in (0, 1):
+                if 0 <= y + dy < sky_limits.H:
+                    assert px[x, y + dy] not in decor, \
+                        f"decoration standing in the road at ({x},{y + dy})"
+
+
+def test_no_decoration_stands_on_open_water_at_halloween(monkeypatch):
+    """Open water is not ground you decorate; "is this water" comes from
+    BEND_WATER_END itself, the same live source the settled-snow block reads."""
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct28-nov2")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    wx = sky_weather.WeatherState(temp_c=8.0)
+    hallow = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
+    decor = {sky_render_season.PUMPKIN, sky_render_season.STEM}
+    for ph in (0.0, 0.25, 0.5, 0.75):
+        px = sky_render_scene.render_scene(hallow, wx, 0, phase=ph,
+                                           scene="lakefront").load()
+        for y, water_end in sky_render_lakefront.BEND_WATER_END.items():
+            for x in range(water_end):
+                assert px[x, y] not in decor, \
+                    f"decoration standing on open water at ({x},{y})"
+
+
+def test_the_skyline_shows_halloween_windows(monkeypatch):
+    """The Christmas recolour, in orange and purple: a minority of the
+    already-lit tower windows change ink, none are added. Same proof shape
+    as test_the_skyline_shows_holiday_windows, same 20:00 UTC after-dark
+    hour, and the same raw (unshaded) comparison because lit windows are
+    emissive."""
+    monkeypatch.setattr(sky_settings, "OBSERVER",
+                        Observer(latitude=0.0, longitude=0.0))
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_WINDOW", "oct28-nov2")
+    monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", None)
+    wx = sky_weather.WeatherState(temp_c=8.0)
+    hallow = datetime(2026, 10, 31, 20, 0, tzinfo=timezone.utc)   # after dark
+    plain = datetime(2026, 10, 20, 20, 0, tzinfo=timezone.utc)
+    a = sky_render_scene.render_scene(hallow, wx, 0, scene="skyline")
+    b = sky_render_scene.render_scene(plain, wx, 0, scene="skyline")
+    assert a != b, "skyline ignored Halloween"
+    pa, pb = a.load(), b.load()
+
+    festive_colors = set(sky_render_season.HALLOWEEN_INKS)
+    window_colors = {sky_render_art.WINDOW_WARM, sky_render_art.WINDOW_COOL}
+    every = [(x, y) for x in range(sky_limits.W) for y in range(sky_limits.H)]
+    assert sum(1 for x, y in every if pb[x, y] in window_colors) > 0, \
+        "test setup produced no lit windows -- pick a darker hour"
+    assert sum(1 for x, y in every if pa[x, y] in festive_colors) > 0, \
+        "no windows turned orange or purple at Halloween"
+    assert sum(1 for x, y in every if pb[x, y] in festive_colors) == 0, \
+        "non-Halloween frame already shows orange/purple window inks"
+
+    # Recolour, never add: the count of window-styled pixels is invariant.
+    window_style = window_colors | festive_colors
+    styled_a = sum(1 for x, y in every if pa[x, y] in window_style)
+    styled_b = sum(1 for x, y in every if pb[x, y] in window_style)
+    assert styled_a == styled_b, "Halloween lit extra windows instead of recolouring"
+
+    # And the same physical windows stay festive from frame to frame.
+    pa_mid = sky_render_scene.render_scene(hallow, wx, 0, phase=0.5, scene="skyline").load()
+    assert {(x, y) for x, y in every if pa[x, y] in festive_colors} == \
+           {(x, y) for x, y in every if pa_mid[x, y] in festive_colors}, \
+        "festive windows moved between phases -- not seeded independently"
+
+
+def test_forest_and_grove_render_identically_with_halloween_on_and_off(monkeypatch):
+    """Forest and grove ship with no Christmas treatment (see the test of that
+    name for why: a woodland is already busy, and adding pixels is this
+    panel's haze failure). The same holds for Halloween, for the same reason."""
+    wx = sky_weather.WeatherState(temp_c=8.0)
+    now = datetime(2026, 10, 31, 18, 0, tzinfo=sky_settings.TZ)
+    for scene in ("forest", "grove"):
+        monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", True)
+        on = sky_render_scene.render_scene(now, wx, 0, scene=scene)
+        monkeypatch.setattr(sky_settings, "HALLOWEEN_FORCED", False)
+        off = sky_render_scene.render_scene(now, wx, 0, scene=scene)
+        assert on == off, (
+            f"{scene} changed when Halloween was forced on -- forest and "
+            f"grove must ship with no Halloween treatment at all")
+
+
 def _traffic_band(when, wx):
     top, rows = sky_render_traffic.TRAFFIC_BAND_TOP, sky_render_traffic.TRAFFIC_BAND_ROWS
     scene = sky_render_scene.render_scene(when, wx, 1, phase=0.0, scene="backroads")

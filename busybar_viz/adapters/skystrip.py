@@ -92,6 +92,8 @@ def _deterministic_skystrip():
         "STYLE": "plain",
         "CHRISTMAS_WINDOW": "off",
         "CHRISTMAS_FORCED": False,
+        "HALLOWEEN_WINDOW": "off",
+        "HALLOWEEN_FORCED": False,
     }
     with _RENDER_LOCK:
         previous = {name: getattr(module.settings, name) for name in replacements}
